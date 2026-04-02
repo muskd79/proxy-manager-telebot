@@ -217,7 +217,7 @@ export async function PUT(
 
           if (proxy) {
             notifyText = [
-              "\u2705 Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
+              "[OK] Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
               "",
               `Host: \`${proxy.host}\``,
               `Port: \`${proxy.port}\``,
@@ -227,7 +227,7 @@ export async function PUT(
             ].join("\n");
           }
         } else if (status === "rejected") {
-          notifyText = `\u274C Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
+          notifyText = `[X] Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
         }
 
         if (notifyText) {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Proxy } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { checkProxy } from "@/lib/proxy-checker";
+import { HEALTH_CHECK_CONCURRENCY } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -33,12 +34,11 @@ export async function POST(request: NextRequest) {
       "id" | "host" | "port" | "type" | "username" | "password"
     >[];
 
-    // Process in parallel batches of 50
-    const CONCURRENCY = 50;
+    // Process in parallel batches
     const results: { id: string; alive: boolean; speed_ms: number }[] = [];
 
-    for (let i = 0; i < proxies.length; i += CONCURRENCY) {
-      const batch = proxies.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < proxies.length; i += HEALTH_CHECK_CONCURRENCY) {
+      const batch = proxies.slice(i, i + HEALTH_CHECK_CONCURRENCY);
 
       const batchResults = await Promise.allSettled(
         batch.map(async (proxy: any) => {

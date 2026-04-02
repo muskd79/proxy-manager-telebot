@@ -4,6 +4,7 @@ import type { ImportProxyResult } from "@/types/api";
 import type { ProxyType } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 
 interface ImportProxyRow {
   host: string;
@@ -83,10 +84,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (validProxies.length > 0) {
-      // Process in batches of 100 with fallback to one-by-one on failure
-      const batchSize = 100;
-      for (let i = 0; i < validProxies.length; i += batchSize) {
-        const batch = validProxies.slice(i, i + batchSize);
+      // Process in batches with fallback to one-by-one on failure
+      for (let i = 0; i < validProxies.length; i += IMPORT_BATCH_SIZE) {
+        const batch = validProxies.slice(i, i + IMPORT_BATCH_SIZE);
         const { error } = await supabase
           .from("proxies")
           .insert(batch);

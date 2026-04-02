@@ -1,0 +1,63 @@
+import type { Context } from "grammy";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { t } from "../messages";
+import { getOrCreateUser, logChatMessage } from "../utils";
+import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
+import type { SupportedLanguage } from "@/types/telegram";
+
+export async function handleMyProxies(ctx: Context) {
+  const user = await getOrCreateUser(ctx);
+  if (!user) return;
+
+  const lang = user.language as SupportedLanguage;
+
+  await logChatMessage(
+    user.id,
+    ctx.message?.message_id ?? null,
+    ChatDirection.Incoming,
+    "/myproxies",
+    MessageType.Command
+  );
+
+  const { data: proxies } = await supabaseAdmin
+    .from("proxies")
+    .select("*")
+    .eq("assigned_to", user.id)
+    .eq("status", ProxyStatus.Assigned)
+    .eq("is_deleted", false);
+
+  if (!proxies || proxies.length === 0) {
+    const text = t("noProxies", lang);
+    await ctx.reply(text);
+    await logChatMessage(
+      user.id,
+      null,
+      ChatDirection.Outgoing,
+      text,
+      MessageType.Text
+    );
+    return;
+  }
+
+  const lines = proxies.map((p, i) => {
+    const expires = p.expires_at
+      ? new Date(p.expires_at).toLocaleDateString()
+      : "N/A";
+    const expiryLabel = lang === "vi" ? "H\u1EBFt h\u1EA1n" : "Expires";
+    return [
+      `*${i + 1}.* \`${p.host}:${p.port}\``,
+      `   ${p.type.toUpperCase()} | ${expiryLabel}: ${expires}`,
+    ].join("\n");
+  });
+
+  const header = lang === "vi" ? "*Proxy c\u1EE7a b\u1EA1n:*" : "*Your proxies:*";
+  const text = `${header}\n\n${lines.join("\n\n")}`;
+  await ctx.reply(text, { parse_mode: "Markdown" });
+  await logChatMessage(
+    user.id,
+    null,
+    ChatDirection.Outgoing,
+    text,
+    MessageType.Text
+  );
+}

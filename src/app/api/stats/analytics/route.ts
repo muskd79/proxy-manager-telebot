@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAnyRole } from "@/lib/auth";
+import { ANALYTICS_DAYS } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -8,9 +9,9 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    // Get requests from last 14 days
+    // Get requests from last N days
     const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - ANALYTICS_DAYS);
 
     const { data: requests } = await supabase
       .from("proxy_requests")
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Build daily stats
     const dailyMap = new Map<string, { approved: number; rejected: number; auto_approved: number; active_users: Set<string> }>();
 
-    for (let i = 13; i >= 0; i--) {
+    for (let i = ANALYTICS_DAYS - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().split("T")[0];
