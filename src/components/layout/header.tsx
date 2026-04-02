@@ -18,6 +18,7 @@ import {
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { SearchInput } from "@/components/shared/search-input";
 import { LanguageSwitch } from "@/components/shared/language-switch";
+import { useI18n } from "@/lib/i18n";
 
 interface Admin {
   id: string;
@@ -29,6 +30,7 @@ interface Admin {
 export function Header({ admin }: { admin: Admin }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const { t } = useI18n();
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
@@ -121,12 +123,12 @@ export function Header({ admin }: { admin: Admin }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push("/settings")}>
               <User className="mr-2 h-4 w-4" />
-              Profile
+              {t("common.profile")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
-              Logout
+              {t("common.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

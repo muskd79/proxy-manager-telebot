@@ -8,7 +8,11 @@
     "history": "Lịch sử",
     "trash": "Thùng rác",
     "logs": "Nhật ký",
-    "settings": "Cài đặt"
+    "settings": "Cài đặt",
+    "admins": "Quản trị viên",
+    "operations": "VẬN HÀNH",
+    "monitoring": "GIÁM SÁT",
+    "system": "HỆ THỐNG"
   },
   "dashboard": {
     "title": "Trang chủ",
@@ -233,6 +237,8 @@
     "required": "Bắt buộc",
     "optional": "Không bắt buộc",
     "copyToClipboard": "Sao chép",
-    "copied": "Đã sao chép"
+    "copied": "Đã sao chép",
+    "profile": "Hồ sơ",
+    "logout": "Đăng xuất"
   }
 }

@@ -180,15 +180,18 @@ export async function PUT(
 
         if (teleUser?.telegram_id && rpcResult.proxy) {
           const proxy = rpcResult.proxy;
-          const notifyText = [
-            "[OK] Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
-            "",
-            `Host: \`${proxy.host}\``,
-            `Port: \`${proxy.port}\``,
-            `Type: \`${proxy.type}\``,
-            `User: \`${proxy.username ?? "N/A"}\``,
-            `Pass: \`${proxy.password ?? "N/A"}\``,
-          ].join("\n");
+
+          // Detect user language for notification
+          const { data: teleUserFull } = await supabase
+            .from("tele_users")
+            .select("language")
+            .eq("id", rpcResult.tele_user_id)
+            .single();
+          const lang = (teleUserFull?.language as string) || "en";
+
+          const notifyText = lang === "vi"
+            ? `[OK] Proxy đã được cấp!\n\n\`${proxy.host}:${proxy.port}:${proxy.username ?? ""}:${proxy.password ?? ""}\`\n\nLoại: ${proxy.type.toUpperCase()}`
+            : `[OK] Proxy assigned!\n\n\`${proxy.host}:${proxy.port}:${proxy.username ?? ""}:${proxy.password ?? ""}\`\n\nType: ${proxy.type.toUpperCase()}`;
 
           await sendTelegramMessage(teleUser.telegram_id, notifyText);
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,33 +8,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useI18n } from "@/lib/i18n";
 
-type Locale = "vi" | "en";
-
-const LOCALE_KEY = "proxy-manager-locale";
-
-const localeLabels: Record<Locale, string> = {
-  vi: "Tieng Viet",
+const localeLabels: Record<"vi" | "en", string> = {
+  vi: "Tiếng Việt",
   en: "English",
 };
 
 export function LanguageSwitch() {
-  const [locale, setLocale] = useState<Locale>("vi");
-
-  useEffect(() => {
-    const stored = localStorage.getItem(LOCALE_KEY) as Locale | null;
-    if (stored && (stored === "vi" || stored === "en")) {
-      setLocale(stored);
-    }
-  }, []);
-
-  const handleChange = useCallback((newLocale: Locale) => {
-    setLocale(newLocale);
-    localStorage.setItem(LOCALE_KEY, newLocale);
-    document.cookie = `${LOCALE_KEY}=${newLocale};path=/;max-age=31536000`;
-    // Optionally trigger a page reload or i18n context update
-    window.dispatchEvent(new CustomEvent("locale-change", { detail: newLocale }));
-  }, []);
+  const { locale, setLocale } = useI18n();
 
   return (
     <DropdownMenu>
@@ -46,10 +27,10 @@ export function LanguageSwitch() {
         <span className="text-xs font-medium uppercase">{locale}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => handleChange("vi")}>
+        <DropdownMenuItem onClick={() => setLocale("vi")}>
           {localeLabels.vi}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleChange("en")}>
+        <DropdownMenuItem onClick={() => setLocale("en")}>
           {localeLabels.en}
         </DropdownMenuItem>
       </DropdownMenuContent>

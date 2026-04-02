@@ -25,6 +25,7 @@ import {
   Menu,
   ChevronLeft,
 } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 interface Admin {
   id: string;
@@ -42,19 +43,6 @@ interface NavItem {
   section?: string;
 }
 
-const navItems: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "Operations" },
-  { title: "Proxies", href: "/proxies", icon: Globe },
-  { title: "Users", href: "/users", icon: Users },
-  { title: "Requests", href: "/requests", icon: FileText },
-  { title: "Chat", href: "/chat", icon: MessageSquare, section: "Monitoring" },
-  { title: "History", href: "/history", icon: History },
-  { title: "Logs", href: "/logs", icon: ScrollText },
-  { title: "Trash", href: "/trash", icon: Trash2, section: "System" },
-  { title: "Admins", href: "/admins", icon: Shield, minRole: "super_admin" },
-  { title: "Settings", href: "/settings", icon: Settings, minRole: "super_admin" },
-];
-
 function NavContent({
   admin,
   collapsed,
@@ -65,6 +53,20 @@ function NavContent({
   onLogout: () => void;
 }) {
   const pathname = usePathname();
+  const { t } = useI18n();
+
+  const navItems: NavItem[] = [
+    { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
+    { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
+    { title: t("sidebar.users"), href: "/users", icon: Users },
+    { title: t("sidebar.requests"), href: "/requests", icon: FileText },
+    { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare, section: t("sidebar.monitoring") },
+    { title: t("sidebar.history"), href: "/history", icon: History },
+    { title: t("sidebar.logs"), href: "/logs", icon: ScrollText },
+    { title: t("sidebar.trash"), href: "/trash", icon: Trash2, section: t("sidebar.system") },
+    { title: t("sidebar.admins"), href: "/admins", icon: Shield, minRole: "super_admin" },
+    { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin" },
+  ];
 
   const roleLevel: Record<string, number> = { viewer: 0, admin: 1, super_admin: 2 };
   const filteredItems = navItems.filter((item) => {

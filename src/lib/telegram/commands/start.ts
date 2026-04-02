@@ -1,4 +1,4 @@
-import type { Context } from "grammy";
+import { type Context, Keyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, logChatMessage } from "../utils";
@@ -40,7 +40,17 @@ export async function handleStart(ctx: Context) {
       `${proxyLabel}: ${proxyCount ?? 0}/${user.max_proxies}`,
     ].join("\n");
   }
-  await ctx.reply(text, { parse_mode: "Markdown" });
+  const menuKeyboard = new Keyboard()
+    .text("/getproxy").text("/myproxies").row()
+    .text("/status").text("/revoke").row()
+    .text("/help").text("/language")
+    .resized()
+    .persistent();
+
+  await ctx.reply(text, {
+    parse_mode: "Markdown",
+    reply_markup: menuKeyboard,
+  });
 
   // Log outgoing
   await logChatMessage(

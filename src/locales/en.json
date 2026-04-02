@@ -8,7 +8,11 @@
     "history": "History",
     "trash": "Trash",
     "logs": "Logs",
-    "settings": "Settings"
+    "settings": "Settings",
+    "admins": "Admins",
+    "operations": "OPERATIONS",
+    "monitoring": "MONITORING",
+    "system": "SYSTEM"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -233,6 +237,8 @@
     "required": "Required",
     "optional": "Optional",
     "copyToClipboard": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "profile": "Profile",
+    "logout": "Logout"
   }
 }

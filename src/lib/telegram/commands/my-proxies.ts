@@ -43,15 +43,15 @@ export async function handleMyProxies(ctx: Context) {
     const expires = p.expires_at
       ? new Date(p.expires_at).toLocaleDateString()
       : "N/A";
-    const expiryLabel = lang === "vi" ? "H\u1EBFt h\u1EA1n" : "Expires";
-    return [
-      `*${i + 1}.* \`${p.host}:${p.port}\``,
-      `   ${p.type.toUpperCase()} | ${expiryLabel}: ${expires}`,
-    ].join("\n");
+    const expiryLabel = lang === "vi" ? "Hết hạn" : "Expires";
+    return `${i + 1}. \`${p.host}:${p.port}:${p.username ?? ""}:${p.password ?? ""}\` (${p.type.toUpperCase()}) - ${expiryLabel}: ${expires}`;
   });
 
-  const header = lang === "vi" ? "*Proxy c\u1EE7a b\u1EA1n:*" : "*Your proxies:*";
-  const text = `${header}\n\n${lines.join("\n\n")}`;
+  const header =
+    lang === "vi"
+      ? `*Proxy của bạn (${proxies.length}/${user.max_proxies}):*`
+      : `*Your proxies (${proxies.length}/${user.max_proxies}):*`;
+  const text = `${header}\n\n${lines.join("\n")}`;
   await ctx.reply(text, { parse_mode: "Markdown" });
   await logChatMessage(
     user.id,

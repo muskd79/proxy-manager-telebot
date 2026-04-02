@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { RoleProvider } from "@/lib/role-context";
+import { I18nProvider } from "@/lib/i18n";
 import type { Role } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -29,6 +30,7 @@ export default async function DashboardLayout({
 
   return (
     <RoleProvider role={(admin?.role as Role) ?? "viewer"}>
+      <I18nProvider>
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar
           admin={{
@@ -50,6 +52,7 @@ export default async function DashboardLayout({
           <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>
       </div>
+      </I18nProvider>
     </RoleProvider>
   );
 }

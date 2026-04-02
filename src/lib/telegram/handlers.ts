@@ -31,6 +31,21 @@ bot.command("cancel", handleCancel);
 bot.command("revoke", handleRevoke);
 
 // ---------------------------------------------------------------------------
+// Set bot commands menu (visible in Telegram UI)
+// ---------------------------------------------------------------------------
+
+bot.api.setMyCommands([
+  { command: "start", description: "Bắt đầu / Start" },
+  { command: "getproxy", description: "Lấy proxy / Get proxy" },
+  { command: "myproxies", description: "Proxy của tôi / My proxies" },
+  { command: "status", description: "Trạng thái / Status" },
+  { command: "revoke", description: "Trả proxy / Return proxy" },
+  { command: "cancel", description: "Huỷ yêu cầu / Cancel request" },
+  { command: "language", description: "Đổi ngôn ngữ / Language" },
+  { command: "help", description: "Hướng dẫn / Help" },
+]).catch(console.error);
+
+// ---------------------------------------------------------------------------
 // Callback query handler
 // ---------------------------------------------------------------------------
 
@@ -95,7 +110,7 @@ bot.on("message:text", async (ctx) => {
   const lang = (user.language as SupportedLanguage) || "en";
   const text =
     lang === "vi"
-      ? "Su dung /help de xem cac lenh co san."
+      ? "Sử dụng /help để xem các lệnh có sẵn."
       : "Use /help to see available commands.";
 
   await ctx.reply(text);
