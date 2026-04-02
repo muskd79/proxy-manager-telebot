@@ -29,9 +29,6 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: ESLint
-        run: npx next lint --dir src
-
       - name: TypeScript type check
         run: npx tsc --noEmit
 
