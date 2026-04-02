@@ -43,7 +43,8 @@ export function RecentRequests() {
       const res = await fetch("/api/requests?pageSize=10&sortBy=created_at&sortOrder=desc");
       if (res.ok) {
         const result = await res.json();
-        setRequests(result.data || []);
+        const items = result?.data?.data || result?.data || [];
+        setRequests(Array.isArray(items) ? items : []);
       }
     } catch {
       // Silently fail

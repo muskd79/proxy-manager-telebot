@@ -18,35 +18,31 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Fetch admin data
+  // Fetch admin data by email
   const { data: admin } = await supabase
     .from("admins")
     .select("*")
-    .eq("auth_user_id", user.id)
+    .eq("email", user.email)
     .single();
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
-        admin={
-          admin ?? {
-            id: user.id,
-            email: user.email ?? "",
-            display_name: user.email?.split("@")[0] ?? "Admin",
-            role: "admin",
-          }
-        }
+        admin={{
+          id: admin?.id ?? user.id,
+          email: admin?.email ?? user.email ?? "",
+          display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
+          role: admin?.role ?? "admin",
+        }}
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
-          admin={
-            admin ?? {
-              id: user.id,
-              email: user.email ?? "",
-              display_name: user.email?.split("@")[0] ?? "Admin",
-              role: "admin",
-            }
-          }
+          admin={{
+            id: admin?.id ?? user.id,
+            email: admin?.email ?? user.email ?? "",
+            display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
+            role: admin?.role ?? "admin",
+          }}
         />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>

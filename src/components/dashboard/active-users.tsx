@@ -34,7 +34,8 @@ export function ActiveUsers() {
         );
         if (res.ok) {
           const result = await res.json();
-          const usersData = result.data || [];
+          const raw = result?.data?.data || result?.data || [];
+          const usersData = Array.isArray(raw) ? raw : [];
           setUsers(
             usersData.map((u: Record<string, unknown>) => ({
               id: u.id,
