@@ -38,7 +38,18 @@ export async function getOrCreateUser(ctx: Context) {
 
   if (existing) return existing;
 
-  // Create new user
+  // Read default settings from DB
+  const { data: settings } = await supabaseAdmin
+    .from("settings")
+    .select("key, value")
+    .in("key", ["default_rate_limit_hourly", "default_rate_limit_daily", "default_rate_limit_total", "default_approval_mode", "default_max_proxies"]);
+
+  const getSettingValue = (key: string, fallback: number | string) => {
+    const setting = settings?.find(s => s.key === key);
+    return setting?.value?.value ?? fallback;
+  };
+
+  // Create new user with settings-based defaults
   const { data: newUser, error } = await supabaseAdmin
     .from("tele_users")
     .insert({
@@ -48,11 +59,11 @@ export async function getOrCreateUser(ctx: Context) {
       last_name: from.last_name ?? null,
       phone: null,
       status: TeleUserStatus.Active,
-      approval_mode: ApprovalMode.Auto,
-      max_proxies: 5,
-      rate_limit_hourly: 3,
-      rate_limit_daily: 10,
-      rate_limit_total: 50,
+      approval_mode: String(getSettingValue("default_approval_mode", "auto")) as ApprovalMode,
+      max_proxies: Number(getSettingValue("default_max_proxies", 5)),
+      rate_limit_hourly: Number(getSettingValue("default_rate_limit_hourly", 3)),
+      rate_limit_daily: Number(getSettingValue("default_rate_limit_daily", 10)),
+      rate_limit_total: Number(getSettingValue("default_rate_limit_total", 50)),
       proxies_used_hourly: 0,
       proxies_used_daily: 0,
       proxies_used_total: 0,

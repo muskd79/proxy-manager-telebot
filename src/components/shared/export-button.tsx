@@ -1,6 +1,7 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useState } from "react";
+import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ interface ExportButtonProps<T> {
   data: T[];
   filename: string;
   className?: string;
+  fetchAllUrl?: string; // If provided, fetch all data from this URL before export
 }
 
 function downloadFile(content: string, filename: string, mimeType: string) {
@@ -45,28 +47,63 @@ function toCSV<T>(data: T[]): string {
   return [headers.join(","), ...rows].join("\n");
 }
 
+async function fetchAllData<T>(fetchAllUrl: string): Promise<T[]> {
+  const separator = fetchAllUrl.includes("?") ? "&" : "?";
+  const url = `${fetchAllUrl}${separator}pageSize=100000`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch all data for export");
+  const json = await res.json();
+  // Support both { data: [...] } and { data: { items: [...] } } shapes
+  if (Array.isArray(json.data)) return json.data;
+  if (json.data?.items && Array.isArray(json.data.items)) return json.data.items;
+  if (json.data?.data && Array.isArray(json.data.data)) return json.data.data;
+  return [];
+}
+
 export function ExportButton<T>({
   data,
   filename,
   className,
+  fetchAllUrl,
 }: ExportButtonProps<T>) {
-  const handleExportCSV = () => {
-    const csv = toCSV(data);
+  const [loading, setLoading] = useState(false);
+
+  const getExportData = async (): Promise<T[]> => {
+    if (!fetchAllUrl) return data;
+    setLoading(true);
+    try {
+      return await fetchAllData<T>(fetchAllUrl);
+    } catch {
+      // Fallback to current page data on error
+      return data;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    const exportData = await getExportData();
+    const csv = toCSV(exportData);
     downloadFile(csv, `${filename}.csv`, "text/csv;charset=utf-8;");
   };
 
-  const handleExportJSON = () => {
-    const json = JSON.stringify(data, null, 2);
+  const handleExportJSON = async () => {
+    const exportData = await getExportData();
+    const json = JSON.stringify(exportData, null, 2);
     downloadFile(json, `${filename}.json`, "application/json");
   };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="outline" size="sm" className={className} />}
+        render={<Button variant="outline" size="sm" className={className} disabled={loading} />}
       >
-        <Download className="mr-2 h-4 w-4" />
-        Export
+        {loading ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="mr-2 h-4 w-4" />
+        )}
+        {loading ? "Loading..." : "Export"}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={handleExportCSV}>

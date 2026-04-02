@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { API_RATE_LIMIT_PER_MINUTE, API_RATE_LIMIT_WINDOW_MS } from "./constants";
 
 // ----------------------
 // Telegram user rate limiting (DB-backed)
@@ -117,8 +118,8 @@ interface ApiRateLimitEntry {
 
 const apiRateLimitMap = new Map<string, ApiRateLimitEntry>();
 
-const API_RATE_LIMIT = 100; // requests per minute
-const API_RATE_WINDOW_MS = 60 * 1000; // 1 minute
+const API_RATE_LIMIT = API_RATE_LIMIT_PER_MINUTE;
+const API_RATE_WINDOW_MS = API_RATE_LIMIT_WINDOW_MS;
 
 export function checkApiRateLimit(ip: string): {
   allowed: boolean;

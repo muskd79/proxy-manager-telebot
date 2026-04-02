@@ -63,7 +63,8 @@ export async function GET(request: NextRequest) {
       .from("chat_messages")
       .select("*, tele_users!inner(id, username, first_name, last_name, telegram_id, status, is_deleted)")
       .eq("tele_users.is_deleted", false)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(5000); // Limit to last 5000 messages for performance
 
     if (convError) {
       return NextResponse.json(

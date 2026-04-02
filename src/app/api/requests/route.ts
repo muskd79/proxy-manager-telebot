@@ -40,7 +40,12 @@ export async function GET(request: NextRequest) {
       .eq("is_deleted", filters.isDeleted ?? false);
 
     if (filters.status) {
-      query = query.eq("status", filters.status);
+      const statuses = filters.status.split(",").map(s => s.trim()).filter(Boolean);
+      if (statuses.length === 1) {
+        query = query.eq("status", statuses[0]);
+      } else if (statuses.length > 1) {
+        query = query.in("status", statuses);
+      }
     }
 
     if (filters.teleUserId) {

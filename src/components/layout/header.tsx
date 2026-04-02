@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -28,6 +29,21 @@ interface Admin {
 export function Header({ admin }: { admin: Admin }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPending = () => {
+      fetch("/api/requests?status=pending&pageSize=1")
+        .then(r => r.json())
+        .then(d => setPendingCount(d?.data?.total || 0))
+        .catch(() => {});
+    };
+
+    fetchPending();
+
+    const interval = setInterval(fetchPending, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -78,9 +94,11 @@ export function Header({ admin }: { admin: Admin }) {
         {/* Notifications */}
         <Button variant="ghost" size="sm" className="relative h-8 w-8 p-0">
           <Bell className="h-4 w-4" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
-            3
-          </span>
+          {pendingCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
+              {pendingCount > 99 ? "99+" : pendingCount}
+            </span>
+          )}
         </Button>
 
         {/* User dropdown */}
