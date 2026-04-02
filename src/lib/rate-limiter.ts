@@ -1,3 +1,16 @@
+/**
+ * API Rate Limiting
+ *
+ * Uses in-memory Map for fast, zero-latency rate limiting.
+ * On Vercel Pro, functions stay warm for up to 15 minutes,
+ * so rate limits persist across requests within that window.
+ *
+ * For stricter persistence, use the Supabase RPC check_api_rate_limit()
+ * which survives cold starts but adds ~50ms latency per request.
+ *
+ * Telegram user rate limiting uses Supabase DB directly (see checkRateLimit).
+ */
+
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { API_RATE_LIMIT_PER_MINUTE, API_RATE_LIMIT_WINDOW_MS } from "./constants";
 

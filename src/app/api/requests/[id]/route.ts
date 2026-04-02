@@ -140,21 +140,84 @@ export async function PUT(
         );
       }
 
-      // Update the proxy to assigned status
-      await supabase
-        .from("proxies")
-        .update({
-          status: "assigned",
-          assigned_to: currentRequest.tele_user_id,
-          assigned_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", assignProxyId);
+      // Atomic proxy assignment via RPC (prevents race conditions)
+      const { data: rpcResult, error: rpcError } = await supabase.rpc("safe_assign_proxy", {
+        p_request_id: id,
+        p_proxy_id: assignProxyId,
+        p_admin_id: admin.id,
+      });
 
-      updateData.status = "approved";
-      updateData.proxy_id = assignProxyId;
-      updateData.approved_by = admin.id;
-      updateData.processed_at = new Date().toISOString();
+      if (rpcError || !rpcResult?.success) {
+        return NextResponse.json(
+          { success: false, error: rpcResult?.error || rpcError?.message || "Failed to assign proxy" } satisfies ApiResponse<never>,
+          { status: 409 }
+        );
+      }
+
+      // RPC already updated proxy and request, skip the generic update below
+      // Log activity
+      logActivity({
+        actorType: "admin",
+        actorId: admin.id,
+        action: "request.approve",
+        resourceType: "request",
+        resourceId: id,
+        details: {
+          status: "approved",
+          proxyId: assignProxyId,
+        },
+        ipAddress: request.headers.get("x-forwarded-for") || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      }).catch(console.error);
+
+      // Notify user via Telegram with proxy details from RPC result
+      try {
+        const { data: teleUser } = await supabase
+          .from("tele_users")
+          .select("telegram_id")
+          .eq("id", rpcResult.tele_user_id)
+          .single();
+
+        if (teleUser?.telegram_id && rpcResult.proxy) {
+          const proxy = rpcResult.proxy;
+          const notifyText = [
+            "[OK] Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
+            "",
+            `Host: \`${proxy.host}\``,
+            `Port: \`${proxy.port}\``,
+            `Type: \`${proxy.type}\``,
+            `User: \`${proxy.username ?? "N/A"}\``,
+            `Pass: \`${proxy.password ?? "N/A"}\``,
+          ].join("\n");
+
+          await sendTelegramMessage(teleUser.telegram_id, notifyText);
+
+          // Log outgoing message in chat_messages
+          await supabase.from("chat_messages").insert({
+            tele_user_id: rpcResult.tele_user_id,
+            telegram_message_id: null,
+            direction: "outgoing",
+            message_text: notifyText,
+            message_type: "text",
+            raw_data: null,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Failed to notify user via Telegram:", notifyErr);
+      }
+
+      // Re-fetch the updated request for response
+      const { data: updatedRequest } = await supabase
+        .from("proxy_requests")
+        .select()
+        .eq("id", id)
+        .single();
+
+      return NextResponse.json({
+        success: true,
+        data: updatedRequest,
+        message: "Request approved",
+      } satisfies ApiResponse<ProxyRequest>);
     } else if (status === "rejected") {
       updateData.status = "rejected";
       updateData.rejected_reason = rejected_reason || null;
@@ -179,17 +242,16 @@ export async function PUT(
       );
     }
 
-    // Log activity for approve/reject
-    if (status === "approved" || status === "rejected") {
+    // Log activity for reject/cancel (approve is handled above via early return)
+    if (status === "rejected") {
       logActivity({
         actorType: "admin",
         actorId: admin.id,
-        action: status === "approved" ? "request.approve" : "request.reject",
+        action: "request.reject",
         resourceType: "request",
         resourceId: id,
         details: {
           status,
-          proxyId: updateData.proxy_id || undefined,
           rejectedReason: rejected_reason || undefined,
         },
         ipAddress: request.headers.get("x-forwarded-for") || undefined,
@@ -197,40 +259,18 @@ export async function PUT(
       }).catch(console.error);
     }
 
-    // Notify user via Telegram
-    try {
-      const { data: teleUser } = await supabase
-        .from("tele_users")
-        .select("telegram_id")
-        .eq("id", currentRequest.tele_user_id)
-        .single();
+    // Notify user via Telegram (reject only; approve handled above)
+    if (status === "rejected") {
+      try {
+        const { data: teleUser } = await supabase
+          .from("tele_users")
+          .select("telegram_id")
+          .eq("id", currentRequest.tele_user_id)
+          .single();
 
-      if (teleUser?.telegram_id) {
-        let notifyText = "";
+        if (teleUser?.telegram_id) {
+          const notifyText = `[X] Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
 
-        if (status === "approved" && updateData.proxy_id) {
-          const { data: proxy } = await supabase
-            .from("proxies")
-            .select("host, port, type, username, password")
-            .eq("id", updateData.proxy_id)
-            .single();
-
-          if (proxy) {
-            notifyText = [
-              "[OK] Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
-              "",
-              `Host: \`${proxy.host}\``,
-              `Port: \`${proxy.port}\``,
-              `Type: \`${proxy.type}\``,
-              `User: \`${proxy.username ?? "N/A"}\``,
-              `Pass: \`${proxy.password ?? "N/A"}\``,
-            ].join("\n");
-          }
-        } else if (status === "rejected") {
-          notifyText = `[X] Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
-        }
-
-        if (notifyText) {
           await sendTelegramMessage(teleUser.telegram_id, notifyText);
 
           // Log outgoing message in chat_messages
@@ -243,9 +283,9 @@ export async function PUT(
             raw_data: null,
           });
         }
+      } catch (notifyErr) {
+        console.error("Failed to notify user via Telegram:", notifyErr);
       }
-    } catch (notifyErr) {
-      console.error("Failed to notify user via Telegram:", notifyErr);
     }
 
     return NextResponse.json({
