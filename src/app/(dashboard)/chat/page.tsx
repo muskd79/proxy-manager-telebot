@@ -59,6 +59,7 @@ export default function ChatPage() {
             isLoading={isLoadingMessages}
             hasMore={hasMoreMessages}
             onLoadMore={loadMoreMessages}
+            selectedUserId={selectedUserId}
           />
         </div>
       </div>

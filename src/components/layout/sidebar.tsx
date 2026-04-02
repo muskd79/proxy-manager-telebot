@@ -39,17 +39,18 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   badge?: number;
   minRole?: "super_admin" | "admin";
+  section?: string;
 }
 
 const navItems: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "Operations" },
   { title: "Proxies", href: "/proxies", icon: Globe },
   { title: "Users", href: "/users", icon: Users },
   { title: "Requests", href: "/requests", icon: FileText },
-  { title: "Chat", href: "/chat", icon: MessageSquare },
+  { title: "Chat", href: "/chat", icon: MessageSquare, section: "Monitoring" },
   { title: "History", href: "/history", icon: History },
-  { title: "Trash", href: "/trash", icon: Trash2 },
   { title: "Logs", href: "/logs", icon: ScrollText },
+  { title: "Trash", href: "/trash", icon: Trash2, section: "System" },
   { title: "Admins", href: "/admins", icon: Shield, minRole: "super_admin" },
   { title: "Settings", href: "/settings", icon: Settings, minRole: "super_admin" },
 ];
@@ -95,8 +96,16 @@ function NavContent({
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));
             return (
+              <div key={item.href}>
+                {item.section && !collapsed && (
+                  <div className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {item.section}
+                  </div>
+                )}
+                {item.section && collapsed && (
+                  <div className="mt-3 mb-1 mx-2 border-t border-border/30" />
+                )}
               <Link
-                key={item.href}
                 href={item.href}
                 className={cn(
                   "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -123,6 +132,7 @@ function NavContent({
                   </>
                 )}
               </Link>
+              </div>
             );
           })}
         </nav>

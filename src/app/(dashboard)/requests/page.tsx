@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from "react";
 import {
   FileText,
   Search,
-  CheckCircle,
   XCircle,
   Zap,
   Filter,
@@ -12,13 +11,6 @@ import {
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { RequestTable } from "@/components/requests/request-table";
@@ -55,8 +47,9 @@ export default function RequestsPage() {
     pageSize: 20,
     sortBy: "requested_at",
     sortOrder: "desc",
+    status: "pending" as RequestStatus,
   });
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState("pending");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState("");
 
@@ -75,6 +68,17 @@ export default function RequestsPage() {
           params.set(key, String(value));
         }
       });
+
+      // For the "recent" tab, fetch last 7 days of approved + rejected
+      if (activeTab === "recent") {
+        params.set("status", "approved,auto_approved,rejected");
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        params.set("dateFrom", sevenDaysAgo.toISOString().split("T")[0]);
+        params.set("sortBy", "processed_at");
+        params.set("sortOrder", "desc");
+      }
+
       const res = await fetch(`/api/requests?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch requests");
       const json: ApiResponse<PaginatedResponse<RequestWithUser>> = await res.json();
@@ -89,7 +93,7 @@ export default function RequestsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters]);
+  }, [filters, activeTab]);
 
   useEffect(() => {
     fetchRequests();
@@ -97,17 +101,23 @@ export default function RequestsPage() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    const statusMap: Record<string, RequestStatus | undefined> = {
-      all: undefined,
-      pending: "pending" as RequestStatus,
-      approved: "approved" as RequestStatus,
-      rejected: "rejected" as RequestStatus,
-    };
-    setFilters({
-      ...filters,
-      status: statusMap[tab],
-      page: 1,
-    });
+    if (tab === "pending") {
+      setFilters({
+        ...filters,
+        status: "pending" as RequestStatus,
+        dateFrom: undefined,
+        sortBy: "requested_at",
+        sortOrder: "desc",
+        page: 1,
+      });
+    } else {
+      // "recent" tab - status handled in fetchRequests
+      setFilters({
+        ...filters,
+        status: undefined,
+        page: 1,
+      });
+    }
     setSelectedIds([]);
   };
 
@@ -126,7 +136,6 @@ export default function RequestsPage() {
   };
 
   const handleView = (id: string) => {
-    // Could navigate or open a detail dialog
     setActiveRequestId(id);
     setApproveDialogOpen(false);
     setRejectDialogOpen(false);
@@ -174,10 +183,8 @@ export default function RequestsPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <TabsList className="bg-muted">
-            <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="approved">Approved</TabsTrigger>
-            <TabsTrigger value="rejected">Rejected</TabsTrigger>
+            <TabsTrigger value="recent">Recent (7 days)</TabsTrigger>
           </TabsList>
 
           {/* Filters */}
@@ -200,7 +207,7 @@ export default function RequestsPage() {
         </div>
 
         {/* Bulk Actions for pending */}
-        {pendingSelected.length > 0 && (
+        {activeTab === "pending" && pendingSelected.length > 0 && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
             <span className="text-sm font-medium">
               {pendingSelected.length} pending request(s) selected
@@ -227,8 +234,8 @@ export default function RequestsPage() {
           </div>
         )}
 
-        {/* Content for all tabs is the same table with different filters */}
-        {["all", "pending", "approved", "rejected"].map((tab) => (
+        {/* Content for tabs */}
+        {["pending", "recent"].map((tab) => (
           <TabsContent key={tab} value={tab} className="mt-4">
             <RequestTable
               requests={requests}

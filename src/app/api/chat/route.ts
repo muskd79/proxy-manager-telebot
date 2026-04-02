@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { ChatMessage, TeleUser } from "@/types/database";
-import { requireAnyRole } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 
 interface ConversationResponse {
   user: TeleUser;
@@ -58,45 +58,48 @@ export async function GET(request: NextRequest) {
     }
 
     // Otherwise, return conversation list
-    // Get all users who have chat messages, with their latest message
-    const { data: usersWithMessages, error: usersError } = await supabase
-      .from("tele_users")
-      .select("*")
-      .eq("is_deleted", false);
+    // Use a single query: get all messages with user info, then deduplicate to latest per user
+    const { data: allMessages, error: convError } = await supabase
+      .from("chat_messages")
+      .select("*, tele_users!inner(id, username, first_name, last_name, telegram_id, status, is_deleted)")
+      .eq("tele_users.is_deleted", false)
+      .order("created_at", { ascending: false });
 
-    if (usersError) {
+    if (convError) {
       return NextResponse.json(
-        { success: false, error: usersError.message } satisfies ApiResponse<never>,
+        { success: false, error: convError.message } satisfies ApiResponse<never>,
         { status: 500 }
       );
     }
 
-    const conversations: ConversationResponse[] = [];
-
-    for (const teleUser of usersWithMessages ?? []) {
-      // Get the latest message for each user
-      const { data: lastMessages } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("tele_user_id", teleUser.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (lastMessages && lastMessages.length > 0) {
-        conversations.push({
+    // Group by user, keep only latest message per user
+    const userMap = new Map<string, ConversationResponse>();
+    for (const msg of allMessages || []) {
+      if (!userMap.has(msg.tele_user_id)) {
+        const teleUser = msg.tele_users as unknown as TeleUser;
+        userMap.set(msg.tele_user_id, {
           user: teleUser,
-          lastMessage: lastMessages[0],
-          unreadCount: 0, // Placeholder - implement with read receipts if needed
+          lastMessage: {
+            id: msg.id,
+            tele_user_id: msg.tele_user_id,
+            telegram_message_id: msg.telegram_message_id,
+            direction: msg.direction,
+            message_text: msg.message_text,
+            message_type: msg.message_type,
+            raw_data: msg.raw_data,
+            created_at: msg.created_at,
+          } as ChatMessage,
+          unreadCount: 0,
         });
       }
     }
 
-    // Sort by latest message timestamp
-    conversations.sort((a, b) => {
-      const aTime = a.lastMessage?.created_at ?? "";
-      const bTime = b.lastMessage?.created_at ?? "";
-      return bTime.localeCompare(aTime);
-    });
+    const conversations = Array.from(userMap.values())
+      .sort((a, b) => {
+        const aTime = a.lastMessage?.created_at ?? "";
+        const bTime = b.lastMessage?.created_at ?? "";
+        return bTime.localeCompare(aTime);
+      });
 
     const response: ApiResponse<ConversationResponse[]> = {
       success: true,
@@ -113,4 +116,70 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { admin, error: authError } = await requireAdminOrAbove(supabase);
+  if (authError) return authError;
+
+  const body = await request.json();
+  const { tele_user_id, message } = body;
+
+  if (!tele_user_id || !message) {
+    return NextResponse.json({ success: false, error: "tele_user_id and message required" }, { status: 400 });
+  }
+
+  // Get user's telegram_id
+  const { data: teleUser } = await supabase
+    .from("tele_users")
+    .select("telegram_id")
+    .eq("id", tele_user_id)
+    .single();
+
+  if (!teleUser) {
+    return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+  }
+
+  // Send via Telegram Bot API
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || token.startsWith("placeholder")) {
+    return NextResponse.json({ success: false, error: "Bot token not configured" }, { status: 500 });
+  }
+
+  const teleRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: teleUser.telegram_id,
+      text: message,
+    }),
+  });
+
+  if (!teleRes.ok) {
+    return NextResponse.json({ success: false, error: "Failed to send Telegram message" }, { status: 500 });
+  }
+
+  // Log message in chat_messages
+  await supabase.from("chat_messages").insert({
+    tele_user_id,
+    telegram_message_id: null,
+    direction: "outgoing",
+    message_text: message,
+    message_type: "text",
+    raw_data: null,
+  });
+
+  // Log activity
+  const { logActivity } = await import("@/lib/logger");
+  logActivity({
+    actorType: "admin",
+    actorId: admin.id,
+    action: "chat.reply",
+    resourceType: "tele_user",
+    resourceId: tele_user_id,
+    details: { message: message.substring(0, 100) },
+  }).catch(console.error);
+
+  return NextResponse.json({ success: true });
 }

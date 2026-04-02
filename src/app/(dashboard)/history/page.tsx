@@ -26,24 +26,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface HistoryRecord {
   id: string;
-  proxy: {
-    id: string;
-    host: string;
-    port: number;
-    type: string;
-  } | null;
-  tele_user: {
+  proxy_id: string | null;
+  tele_user_id: string | null;
+  status: string;
+  approval_mode: string | null;
+  requested_at: string;
+  processed_at: string | null;
+  expires_at: string | null;
+  tele_user?: {
     id: string;
     username: string | null;
     first_name: string | null;
     telegram_id: number;
-  } | null;
-  status: string;
-  approval_mode: string | null;
-  approved_by: string | null;
-  requested_at: string;
-  processed_at: string | null;
-  expires_at: string | null;
+  };
+  admin?: {
+    full_name: string | null;
+    email: string;
+  };
+  proxy?: {
+    id: string;
+    host: string;
+    port: number;
+    type: string;
+  };
 }
 
 export default function HistoryPage() {
@@ -63,28 +68,28 @@ export default function HistoryPage() {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
-        sortBy: "requested_at",
+        sortBy: "processed_at",
         sortOrder: "desc",
       });
+
+      // Filter to only processed requests
+      const statusValues =
+        statusFilter && statusFilter !== "all"
+          ? statusFilter
+          : "approved,auto_approved,rejected";
+      params.set("status", statusValues);
+
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       if (userSearch) params.set("search", userSearch);
-      if (statusFilter && statusFilter !== "all")
-        params.set("status", statusFilter);
 
-      const res = await fetch(`/api/proxies?isDeleted=false&${params}`);
-      if (!res.ok) throw new Error("Failed to fetch");
+      const res = await fetch(`/api/requests?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch history");
 
-      // We re-use proxy_requests for history via a dedicated endpoint
-      // For now, fetch from proxy_requests with joined data
-      const historyRes = await fetch(
-        `/api/logs?resourceType=proxy&action=proxy_auto_assigned,proxy_request_created&${params}`
-      );
-
-      if (historyRes.ok) {
-        const result = await historyRes.json();
-        setRecords(result.data ?? []);
-        setTotal(result.total ?? 0);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setRecords(json.data.data ?? []);
+        setTotal(json.data.total ?? 0);
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
@@ -102,17 +107,21 @@ export default function HistoryPage() {
       "Proxy",
       "User",
       "Status",
-      "Assigned By",
-      "Assigned At",
-      "Expires At",
+      "Processed By",
+      "Requested At",
+      "Processed At",
     ];
     const rows = records.map((r) => [
       r.proxy ? `${r.proxy.host}:${r.proxy.port}` : "N/A",
       r.tele_user?.username ?? r.tele_user?.first_name ?? "N/A",
       r.status,
-      r.approved_by ?? "Auto",
-      r.requested_at ? format(new Date(r.requested_at), "yyyy-MM-dd HH:mm") : "",
-      r.expires_at ? format(new Date(r.expires_at), "yyyy-MM-dd HH:mm") : "",
+      r.admin?.full_name ?? r.admin?.email ?? "Auto",
+      r.requested_at
+        ? format(new Date(r.requested_at), "yyyy-MM-dd HH:mm")
+        : "",
+      r.processed_at
+        ? format(new Date(r.processed_at), "yyyy-MM-dd HH:mm")
+        : "",
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
@@ -127,6 +136,23 @@ export default function HistoryPage() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge variant="default">Approved</Badge>;
+      case "auto_approved":
+        return (
+          <Badge variant="default" className="bg-emerald-600">
+            Auto Approved
+          </Badge>
+        );
+      case "rejected":
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
   return (
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -135,7 +161,7 @@ export default function HistoryPage() {
             Assignment History
           </h1>
           <p className="text-muted-foreground">
-            Proxy assignment and request history
+            Read-only archive of all proxy request outcomes
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -169,11 +195,20 @@ export default function HistoryPage() {
               <Input
                 placeholder="Search by user..."
                 value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
+                onChange={(e) => {
+                  setUserSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="pl-9"
               />
             </div>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? '')}>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v ?? "");
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -181,21 +216,26 @@ export default function HistoryPage() {
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="auto_approved">Auto Approved</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
             <Input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
               className="w-[160px]"
               placeholder="From date"
             />
             <Input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
               className="w-[160px]"
               placeholder="To date"
             />
@@ -212,9 +252,9 @@ export default function HistoryPage() {
                 <TableHead>Proxy</TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Assigned By</TableHead>
-                <TableHead>Assigned At</TableHead>
-                <TableHead>Expires At</TableHead>
+                <TableHead>Processed By</TableHead>
+                <TableHead>Requested At</TableHead>
+                <TableHead>Processed At</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -250,24 +290,12 @@ export default function HistoryPage() {
                         record.tele_user?.first_name ??
                         "N/A"}
                     </TableCell>
+                    <TableCell>{getStatusBadge(record.status)}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          record.status === "approved" ||
-                          record.status === "auto_approved"
-                            ? "default"
-                            : record.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                        }
-                      >
-                        {record.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {record.approved_by ?? (
-                        <span className="text-muted-foreground">Auto</span>
-                      )}
+                      {record.admin?.full_name ??
+                        record.admin?.email ?? (
+                          <span className="text-muted-foreground">Auto</span>
+                        )}
                     </TableCell>
                     <TableCell>
                       {record.requested_at
@@ -278,9 +306,9 @@ export default function HistoryPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      {record.expires_at
+                      {record.processed_at
                         ? format(
-                            new Date(record.expires_at),
+                            new Date(record.processed_at),
                             "yyyy-MM-dd HH:mm"
                           )
                         : "-"}

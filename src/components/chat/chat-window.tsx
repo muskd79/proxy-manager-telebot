@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, ChevronUp, MessageCircle, ExternalLink } from "lucide-react";
+import { Loader2, ChevronUp, MessageCircle, ExternalLink, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageBubble } from "./message-bubble";
+import { toast } from "sonner";
 import type { ChatMessage, TeleUser } from "@/types/database";
 
 interface ChatWindowProps {
@@ -16,6 +18,7 @@ interface ChatWindowProps {
   isLoading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  selectedUserId: string | null;
 }
 
 function getInitials(firstName?: string | null, lastName?: string | null): string {
@@ -30,9 +33,40 @@ export function ChatWindow({
   isLoading,
   hasMore,
   onLoadMore,
+  selectedUserId,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim() || !selectedUserId) return;
+
+    setSending(true);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tele_user_id: selectedUserId,
+          message: replyText.trim(),
+        }),
+      });
+      if (res.ok) {
+        setReplyText("");
+        // Message will appear via realtime subscription
+      } else {
+        toast.error("Failed to send message");
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      toast.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -131,6 +165,22 @@ export function ChatWindow({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Reply input */}
+      <div className="border-t border-border/50 p-3">
+        <form onSubmit={handleSendMessage} className="flex gap-2">
+          <Input
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            placeholder="Type a reply..."
+            disabled={sending}
+            className="flex-1"
+          />
+          <Button type="submit" size="sm" disabled={!replyText.trim() || sending}>
+            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+          </Button>
+        </form>
       </div>
     </div>
   );
