@@ -38,13 +38,13 @@ export function ActiveUsers() {
           const usersData = Array.isArray(raw) ? raw : [];
           setUsers(
             usersData.map((u: Record<string, unknown>) => ({
-              id: u.id,
-              username: u.username,
-              first_name: u.first_name,
-              last_name: u.last_name,
-              telegram_id: u.telegram_id,
+              id: String(u.id ?? ""),
+              username: u.username as string | null,
+              first_name: u.first_name as string | null,
+              last_name: u.last_name as string | null,
+              telegram_id: Number(u.telegram_id ?? 0),
               last_message: null,
-              proxy_count: u.proxies_used_total || 0,
+              proxy_count: Number(u.proxies_used_total ?? 0),
             }))
           );
         }
