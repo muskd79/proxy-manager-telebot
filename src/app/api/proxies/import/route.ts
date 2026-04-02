@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (proxies.length > 10000) {
+      return NextResponse.json(
+        { success: false, error: "Maximum 10,000 proxies per import" },
+        { status: 400 }
+      );
+    }
+
     const result: ImportProxyResult = {
       total: proxies.length,
       imported: 0,

@@ -8,6 +8,15 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Verify Telegram webhook secret
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const headerSecret = req.headers.get("x-telegram-bot-api-secret-token");
+    if (headerSecret !== webhookSecret) {
+      return NextResponse.json({ ok: false }, { status: 403 });
+    }
+  }
+
   try {
     const handler = webhookCallback(bot, "std/http");
     return await handler(req);

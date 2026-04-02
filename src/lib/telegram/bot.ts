@@ -1,7 +1,11 @@
 import { Bot, webhookCallback } from "grammy";
 
-const token = process.env.TELEGRAM_BOT_TOKEN || "placeholder:token";
+const token = process.env.TELEGRAM_BOT_TOKEN;
 
-export const bot = new Bot(token);
+if (!token || token === "placeholder:token") {
+  console.warn("TELEGRAM_BOT_TOKEN not configured - bot will not function");
+}
+
+export const bot = new Bot(token || "placeholder:token");
 
 export { webhookCallback };

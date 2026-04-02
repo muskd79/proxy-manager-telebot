@@ -26,6 +26,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Proxy not found" }, { status: 404 });
     }
 
+    // Strip sensitive fields for viewer role
+    if (admin.role === "viewer") {
+      const { password, ...sanitized } = data;
+      return NextResponse.json({ success: true, data: sanitized });
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("Get proxy error:", error);

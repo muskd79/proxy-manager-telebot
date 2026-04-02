@@ -90,6 +90,32 @@ export async function PUT(
       }
     }
 
+    // Validate numeric fields
+    if (updateData.max_proxies !== undefined && (typeof updateData.max_proxies !== "number" || updateData.max_proxies < 0 || (updateData.max_proxies as number) > 1000)) {
+      return NextResponse.json(
+        { success: false, error: "max_proxies must be 0-1000" } satisfies ApiResponse<never>,
+        { status: 400 }
+      );
+    }
+    if (updateData.rate_limit_hourly !== undefined && (typeof updateData.rate_limit_hourly !== "number" || updateData.rate_limit_hourly < 0 || (updateData.rate_limit_hourly as number) > 10000)) {
+      return NextResponse.json(
+        { success: false, error: "rate_limit_hourly must be 0-10000" } satisfies ApiResponse<never>,
+        { status: 400 }
+      );
+    }
+    if (updateData.rate_limit_daily !== undefined && (typeof updateData.rate_limit_daily !== "number" || updateData.rate_limit_daily < 0 || (updateData.rate_limit_daily as number) > 100000)) {
+      return NextResponse.json(
+        { success: false, error: "rate_limit_daily must be 0-100000" } satisfies ApiResponse<never>,
+        { status: 400 }
+      );
+    }
+    if (updateData.rate_limit_total !== undefined && (typeof updateData.rate_limit_total !== "number" || updateData.rate_limit_total < 0 || (updateData.rate_limit_total as number) > 1000000)) {
+      return NextResponse.json(
+        { success: false, error: "rate_limit_total must be 0-1000000" } satisfies ApiResponse<never>,
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from("tele_users")
       .update(updateData)

@@ -63,8 +63,17 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    // Strip sensitive fields for viewer role
+    let responseData = (data as Proxy[]) ?? [];
+    if (admin.role === "viewer") {
+      responseData = responseData.map((p) => {
+        const { password, ...rest } = p;
+        return rest;
+      }) as Proxy[];
+    }
+
     const response: PaginatedResponse<Proxy> = {
-      data: (data as Proxy[]) ?? [],
+      data: responseData,
       total: count ?? 0,
       page,
       pageSize,
