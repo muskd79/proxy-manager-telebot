@@ -46,8 +46,8 @@ export function RecentRequests() {
         const items = result?.data?.data || result?.data || [];
         setRequests(Array.isArray(items) ? items : []);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to fetch recent requests:", err);
     } finally {
       setLoading(false);
     }
@@ -67,8 +67,8 @@ export function RecentRequests() {
       if (res.ok) {
         fetchRequests();
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to handle request action:", err);
     }
   }
 

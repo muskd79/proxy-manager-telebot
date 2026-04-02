@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { Proxy, ProxyUpdate } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
@@ -64,6 +65,16 @@ export async function PUT(
     } = body;
 
     const updateData: ProxyUpdate = {};
+
+    // Support restore from trash
+    if (body.is_deleted !== undefined) {
+      updateData.is_deleted = body.is_deleted;
+      if (body.is_deleted === false) {
+        updateData.deleted_at = null;
+      }
+    }
+    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
+
     if (host !== undefined) updateData.host = host;
     if (port !== undefined) updateData.port = parseInt(String(port));
     if (type !== undefined) updateData.type = type;
@@ -92,6 +103,17 @@ export async function PUT(
 
     if (error) throw error;
 
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "proxy.update",
+      resourceType: "proxy",
+      resourceId: id,
+      details: updateData,
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("Update proxy error:", error);
@@ -113,6 +135,31 @@ export async function DELETE(
   const { id } = await params;
 
   try {
+    const permanent = request.nextUrl.searchParams.get("permanent") === "true";
+
+    if (permanent) {
+      // Hard delete
+      const { error } = await supabase
+        .from("proxies")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      logActivity({
+        actorType: "admin",
+        actorId: admin.id,
+        action: "proxy.delete",
+        resourceType: "proxy",
+        resourceId: id,
+        details: { permanent: true },
+        ipAddress: request.headers.get("x-forwarded-for") || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      }).catch(console.error);
+
+      return NextResponse.json({ success: true, message: "Proxy permanently deleted" });
+    }
+
     // Soft delete
     const { data, error } = await supabase
       .from("proxies")
@@ -122,6 +169,17 @@ export async function DELETE(
       .single();
 
     if (error) throw error;
+
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "proxy.delete",
+      resourceType: "proxy",
+      resourceId: id,
+      details: { permanent: false },
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

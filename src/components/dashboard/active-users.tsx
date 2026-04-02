@@ -48,8 +48,8 @@ export function ActiveUsers() {
             }))
           );
         }
-      } catch {
-        // Silently fail
+      } catch (err) {
+        console.error("Failed to fetch active users:", err);
       } finally {
         setLoading(false);
       }

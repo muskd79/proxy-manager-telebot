@@ -3,6 +3,26 @@ import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { ProxyRequest } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
+
+async function sendTelegramMessage(chatId: number, text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || token === "placeholder:token") return;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "Markdown",
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to send Telegram notification:", err);
+  }
+}
 
 export async function GET(
   _request: NextRequest,
@@ -74,6 +94,15 @@ export async function PUT(
     }
 
     const updateData: Record<string, unknown> = {};
+
+    // Support restore from trash
+    if (body.is_deleted !== undefined) {
+      updateData.is_deleted = body.is_deleted;
+      if (body.is_deleted === false) {
+        updateData.deleted_at = null;
+      }
+    }
+    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
 
     if (status === "approved") {
       let assignProxyId = proxy_id;
@@ -150,6 +179,75 @@ export async function PUT(
       );
     }
 
+    // Log activity for approve/reject
+    if (status === "approved" || status === "rejected") {
+      logActivity({
+        actorType: "admin",
+        actorId: admin.id,
+        action: status === "approved" ? "request.approve" : "request.reject",
+        resourceType: "request",
+        resourceId: id,
+        details: {
+          status,
+          proxyId: updateData.proxy_id || undefined,
+          rejectedReason: rejected_reason || undefined,
+        },
+        ipAddress: request.headers.get("x-forwarded-for") || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      }).catch(console.error);
+    }
+
+    // Notify user via Telegram
+    try {
+      const { data: teleUser } = await supabase
+        .from("tele_users")
+        .select("telegram_id")
+        .eq("id", currentRequest.tele_user_id)
+        .single();
+
+      if (teleUser?.telegram_id) {
+        let notifyText = "";
+
+        if (status === "approved" && updateData.proxy_id) {
+          const { data: proxy } = await supabase
+            .from("proxies")
+            .select("host, port, type, username, password")
+            .eq("id", updateData.proxy_id)
+            .single();
+
+          if (proxy) {
+            notifyText = [
+              "\u2705 Proxy \u0111\u00E3 \u0111\u01B0\u1EE3c c\u1EA5p!",
+              "",
+              `Host: \`${proxy.host}\``,
+              `Port: \`${proxy.port}\``,
+              `Type: \`${proxy.type}\``,
+              `User: \`${proxy.username ?? "N/A"}\``,
+              `Pass: \`${proxy.password ?? "N/A"}\``,
+            ].join("\n");
+          }
+        } else if (status === "rejected") {
+          notifyText = `\u274C Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
+        }
+
+        if (notifyText) {
+          await sendTelegramMessage(teleUser.telegram_id, notifyText);
+
+          // Log outgoing message in chat_messages
+          await supabase.from("chat_messages").insert({
+            tele_user_id: currentRequest.tele_user_id,
+            telegram_message_id: null,
+            direction: "outgoing",
+            message_text: notifyText,
+            message_type: "text",
+            raw_data: null,
+          });
+        }
+      }
+    } catch (notifyErr) {
+      console.error("Failed to notify user via Telegram:", notifyErr);
+    }
+
     return NextResponse.json({
       success: true,
       data,
@@ -167,7 +265,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -177,6 +275,29 @@ export async function DELETE(
     const { admin, error: authError } = await requireAdminOrAbove(supabase);
     if (authError) return authError;
 
+    const permanent = request.nextUrl.searchParams.get("permanent") === "true";
+
+    if (permanent) {
+      // Hard delete
+      const { error } = await supabase
+        .from("proxy_requests")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        return NextResponse.json(
+          { success: false, error: error.message } satisfies ApiResponse<never>,
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Request permanently deleted",
+      } satisfies ApiResponse<never>);
+    }
+
+    // Soft delete
     const { error } = await supabase
       .from("proxy_requests")
       .update({

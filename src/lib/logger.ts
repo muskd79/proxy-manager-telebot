@@ -1,8 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { ActorType } from "@/types/database";
-
 interface LogActivityParams {
-  actorType: ActorType;
+  actorType: "admin" | "tele_user" | "system" | "bot";
   actorId?: string;
   action: string;
   resourceType?: string;

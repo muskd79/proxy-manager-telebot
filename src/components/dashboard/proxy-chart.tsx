@@ -75,8 +75,8 @@ export function ProxyChart() {
         }
 
         setData(days);
-      } catch {
-        // Use empty data on error
+      } catch (err) {
+        console.error("Failed to fetch proxy chart data:", err);
       } finally {
         setLoading(false);
       }

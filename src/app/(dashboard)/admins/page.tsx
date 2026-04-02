@@ -79,8 +79,8 @@ export default function AdminsPage() {
         const result = await res.json();
         setAdmins(result.data ?? []);
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to fetch admins:", err);
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,8 @@ export default function AdminsPage() {
         const err = await res.json();
         toast.error(err.error || "Failed to invite admin");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to invite admin:", err);
       toast.error("Failed to invite admin");
     } finally {
       setInviteLoading(false);
@@ -137,7 +138,8 @@ export default function AdminsPage() {
         const err = await res.json();
         toast.error(err.error || "Failed to update role");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to update role:", err);
       toast.error("Failed to update role");
     }
   };
@@ -160,7 +162,8 @@ export default function AdminsPage() {
         const err = await res.json();
         toast.error(err.error || "Failed to update admin");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to update admin:", err);
       toast.error("Failed to update admin");
     }
   };

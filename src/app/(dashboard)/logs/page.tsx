@@ -72,8 +72,8 @@ export default function LogsPage() {
         setLogs(result.data ?? []);
         setTotal(result.total ?? 0);
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to fetch logs:", err);
     } finally {
       setLoading(false);
     }

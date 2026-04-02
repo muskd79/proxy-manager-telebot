@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { ProxyFilters, PaginatedResponse } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -120,6 +121,17 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "proxy.create",
+      resourceType: "proxy",
+      resourceId: data.id,
+      details: { host: data.host, port: data.port, type: data.type },
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error) {

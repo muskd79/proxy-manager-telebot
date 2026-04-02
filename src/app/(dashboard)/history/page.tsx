@@ -86,8 +86,8 @@ export default function HistoryPage() {
         setRecords(result.data ?? []);
         setTotal(result.total ?? 0);
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
     } finally {
       setLoading(false);
     }

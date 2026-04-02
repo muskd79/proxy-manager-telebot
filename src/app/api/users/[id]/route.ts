@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
 
 export async function GET(
   _request: NextRequest,
@@ -73,6 +74,16 @@ export async function PUT(
     ];
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    // Support restore from trash
+    if (body.is_deleted !== undefined) {
+      updateData.is_deleted = body.is_deleted;
+      if (body.is_deleted === false) {
+        updateData.deleted_at = null;
+      }
+    }
+    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
+
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field];
@@ -93,6 +104,17 @@ export async function PUT(
       );
     }
 
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "user.update",
+      resourceType: "user",
+      resourceId: id,
+      details: updateData,
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
+
     return NextResponse.json({
       success: true,
       data,
@@ -110,7 +132,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -119,6 +141,39 @@ export async function DELETE(
 
     const { admin, error: authError } = await requireAdminOrAbove(supabase);
     if (authError) return authError;
+
+    const permanent = request.nextUrl.searchParams.get("permanent") === "true";
+
+    if (permanent) {
+      // Hard delete
+      const { error } = await supabase
+        .from("tele_users")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        return NextResponse.json(
+          { success: false, error: error.message } satisfies ApiResponse<never>,
+          { status: 500 }
+        );
+      }
+
+      logActivity({
+        actorType: "admin",
+        actorId: admin.id,
+        action: "user.delete",
+        resourceType: "user",
+        resourceId: id,
+        details: { permanent: true },
+        ipAddress: request.headers.get("x-forwarded-for") || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      }).catch(console.error);
+
+      return NextResponse.json({
+        success: true,
+        message: "User permanently deleted",
+      } satisfies ApiResponse<never>);
+    }
 
     // Soft delete
     const { error } = await supabase
@@ -136,6 +191,17 @@ export async function DELETE(
         { status: 500 }
       );
     }
+
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "user.delete",
+      resourceType: "user",
+      resourceId: id,
+      details: { permanent: false },
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
 
     return NextResponse.json({
       success: true,

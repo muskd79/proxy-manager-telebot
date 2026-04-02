@@ -54,7 +54,8 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
       } else {
         toast.error("Failed to update rate limits");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to save rate limits:", err);
       toast.error("An error occurred while saving");
     } finally {
       setIsSaving(false);

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { ImportProxyResult } from "@/types/api";
 import type { ProxyType } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
 
 interface ImportProxyRow {
   host: string;
@@ -105,6 +106,21 @@ export async function POST(request: NextRequest) {
     }
 
     result.skipped = result.total - result.imported - result.failed;
+
+    logActivity({
+      actorType: "admin",
+      actorId: admin.id,
+      action: "proxy.import",
+      resourceType: "proxy",
+      details: {
+        total: result.total,
+        imported: result.imported,
+        failed: result.failed,
+        skipped: result.skipped,
+      },
+      ipAddress: request.headers.get("x-forwarded-for") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    }).catch(console.error);
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

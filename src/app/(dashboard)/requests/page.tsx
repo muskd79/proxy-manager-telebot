@@ -83,7 +83,8 @@ export default function RequestsPage() {
         setTotal(json.data.total);
         setTotalPages(json.data.totalPages);
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to load requests:", err);
       toast.error("Failed to load requests");
     } finally {
       setIsLoading(false);
@@ -141,8 +142,8 @@ export default function RequestsPage() {
           body: JSON.stringify({ status: "rejected" }),
         });
         if (res.ok) successCount++;
-      } catch {
-        /* continue */
+      } catch (err) {
+        console.error(`Failed to reject request ${id}:`, err);
       }
     }
     toast.success(`${successCount}/${selectedIds.length} requests rejected`);

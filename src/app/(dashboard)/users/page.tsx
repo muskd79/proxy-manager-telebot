@@ -126,7 +126,8 @@ export default function UsersPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Users exported successfully");
-    } catch {
+    } catch (err) {
+      console.error("Failed to export users:", err);
       toast.error("Failed to export users");
     }
   };

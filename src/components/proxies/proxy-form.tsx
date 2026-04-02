@@ -120,8 +120,8 @@ export function ProxyForm({
 
       await onSave(data);
       onOpenChange(false);
-    } catch {
-      // Error handled by caller
+    } catch (err) {
+      console.error("Failed to save proxy:", err);
     } finally {
       setSaving(false);
     }

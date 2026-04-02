@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { checkApiRateLimit } from "@/lib/rate-limiter";
 
 export async function middleware(request: NextRequest) {
   const { user, supabaseResponse } = await updateSession(request);
@@ -24,15 +25,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Rate limiting header check for API routes
+  // API rate limiting for authenticated routes (exclude telegram webhook via matcher)
   if (pathname.startsWith("/api/")) {
-    const rateLimitRemaining = request.headers.get("x-ratelimit-remaining");
-    if (rateLimitRemaining !== null && parseInt(rateLimitRemaining, 10) <= 0) {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "unknown";
+
+    const { allowed, remaining, resetAt } = checkApiRateLimit(ip);
+
+    if (!allowed) {
       return NextResponse.json(
-        { success: false, error: "Rate limit exceeded" },
-        { status: 429 }
+        { success: false, error: "Rate limit exceeded. Try again later." },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(resetAt),
+            "Retry-After": String(Math.ceil((resetAt - Date.now()) / 1000)),
+          },
+        }
       );
     }
+
+    // Add rate limit headers to the response
+    const response = supabaseResponse;
+    response.headers.set("X-RateLimit-Remaining", String(remaining));
+    response.headers.set("X-RateLimit-Reset", String(resetAt));
+    return response;
   }
 
   return supabaseResponse;

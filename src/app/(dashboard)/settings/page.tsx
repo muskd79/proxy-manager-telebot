@@ -91,8 +91,8 @@ export default function SettingsPage() {
           }));
         }
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to fetch settings:", err);
     } finally {
       setLoading(false);
     }
@@ -116,7 +116,8 @@ export default function SettingsPage() {
         const err = await res.json();
         toast.error(err.error || "Failed to save settings");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to save settings:", err);
       toast.error("Failed to save settings");
     } finally {
       setSaving(false);
@@ -142,7 +143,8 @@ export default function SettingsPage() {
         setBotConnected(false);
         toast.error("Bot connection test failed");
       }
-    } catch {
+    } catch (err) {
+      console.error("Bot connection test failed:", err);
       setBotConnected(false);
       toast.error("Bot connection test failed");
     } finally {

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Upload, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 
@@ -170,8 +171,9 @@ export function ProxyImport() {
         const data = await res.json();
         setResult(data.data);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to import proxies:", err);
+      toast.error("Failed to import proxies");
     } finally {
       setImporting(false);
     }

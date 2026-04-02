@@ -53,7 +53,8 @@ export function ApproveDialog({
       if (json.success && json.data?.data) {
         setAvailableProxies(json.data.data);
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to load available proxies:", err);
       toast.error("Failed to load available proxies");
     } finally {
       setIsLoading(false);
@@ -92,7 +93,8 @@ export function ApproveDialog({
         const json = await res.json();
         toast.error(json.error || "Failed to approve request");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to approve request:", err);
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);
@@ -208,7 +210,8 @@ export function RejectDialog({
         const json = await res.json();
         toast.error(json.error || "Failed to reject request");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to reject request:", err);
       toast.error("An error occurred");
     } finally {
       setIsSubmitting(false);
@@ -294,7 +297,8 @@ export function BatchApproveDialog({
       toast.success(`${successCount}/${requestIds.length} requests approved`);
       onApproved();
       onOpenChange(false);
-    } catch {
+    } catch (err) {
+      console.error("Failed to batch approve requests:", err);
       toast.error("An error occurred during batch approval");
     } finally {
       setIsSubmitting(false);

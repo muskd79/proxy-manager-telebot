@@ -136,6 +136,10 @@ const msg = {
     vi: "\u274C L\u1EC7nh kh\u00F4ng h\u1EE3p l\u1EC7. S\u1EED d\u1EE5ng /help \u0111\u1EC3 xem c\u00E1c l\u1EC7nh.",
     en: "\u274C Unknown command. Use /help to see available commands.",
   },
+  maxProxiesReached: {
+    vi: "\u26A0\uFE0F B\u1EA1n \u0111\u00E3 \u0111\u1EA1t gi\u1EDBi h\u1EA1n proxy t\u1ED1i \u0111a ({max_proxies}). Kh\u00F4ng th\u1EC3 y\u00EAu c\u1EA7u th\u00EAm.",
+    en: "\u26A0\uFE0F You have reached the maximum proxy limit ({max_proxies}). Cannot request more.",
+  },
 };
 
 function t(key: keyof typeof msg, lang: SupportedLanguage): string {
@@ -440,6 +444,24 @@ export async function handleProxyTypeSelection(
   if (!allowed) {
     const text = t("rateLimitExceeded", lang);
     await ctx.answerCallbackQuery(text);
+    return;
+  }
+
+  // Check max_proxies limit
+  const { count: assignedCount } = await supabaseAdmin
+    .from("proxies")
+    .select("*", { count: "exact", head: true })
+    .eq("assigned_to", user.id)
+    .eq("status", ProxyStatus.Assigned)
+    .eq("is_deleted", false);
+
+  if (assignedCount !== null && assignedCount >= user.max_proxies) {
+    const text = fillTemplate(t("maxProxiesReached", lang), {
+      max_proxies: String(user.max_proxies),
+    });
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
     return;
   }
 

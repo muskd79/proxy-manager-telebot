@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth";
+import { logActivity } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -64,6 +65,16 @@ export async function PUT(request: NextRequest) {
           { onConflict: "key" }
         );
       }
+
+      logActivity({
+        actorType: "admin",
+        actorId: admin.id,
+        action: "settings.update",
+        resourceType: "settings",
+        details: { keys: Object.keys(settings) },
+        ipAddress: request.headers.get("x-forwarded-for") || undefined,
+        userAgent: request.headers.get("user-agent") || undefined,
+      }).catch(console.error);
 
       return NextResponse.json({ success: true });
     }

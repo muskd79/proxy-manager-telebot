@@ -66,7 +66,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
         setUser(json.data);
         setNotes(json.data.notes || "");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to load user details:", err);
       toast.error("Failed to load user details");
     } finally {
       setIsLoading(false);
@@ -81,8 +82,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
       if (json.success && json.data) {
         setProxies(json.data);
       }
-    } catch {
-      /* silently fail */
+    } catch (err) {
+      console.error("Failed to fetch user proxies:", err);
     }
   }, [userId]);
 
@@ -95,8 +96,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
       if (json.success && json.data?.data) {
         setRequests(json.data.data);
       }
-    } catch {
-      /* silently fail */
+    } catch (err) {
+      console.error("Failed to fetch user requests:", err);
     }
   }, [userId]);
 
@@ -122,7 +123,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
       } else {
         toast.error("Failed to update user status");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to toggle user block status:", err);
       toast.error("An error occurred");
     } finally {
       setIsBlocking(false);
@@ -142,7 +144,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
       } else {
         toast.error("Failed to save notes");
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to save notes:", err);
       toast.error("An error occurred");
     } finally {
       setIsSavingNotes(false);
@@ -161,7 +164,8 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
         return true;
       }
       return false;
-    } catch {
+    } catch (err) {
+      console.error("Failed to save rate limits:", err);
       return false;
     }
   };

@@ -29,8 +29,8 @@ export default function ProxyDetailPage({
         const result = await res.json();
         setProxy(result.data);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to fetch proxy details:", err);
     } finally {
       setLoading(false);
     }
@@ -45,8 +45,8 @@ export default function ProxyDetailPage({
         const result = await res.json();
         setHistory(result.data || []);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to fetch proxy history:", err);
     }
   }, [id]);
 

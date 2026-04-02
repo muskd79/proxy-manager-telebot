@@ -68,30 +68,29 @@ export default function TrashPage() {
     try {
       const [proxiesRes, usersRes, requestsRes] = await Promise.all([
         fetch("/api/proxies?isDeleted=true&pageSize=50"),
-        fetch("/api/proxies?isDeleted=true&pageSize=50"), // placeholder for users endpoint
-        fetch("/api/proxies?isDeleted=true&pageSize=50"), // placeholder for requests endpoint
+        fetch("/api/users?isDeleted=true&pageSize=50"),
+        fetch("/api/requests?isDeleted=true&pageSize=50"),
       ]);
 
       if (proxiesRes.ok) {
         const result = await proxiesRes.json();
+        // proxies API returns { success, data: [...], total, ... }
         setProxies(result.data ?? []);
       }
 
-      // For users: try dedicated endpoint or use proxy endpoint pattern
-      try {
-        const uRes = await fetch("/api/proxies?isDeleted=true&pageSize=50");
-        if (uRes.ok) {
-          // placeholder - users endpoint would go here
-        }
-      } catch {
-        // silently handle
+      if (usersRes.ok) {
+        const result = await usersRes.json();
+        // users API returns { success, data: { data: [...], total, ... } }
+        setUsers(result.data?.data ?? []);
       }
 
-      // Reset users/requests with empty arrays if no dedicated endpoints yet
-      if (usersRes.ok) setUsers([]);
-      if (requestsRes.ok) setRequests([]);
-    } catch {
-      // silently handle
+      if (requestsRes.ok) {
+        const result = await requestsRes.json();
+        // requests API returns { success, data: { data: [...], total, ... } }
+        setRequests(result.data?.data ?? []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch trash items:", err);
     } finally {
       setLoading(false);
     }
@@ -110,11 +109,11 @@ export default function TrashPage() {
         type === "proxy"
           ? `/api/proxies/${id}`
           : type === "user"
-          ? `/api/proxies/${id}` // placeholder
-          : `/api/proxies/${id}`; // placeholder
+          ? `/api/users/${id}`
+          : `/api/requests/${id}`;
 
       const res = await fetch(endpoint, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_deleted: false, deleted_at: null }),
       });
@@ -122,8 +121,8 @@ export default function TrashPage() {
       if (res.ok) {
         fetchTrash();
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to restore item:", err);
     }
   };
 
@@ -134,22 +133,20 @@ export default function TrashPage() {
     try {
       const endpoint =
         type === "proxy"
-          ? `/api/proxies/${id}`
+          ? `/api/proxies/${id}?permanent=true`
           : type === "user"
-          ? `/api/proxies/${id}` // placeholder
-          : `/api/proxies/${id}`; // placeholder
+          ? `/api/users/${id}?permanent=true`
+          : `/api/requests/${id}?permanent=true`;
 
       const res = await fetch(endpoint, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ permanent: true }),
       });
 
       if (res.ok) {
         fetchTrash();
       }
-    } catch {
-      // silently handle
+    } catch (err) {
+      console.error("Failed to permanently delete item:", err);
     }
   };
 

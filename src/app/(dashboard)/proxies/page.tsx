@@ -57,8 +57,8 @@ export default function ProxiesPage() {
         setTotal(result.total || 0);
         setTotalPages(result.totalPages || 0);
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to fetch proxies:", err);
     } finally {
       setLoading(false);
     }
@@ -72,8 +72,8 @@ export default function ProxiesPage() {
         const byCountry = result.data?.byCountry || {};
         setCountries(Object.keys(byCountry).sort());
       }
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.error("Failed to fetch proxy countries:", err);
     }
   }, []);
 
