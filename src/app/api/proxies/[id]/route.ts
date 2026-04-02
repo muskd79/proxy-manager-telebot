@@ -135,6 +135,17 @@ export async function DELETE(
   const { id } = await params;
 
   try {
+    // Check exists first
+    const { data: existing } = await supabase
+      .from("proxies")
+      .select("id")
+      .eq("id", id)
+      .single();
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Proxy not found" }, { status: 404 });
+    }
+
     const permanent = request.nextUrl.searchParams.get("permanent") === "true";
 
     if (permanent) {

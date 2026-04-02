@@ -275,6 +275,20 @@ export async function DELETE(
     const { admin, error: authError } = await requireAdminOrAbove(supabase);
     if (authError) return authError;
 
+    // Check exists first
+    const { data: existing } = await supabase
+      .from("proxy_requests")
+      .select("id")
+      .eq("id", id)
+      .single();
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Request not found" } satisfies ApiResponse<never>,
+        { status: 404 }
+      );
+    }
+
     const permanent = request.nextUrl.searchParams.get("permanent") === "true";
 
     if (permanent) {

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { Proxy } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
+import { checkProxy } from "@/lib/proxy-checker";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -19,15 +20,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results: Array<{
-      id: string;
-      host: string;
-      port: number;
-      alive: boolean;
-      speed_ms: number | null;
-      error?: string;
-    }> = [];
-
     // Fetch proxy details
     const { data: rawProxies, error } = await supabase
       .from("proxies")
@@ -41,53 +33,41 @@ export async function POST(request: NextRequest) {
       "id" | "host" | "port" | "type" | "username" | "password"
     >[];
 
-    for (const proxy of proxies) {
-      const startTime = Date.now();
+    // Process in parallel batches of 50
+    const CONCURRENCY = 50;
+    const results: { id: string; alive: boolean; speed_ms: number }[] = [];
 
-      try {
-        // Simple connectivity check via fetch with timeout
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+    for (let i = 0; i < proxies.length; i += CONCURRENCY) {
+      const batch = proxies.slice(i, i + CONCURRENCY);
 
-        await fetch(`http://${proxy.host}:${proxy.port}`, {
-          method: "HEAD",
-          signal: controller.signal,
-        }).catch(() => {
-          // Connection attempt is enough to measure latency
-        });
+      const batchResults = await Promise.allSettled(
+        batch.map(async (proxy: any) => {
+          try {
+            const { alive, speed_ms } = await checkProxy(proxy.host, proxy.port, proxy.type);
+            return { id: proxy.id, alive, speed_ms };
+          } catch {
+            return { id: proxy.id, alive: false, speed_ms: 0 };
+          }
+        })
+      );
 
-        clearTimeout(timeout);
-        const speed_ms = Date.now() - startTime;
-
-        // Update proxy
-        const updatePayload = { speed_ms, last_checked_at: new Date().toISOString() };
-        const updateQuery = supabase.from("proxies");
-        await updateQuery.update(updatePayload).eq("id", proxy.id);
-
-        results.push({
-          id: proxy.id,
-          host: proxy.host,
-          port: proxy.port,
-          alive: true,
-          speed_ms,
-        });
-      } catch (checkError) {
-        const speed_ms = Date.now() - startTime;
-
-        const errUpdatePayload = { speed_ms, last_checked_at: new Date().toISOString() };
-        const errUpdateQuery = supabase.from("proxies");
-        await errUpdateQuery.update(errUpdatePayload).eq("id", proxy.id);
-
-        results.push({
-          id: proxy.id,
-          host: proxy.host,
-          port: proxy.port,
-          alive: false,
-          speed_ms: null,
-          error:
-            checkError instanceof Error ? checkError.message : "Check failed",
-        });
+      for (const result of batchResults) {
+        if (result.status === "fulfilled") {
+          results.push(result.value);
+        }
       }
+    }
+
+    // Batch update results
+    for (const r of results) {
+      await supabase
+        .from("proxies")
+        .update({
+          speed_ms: r.alive ? r.speed_ms : null,
+          last_checked_at: new Date().toISOString(),
+          status: r.alive ? undefined : "maintenance",
+        })
+        .eq("id", r.id);
     }
 
     return NextResponse.json({ success: true, data: results });

@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
 
     // Today's stats
     const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setUTCHours(0, 0, 0, 0);
     const todayISO = todayStart.toISOString();
 
     const todayRequests = requests.filter(

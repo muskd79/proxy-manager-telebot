@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (validProxies.length > 0) {
-      // Insert in batches of 100
+      // Process in batches of 100 with fallback to one-by-one on failure
       const batchSize = 100;
       for (let i = 0; i < validProxies.length; i += batchSize) {
         const batch = validProxies.slice(i, i + batchSize);
@@ -91,21 +91,44 @@ export async function POST(request: NextRequest) {
           .from("proxies")
           .insert(batch);
 
-        if (error) {
-          // Count all remaining as failed
-          result.failed += batch.length;
-          result.errors.push({
-            line: i + 1,
-            raw: `Batch ${Math.floor(i / batchSize) + 1}`,
-            reason: error.message,
-          });
-        } else {
+        if (!error) {
           result.imported += batch.length;
+        } else {
+          // Batch failed – try one by one to identify specific failures
+          for (let j = 0; j < batch.length; j++) {
+            const item = batch[j];
+            const { error: singleError } = await supabase
+              .from("proxies")
+              .insert(item);
+
+            if (singleError) {
+              const lineNum = proxies[i + j]?.line ?? i + j + 1;
+              const rawStr = `${item.host}:${item.port}`;
+              if (
+                singleError.message.includes("duplicate") ||
+                singleError.message.includes("unique")
+              ) {
+                result.skipped++;
+                result.errors.push({
+                  line: lineNum,
+                  raw: rawStr,
+                  reason: "Duplicate proxy",
+                });
+              } else {
+                result.failed++;
+                result.errors.push({
+                  line: lineNum,
+                  raw: rawStr,
+                  reason: singleError.message,
+                });
+              }
+            } else {
+              result.imported++;
+            }
+          }
         }
       }
     }
-
-    result.skipped = result.total - result.imported - result.failed;
 
     logActivity({
       actorType: "admin",

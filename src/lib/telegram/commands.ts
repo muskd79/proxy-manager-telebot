@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { SupportedLanguage } from "@/types/telegram";
 import {
@@ -772,4 +773,232 @@ export async function handleUnknownCommand(ctx: Context) {
   const text = t("unknownCommand", lang);
   await ctx.reply(text);
   await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+}
+
+// ---------------------------------------------------------------------------
+// /cancel – Cancel pending proxy requests
+// ---------------------------------------------------------------------------
+
+export async function handleCancel(ctx: Context) {
+  const from = ctx.from;
+  if (!from) return;
+
+  const user = await getOrCreateUser(ctx);
+  if (!user) return;
+  const lang = (user.language as SupportedLanguage) || "vi";
+
+  await logChatMessage(
+    user.id,
+    ctx.message?.message_id ?? null,
+    ChatDirection.Incoming,
+    "/cancel",
+    MessageType.Command
+  );
+
+  // Cancel any pending requests
+  const { data: pendingRequests } = await supabaseAdmin
+    .from("proxy_requests")
+    .select("id")
+    .eq("tele_user_id", user.id)
+    .eq("status", RequestStatus.Pending)
+    .eq("is_deleted", false);
+
+  if (pendingRequests && pendingRequests.length > 0) {
+    await supabaseAdmin
+      .from("proxy_requests")
+      .update({ status: "cancelled", processed_at: new Date().toISOString() })
+      .in(
+        "id",
+        pendingRequests.map((r) => r.id)
+      );
+
+    const text =
+      lang === "vi"
+        ? `\u2705 \u0110\u00E3 h\u1EE7y ${pendingRequests.length} y\u00EAu c\u1EA7u \u0111ang ch\u1EDD.`
+        : `\u2705 Cancelled ${pendingRequests.length} pending request(s).`;
+    await ctx.reply(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  } else {
+    const text =
+      lang === "vi"
+        ? "\u2139\uFE0F Kh\u00F4ng c\u00F3 y\u00EAu c\u1EA7u n\u00E0o \u0111ang ch\u1EDD \u0111\u1EC3 h\u1EE7y."
+        : "\u2139\uFE0F No pending requests to cancel.";
+    await ctx.reply(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// /revoke – Return an assigned proxy early
+// ---------------------------------------------------------------------------
+
+async function revokeProxy(proxyId: string, userId: string) {
+  await supabaseAdmin
+    .from("proxies")
+    .update({
+      status: ProxyStatus.Available,
+      assigned_to: null,
+      assigned_at: null,
+    })
+    .eq("id", proxyId);
+
+  // Decrement usage counters (RPC may not exist, just skip on error)
+  try {
+    await supabaseAdmin.rpc("decrement_usage", { p_user_id: userId });
+  } catch {
+    // RPC may not exist – ignore
+  }
+
+  await logActivity({
+    actor_type: ActorType.Bot,
+    actor_id: null,
+    action: "proxy_revoked",
+    resource_type: "proxy",
+    resource_id: proxyId,
+    details: { tele_user_id: userId },
+    ip_address: null,
+    user_agent: null,
+  });
+}
+
+export async function handleRevoke(ctx: Context) {
+  const from = ctx.from;
+  if (!from) return;
+
+  const user = await getOrCreateUser(ctx);
+  if (!user) return;
+  const lang = (user.language as SupportedLanguage) || "vi";
+
+  await logChatMessage(
+    user.id,
+    ctx.message?.message_id ?? null,
+    ChatDirection.Incoming,
+    "/revoke",
+    MessageType.Command
+  );
+
+  // Get user's assigned proxies
+  const { data: proxies } = await supabaseAdmin
+    .from("proxies")
+    .select("id, host, port, type")
+    .eq("assigned_to", user.id)
+    .eq("status", ProxyStatus.Assigned)
+    .eq("is_deleted", false);
+
+  if (!proxies || proxies.length === 0) {
+    const text =
+      lang === "vi"
+        ? "\u2139\uFE0F B\u1EA1n kh\u00F4ng c\u00F3 proxy n\u00E0o \u0111ang s\u1EED d\u1EE5ng."
+        : "\u2139\uFE0F You have no assigned proxies.";
+    await ctx.reply(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+    return;
+  }
+
+  if (proxies.length === 1) {
+    // Auto revoke the only proxy
+    await revokeProxy(proxies[0].id, user.id);
+    const text =
+      lang === "vi"
+        ? `\u2705 \u0110\u00E3 tr\u1EA3 proxy \`${proxies[0].host}:${proxies[0].port}\` th\u00E0nh c\u00F4ng.`
+        : `\u2705 Successfully returned proxy \`${proxies[0].host}:${proxies[0].port}\`.`;
+    await ctx.reply(text, { parse_mode: "Markdown" });
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  } else {
+    // Show inline keyboard to select which proxy to revoke
+    const keyboard = new InlineKeyboard();
+    proxies.forEach((p) => {
+      keyboard
+        .text(`${p.type.toUpperCase()} ${p.host}:${p.port}`, `revoke:${p.id}`)
+        .row();
+    });
+    keyboard
+      .text(lang === "vi" ? "\u{1F504} Tr\u1EA3 t\u1EA5t c\u1EA3" : "\u{1F504} Return all", "revoke:all")
+      .row();
+
+    const text =
+      lang === "vi" ? "Ch\u1ECDn proxy mu\u1ED1n tr\u1EA3:" : "Select proxy to return:";
+    await ctx.reply(text, { reply_markup: keyboard });
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Revoke callback – handles inline keyboard selection from /revoke
+// ---------------------------------------------------------------------------
+
+export async function handleRevokeSelection(ctx: Context, proxyId: string) {
+  if (!ctx.from) return;
+
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("*")
+    .eq("telegram_id", ctx.from.id)
+    .single();
+
+  if (!user) return;
+  const lang = (user.language as SupportedLanguage) || "vi";
+
+  await logChatMessage(
+    user.id,
+    null,
+    ChatDirection.Incoming,
+    `revoke:${proxyId}`,
+    MessageType.Callback
+  );
+
+  if (proxyId === "all") {
+    // Revoke all assigned proxies
+    const { data: proxies } = await supabaseAdmin
+      .from("proxies")
+      .select("id, host, port")
+      .eq("assigned_to", user.id)
+      .eq("status", ProxyStatus.Assigned)
+      .eq("is_deleted", false);
+
+    if (!proxies || proxies.length === 0) {
+      await ctx.answerCallbackQuery(
+        lang === "vi" ? "Kh\u00F4ng c\u00F3 proxy n\u00E0o \u0111\u1EC3 tr\u1EA3." : "No proxies to return."
+      );
+      return;
+    }
+
+    for (const p of proxies) {
+      await revokeProxy(p.id, user.id);
+    }
+
+    const text =
+      lang === "vi"
+        ? `\u2705 \u0110\u00E3 tr\u1EA3 t\u1EA5t c\u1EA3 ${proxies.length} proxy th\u00E0nh c\u00F4ng.`
+        : `\u2705 Successfully returned all ${proxies.length} proxies.`;
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  } else {
+    // Revoke a specific proxy – verify it belongs to this user
+    const { data: proxy } = await supabaseAdmin
+      .from("proxies")
+      .select("id, host, port")
+      .eq("id", proxyId)
+      .eq("assigned_to", user.id)
+      .eq("status", ProxyStatus.Assigned)
+      .single();
+
+    if (!proxy) {
+      await ctx.answerCallbackQuery(
+        lang === "vi" ? "Proxy kh\u00F4ng h\u1EE3p l\u1EC7." : "Invalid proxy."
+      );
+      return;
+    }
+
+    await revokeProxy(proxy.id, user.id);
+
+    const text =
+      lang === "vi"
+        ? `\u2705 \u0110\u00E3 tr\u1EA3 proxy \`${proxy.host}:${proxy.port}\` th\u00E0nh c\u00F4ng.`
+        : `\u2705 Successfully returned proxy \`${proxy.host}:${proxy.port}\`.`;
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(text, { parse_mode: "Markdown" });
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  }
 }

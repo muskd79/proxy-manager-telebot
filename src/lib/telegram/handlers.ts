@@ -12,6 +12,9 @@ import {
   handleProxyTypeSelection,
   handleLanguageSelection,
   handleUnknownCommand,
+  handleCancel,
+  handleRevoke,
+  handleRevokeSelection,
 } from "./commands";
 
 // ---------------------------------------------------------------------------
@@ -24,6 +27,8 @@ bot.command("getproxy", handleGetProxy);
 bot.command("myproxies", handleMyProxies);
 bot.command("status", handleStatus);
 bot.command("language", handleLanguage);
+bot.command("cancel", handleCancel);
+bot.command("revoke", handleRevoke);
 
 // ---------------------------------------------------------------------------
 // Callback query handler
@@ -41,6 +46,12 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith("lang:")) {
     const lang = data.replace("lang:", "") as SupportedLanguage;
     await handleLanguageSelection(ctx, lang);
+    return;
+  }
+
+  if (data.startsWith("revoke:")) {
+    const proxyId = data.replace("revoke:", "");
+    await handleRevokeSelection(ctx, proxyId);
     return;
   }
 
