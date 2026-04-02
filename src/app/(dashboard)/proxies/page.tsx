@@ -13,7 +13,10 @@ import {
   Trash2,
   Activity,
   RefreshCw,
+  Zap,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Pagination } from "@/components/shared/pagination";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import type { Proxy } from "@/types/database";
@@ -29,6 +32,9 @@ export default function ProxiesPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkProgress, setCheckProgress] = useState(0);
+  const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<ProxyFiltersType>({
     page: 1,
@@ -138,6 +144,45 @@ export default function ProxiesPage() {
     fetchProxies();
   }
 
+  const handleCheckAll = async () => {
+    if (!canWrite) return;
+    setChecking(true);
+    setCheckProgress(0);
+    try {
+      // Get all proxy IDs
+      const res = await fetch("/api/proxies?pageSize=10000&fields=id");
+      const result = await res.json();
+      const allIds = (result?.data?.data || []).map((p: any) => p.id);
+
+      if (allIds.length === 0) {
+        toast.info("No proxies to check");
+        return;
+      }
+
+      // Check in batches of 100
+      const batchSize = 100;
+      for (let i = 0; i < allIds.length; i += batchSize) {
+        const batch = allIds.slice(i, i + batchSize);
+        await fetch("/api/proxies/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: batch }),
+        });
+        setCheckProgress(Math.round(((i + batch.length) / allIds.length) * 100));
+      }
+
+      toast.success(`Health check complete for ${allIds.length} proxies`);
+      setLastCheckTime(new Date().toLocaleTimeString());
+      fetchProxies(); // refresh list
+    } catch (err) {
+      console.error("Health check failed:", err);
+      toast.error("Health check failed");
+    } finally {
+      setChecking(false);
+      setCheckProgress(0);
+    }
+  };
+
   function handleExport(format: "csv" | "json") {
     const dataToExport = proxies.map((p) => ({
       host: p.host,
@@ -226,6 +271,30 @@ export default function ProxiesPage() {
             </Button>
           )}
         </div>
+      </div>
+
+      {/* Health Check Status */}
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <Activity className="size-4" />
+        <span>Last check: {lastCheckTime || "Never"}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCheckAll}
+          disabled={checking}
+        >
+          {checking ? (
+            <>
+              <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+              Checking ({checkProgress}%)
+            </>
+          ) : (
+            <>
+              <Zap className="size-3.5 mr-1.5" />
+              Check All Proxies
+            </>
+          )}
+        </Button>
       </div>
 
       <ProxyFilters

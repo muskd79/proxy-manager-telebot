@@ -136,6 +136,7 @@ export function ProxyTable({
           <SortableHead column="host">Host:Port</SortableHead>
           <SortableHead column="type">Type</SortableHead>
           <SortableHead column="status">Status</SortableHead>
+          <TableHead>Tags</TableHead>
           <TableHead>Country</TableHead>
           <TableHead>Assigned To</TableHead>
           <SortableHead column="speed_ms">Speed</SortableHead>
@@ -146,7 +147,7 @@ export function ProxyTable({
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={9} className="text-center py-8">
+            <TableCell colSpan={10} className="text-center py-8">
               <p className="text-muted-foreground">No proxies found</p>
             </TableCell>
           </TableRow>
@@ -187,6 +188,18 @@ export function ProxyTable({
                 >
                   {proxy.status}
                 </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap gap-1">
+                  {proxy.tags?.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                  {(!proxy.tags || proxy.tags.length === 0) && (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {proxy.country || "-"}

@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Bell, LogOut, User } from "lucide-react";
+import { Bell, LogOut, User, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -26,6 +27,7 @@ interface Admin {
 
 export function Header({ admin }: { admin: Admin }) {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -58,6 +60,20 @@ export function Header({ admin }: { admin: Admin }) {
       {/* Actions */}
       <div className="flex items-center gap-2">
         <LanguageSwitch />
+
+        {/* Theme toggle */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0 h-8 w-8 p-0"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? (
+            <Sun className="size-4" />
+          ) : (
+            <Moon className="size-4" />
+          )}
+        </Button>
 
         {/* Notifications */}
         <Button variant="ghost" size="sm" className="relative h-8 w-8 p-0">
