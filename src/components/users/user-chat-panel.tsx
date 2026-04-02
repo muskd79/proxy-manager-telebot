@@ -64,7 +64,8 @@ export function UserChatPanel({ userId }: UserChatPanelProps) {
     const channel = supabase
       .channel(`user-chat-${userId}`)
       .on(
-        "postgres_changes" as never,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
         {
           event: "INSERT",
           schema: "public",

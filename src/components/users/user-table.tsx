@@ -10,8 +10,6 @@ import {
   Trash2,
   Settings,
   ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import {
   Table,
@@ -305,34 +303,6 @@ export function UserTable({
             )}
           </TableBody>
         </Table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between pt-4">
-        <p className="text-sm text-muted-foreground">
-          Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} of {total} users
-        </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => onFiltersChange({ ...filters, page: page - 1 })}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => onFiltersChange({ ...filters, page: page + 1 })}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
       </div>
 
       {/* Delete Confirmation Dialog */}

@@ -105,7 +105,7 @@ export function useChat(): UseChatReturn {
     const channel = supabase
       .channel(`chat-${selectedUserId}`)
       .on(
-        "postgres_changes" as never,
+        "postgres_changes" as any,
         {
           event: "INSERT",
           schema: "public",

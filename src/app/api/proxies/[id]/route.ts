@@ -23,14 +23,14 @@ export async function GET(
 
     if (error) throw error;
     if (!data) {
-      return NextResponse.json({ error: "Proxy not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Proxy not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("Get proxy error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch proxy" },
+      { success: false, error: "Failed to fetch proxy" },
       { status: 500 }
     );
   }
@@ -118,7 +118,7 @@ export async function PUT(
   } catch (error) {
     console.error("Update proxy error:", error);
     return NextResponse.json(
-      { error: "Failed to update proxy" },
+      { success: false, error: "Failed to update proxy" },
       { status: 500 }
     );
   }
@@ -185,7 +185,7 @@ export async function DELETE(
   } catch (error) {
     console.error("Delete proxy error:", error);
     return NextResponse.json(
-      { error: "Failed to delete proxy" },
+      { success: false, error: "Failed to delete proxy" },
       { status: 500 }
     );
   }

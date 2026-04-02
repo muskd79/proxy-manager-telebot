@@ -30,11 +30,13 @@ export async function getAdmin(
   return data as AdminInfo;
 }
 
-export async function requireAuth(supabase: SupabaseClient) {
+export async function requireAuth(
+  supabase: SupabaseClient
+): Promise<{ admin: AdminInfo; error: null } | { admin: null; error: NextResponse }> {
   const admin = await getAdmin(supabase);
   if (!admin) {
     return {
-      admin: null as never,
+      admin: null,
       error: NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -47,11 +49,11 @@ export async function requireAuth(supabase: SupabaseClient) {
 export async function requireRole(
   supabase: SupabaseClient,
   allowedRoles: Role[]
-) {
+): Promise<{ admin: AdminInfo; error: null } | { admin: null; error: NextResponse }> {
   const admin = await getAdmin(supabase);
   if (!admin) {
     return {
-      admin: null as never,
+      admin: null,
       error: NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -60,7 +62,7 @@ export async function requireRole(
   }
   if (!allowedRoles.includes(admin.role)) {
     return {
-      admin: null as never,
+      admin: null,
       error: NextResponse.json(
         { success: false, error: "Forbidden: insufficient permissions" },
         { status: 403 }

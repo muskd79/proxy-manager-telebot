@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Proxies list error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch proxies" },
+      { success: false, error: "Failed to fetch proxies" },
       { status: 500 }
     );
   }
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     if (!host || !port || !type) {
       return NextResponse.json(
-        { error: "host, port, and type are required" },
+        { success: false, error: "host, port, and type are required" },
         { status: 400 }
       );
     }
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create proxy error:", error);
     return NextResponse.json(
-      { error: "Failed to create proxy" },
+      { success: false, error: "Failed to create proxy" },
       { status: 500 }
     );
   }

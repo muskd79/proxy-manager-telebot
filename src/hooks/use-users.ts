@@ -96,12 +96,12 @@ export function useUsers(initialFilters?: UserFilters): UseUsersReturn {
   }, []);
 
   const blockUser = useCallback(
-    async (id: string) => updateUser(id, { status: "blocked" as never }),
+    async (id: string) => updateUser(id, { status: "blocked" as TeleUser["status"] }),
     [updateUser]
   );
 
   const unblockUser = useCallback(
-    async (id: string) => updateUser(id, { status: "active" as never }),
+    async (id: string) => updateUser(id, { status: "active" as TeleUser["status"] }),
     [updateUser]
   );
 

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Proxy stats error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch proxy stats" },
+      { success: false, error: "Failed to fetch proxy stats" },
       { status: 500 }
     );
   }

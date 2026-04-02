@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,77 +12,91 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
-const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 500];
 
 interface PaginationProps {
-  totalCount: number;
   page: number;
   pageSize: number;
+  total: number;
+  totalPages: number;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (size: number) => void;
 }
 
 export function Pagination({
-  totalCount,
   page,
   pageSize,
+  total,
+  totalPages,
   onPageChange,
   onPageSizeChange,
 }: PaginationProps) {
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const canGoPrev = page > 1;
-  const canGoNext = page < totalPages;
+  const [jumpValue, setJumpValue] = useState("");
 
-  // Generate visible page numbers
+  const safeTotal = Math.max(1, totalPages);
+  const canGoPrev = page > 1;
+  const canGoNext = page < safeTotal;
+
+  const handleJump = () => {
+    const num = parseInt(jumpValue, 10);
+    if (!isNaN(num) && num >= 1 && num <= safeTotal) {
+      onPageChange(num);
+    }
+    setJumpValue("");
+  };
+
+  // Generate visible page numbers with ellipsis
   const getPageNumbers = () => {
-    const pages: (number | "ellipsis")[] = [];
+    const pages: (number | "ellipsis-start" | "ellipsis-end")[] = [];
     const maxVisible = 5;
 
-    if (totalPages <= maxVisible + 2) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    if (safeTotal <= maxVisible + 2) {
+      for (let i = 1; i <= safeTotal; i++) pages.push(i);
       return pages;
     }
 
     pages.push(1);
 
-    if (page > 3) pages.push("ellipsis");
+    if (page > 3) pages.push("ellipsis-start");
 
     const start = Math.max(2, page - 1);
-    const end = Math.min(totalPages - 1, page + 1);
+    const end = Math.min(safeTotal - 1, page + 1);
 
     for (let i = start; i <= end; i++) pages.push(i);
 
-    if (page < totalPages - 2) pages.push("ellipsis");
+    if (page < safeTotal - 2) pages.push("ellipsis-end");
 
-    pages.push(totalPages);
+    pages.push(safeTotal);
 
     return pages;
   };
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
+      {/* Showing X-Y of Z */}
       <div className="text-sm text-muted-foreground">
         Showing{" "}
         <span className="font-medium text-foreground">
-          {Math.min((page - 1) * pageSize + 1, totalCount)}
+          {total === 0 ? 0 : Math.min((page - 1) * pageSize + 1, total)}
         </span>
         {" - "}
         <span className="font-medium text-foreground">
-          {Math.min(page * pageSize, totalCount)}
+          {Math.min(page * pageSize, total)}
         </span>
         {" of "}
-        <span className="font-medium text-foreground">{totalCount}</span> results
+        <span className="font-medium text-foreground">{total}</span> items
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        {/* Rows per page */}
         {onPageSizeChange && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Rows</span>
+            <span className="text-sm text-muted-foreground">Rows:</span>
             <Select
               value={String(pageSize)}
               onValueChange={(val) => onPageSizeChange(Number(val))}
             >
-              <SelectTrigger className="h-8 w-16">
+              <SelectTrigger className="h-8 w-[70px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -94,6 +110,7 @@ export function Pagination({
           </div>
         )}
 
+        {/* Navigation buttons with page numbers */}
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
@@ -114,10 +131,10 @@ export function Pagination({
             <ChevronLeft className="h-4 w-4" />
           </Button>
 
-          {getPageNumbers().map((pageNum, idx) =>
-            pageNum === "ellipsis" ? (
+          {getPageNumbers().map((pageNum) =>
+            typeof pageNum === "string" ? (
               <span
-                key={`ellipsis-${idx}`}
+                key={pageNum}
                 className="flex h-8 w-8 items-center justify-center text-sm text-muted-foreground"
               >
                 ...
@@ -148,11 +165,25 @@ export function Pagination({
             variant="outline"
             size="sm"
             className="h-8 w-8 p-0"
-            onClick={() => onPageChange(totalPages)}
+            onClick={() => onPageChange(safeTotal)}
             disabled={!canGoNext}
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* Page jump input */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Go to:</span>
+          <Input
+            className="h-8 w-16 text-center"
+            value={jumpValue}
+            onChange={(e) => setJumpValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleJump();
+            }}
+            placeholder="#"
+          />
         </div>
       </div>
     </div>

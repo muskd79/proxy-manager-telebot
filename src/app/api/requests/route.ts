@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
-import type { ProxyRequest, RequestStatus } from "@/types/database";
+import type { ProxyRequest, RequestStatus, ProxyType } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       search: searchParams.get("search") || undefined,
       status: (searchParams.get("status") as RequestStatus) || undefined,
       teleUserId: searchParams.get("teleUserId") || undefined,
-      proxyType: searchParams.get("proxyType") as never || undefined,
+      proxyType: (searchParams.get("proxyType") as ProxyType) || undefined,
       country: searchParams.get("country") || undefined,
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,

@@ -224,7 +224,8 @@ export function DataTable<T>({
 
       {totalCount !== undefined && onPageChange && (
         <Pagination
-          totalCount={totalCount}
+          total={totalCount}
+          totalPages={Math.max(1, Math.ceil(totalCount / pageSize))}
           page={page}
           pageSize={pageSize}
           onPageChange={onPageChange}

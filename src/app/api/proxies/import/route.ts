@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     if (!proxies || !Array.isArray(proxies) || proxies.length === 0) {
       return NextResponse.json(
-        { error: "proxies array is required and must not be empty" },
+        { success: false, error: "proxies array is required and must not be empty" },
         { status: 400 }
       );
     }
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Import error:", error);
     return NextResponse.json(
-      { error: "Failed to import proxies" },
+      { success: false, error: "Failed to import proxies" },
       { status: 500 }
     );
   }

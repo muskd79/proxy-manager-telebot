@@ -15,6 +15,7 @@ import {
   TrendingDown,
   Server,
 } from "lucide-react";
+import Link from "next/link";
 import type { DashboardStats } from "@/types/api";
 
 interface StatsCardsProps {
@@ -28,11 +29,12 @@ interface StatCardProps {
   subtitle: string;
   icon: React.ReactNode;
   trend?: { value: number; positive: boolean };
+  href?: string;
 }
 
-function StatCard({ title, value, subtitle, icon, trend }: StatCardProps) {
-  return (
-    <Card>
+function StatCard({ title, value, subtitle, icon, trend, href }: StatCardProps) {
+  const content = (
+    <Card className={href ? "cursor-pointer hover:border-primary/30 transition-colors" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -61,6 +63,8 @@ function StatCard({ title, value, subtitle, icon, trend }: StatCardProps) {
       </CardContent>
     </Card>
   );
+
+  return href ? <Link href={href}>{content}</Link> : content;
 }
 
 export function StatsCards({ stats, loading }: StatsCardsProps) {
@@ -89,24 +93,28 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
         value={stats.totalProxies}
         subtitle={`${stats.availableProxies} available / ${stats.assignedProxies} assigned / ${stats.expiredProxies} expired`}
         icon={<Server className="size-4" />}
+        href="/proxies"
       />
       <StatCard
         title="Telegram Users"
         value={stats.totalUsers}
         subtitle={`${stats.activeUsers} active / ${stats.blockedUsers} blocked / ${stats.pendingUsers} pending`}
         icon={<Users className="size-4" />}
+        href="/users"
       />
       <StatCard
         title="Pending Requests"
         value={stats.pendingRequests}
         subtitle={`${stats.totalRequests} total requests`}
         icon={<Clock className="size-4" />}
+        href="/requests"
       />
       <StatCard
         title="Assigned Today"
         value={stats.todayApproved}
         subtitle={`${stats.todayRequests} requests today`}
         icon={<CheckCircle className="size-4" />}
+        href="/history"
       />
     </div>
   );

@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Stats error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch stats" },
+      { success: false, error: "Failed to fetch stats" },
       { status: 500 }
     );
   }

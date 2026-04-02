@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json(
-        { error: "ids array is required" },
+        { success: false, error: "ids array is required" },
         { status: 400 }
       );
     }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Health check error:", error);
     return NextResponse.json(
-      { error: "Failed to run health check" },
+      { success: false, error: "Failed to run health check" },
       { status: 500 }
     );
   }

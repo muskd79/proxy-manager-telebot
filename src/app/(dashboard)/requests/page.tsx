@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { RequestTable } from "@/components/requests/request-table";
+import { Pagination } from "@/components/shared/pagination";
 import {
   ApproveDialog,
   RejectDialog,
@@ -254,6 +255,16 @@ export default function RequestsPage() {
             />
           </TabsContent>
         ))}
+
+        {/* Pagination */}
+        <Pagination
+          page={filters.page ?? 1}
+          pageSize={filters.pageSize ?? 20}
+          total={total}
+          totalPages={totalPages}
+          onPageChange={(p) => setFilters({ ...filters, page: p })}
+          onPageSizeChange={(size) => setFilters({ ...filters, pageSize: size, page: 1 })}
+        />
       </Tabs>
 
       {/* Dialogs */}

@@ -14,6 +14,7 @@ import {
   Activity,
   RefreshCw,
 } from "lucide-react";
+import { Pagination } from "@/components/shared/pagination";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import Link from "next/link";
@@ -25,7 +26,7 @@ export default function ProxiesPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [countries, setCountries] = useState<string[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
 
@@ -116,11 +117,7 @@ export default function ProxiesPage() {
     const res = await fetch(`/api/proxies/${id}`, { method: "DELETE" });
     if (res.ok) {
       fetchProxies();
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      setSelectedIds((prev) => prev.filter((x) => x !== id));
     }
   }
 
@@ -128,7 +125,7 @@ export default function ProxiesPage() {
     for (const id of selectedIds) {
       await fetch(`/api/proxies/${id}`, { method: "DELETE" });
     }
-    setSelectedIds(new Set());
+    setSelectedIds([]);
     fetchProxies();
   }
 
@@ -238,15 +235,15 @@ export default function ProxiesPage() {
       />
 
       {/* Bulk actions */}
-      {selectedIds.size > 0 && (
+      {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2">
           <span className="text-sm text-muted-foreground">
-            {selectedIds.size} selected
+            {selectedIds.length} selected
           </span>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleHealthCheck(Array.from(selectedIds))}
+            onClick={() => handleHealthCheck(selectedIds)}
           >
             <Activity className="size-4 mr-1" />
             Health Check
@@ -260,7 +257,7 @@ export default function ProxiesPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedIds(new Set())}
+            onClick={() => setSelectedIds([])}
           >
             Clear
           </Button>
@@ -291,35 +288,14 @@ export default function ProxiesPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {filters.page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={(filters.page || 1) <= 1}
-              onClick={() =>
-                setFilters((p) => ({ ...p, page: (p.page || 1) - 1 }))
-              }
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={(filters.page || 1) >= totalPages}
-              onClick={() =>
-                setFilters((p) => ({ ...p, page: (p.page || 1) + 1 }))
-              }
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={filters.page || 1}
+        pageSize={filters.pageSize || 20}
+        total={total}
+        totalPages={totalPages}
+        onPageChange={(p) => setFilters((prev) => ({ ...prev, page: p }))}
+        onPageSizeChange={(size) => setFilters((prev) => ({ ...prev, pageSize: size, page: 1 }))}
+      />
 
       <ProxyForm
         open={formOpen}

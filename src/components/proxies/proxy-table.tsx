@@ -32,8 +32,8 @@ import Link from "next/link";
 
 interface ProxyTableProps {
   proxies: Proxy[];
-  selectedIds: Set<string>;
-  onSelectionChange: (ids: Set<string>) => void;
+  selectedIds: string[];
+  onSelectionChange: (ids: string[]) => void;
   onSort: (column: string) => void;
   sortBy: string;
   sortOrder: "asc" | "desc";
@@ -79,25 +79,23 @@ export function ProxyTable({
   onHealthCheck,
 }: ProxyTableProps) {
   const allSelected =
-    proxies.length > 0 && proxies.every((p) => selectedIds.has(p.id));
-  const someSelected = proxies.some((p) => selectedIds.has(p.id));
+    proxies.length > 0 && proxies.every((p) => selectedIds.includes(p.id));
+  const someSelected = proxies.some((p) => selectedIds.includes(p.id));
 
   function toggleAll() {
     if (allSelected) {
-      onSelectionChange(new Set());
+      onSelectionChange([]);
     } else {
-      onSelectionChange(new Set(proxies.map((p) => p.id)));
+      onSelectionChange(proxies.map((p) => p.id));
     }
   }
 
   function toggleOne(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) {
-      next.delete(id);
+    if (selectedIds.includes(id)) {
+      onSelectionChange(selectedIds.filter((x) => x !== id));
     } else {
-      next.add(id);
+      onSelectionChange([...selectedIds, id]);
     }
-    onSelectionChange(next);
   }
 
   function SortableHead({
@@ -156,11 +154,11 @@ export function ProxyTable({
           proxies.map((proxy) => (
             <TableRow
               key={proxy.id}
-              className={selectedIds.has(proxy.id) ? "bg-muted/50" : ""}
+              className={selectedIds.includes(proxy.id) ? "bg-muted/50" : ""}
             >
               <TableCell>
                 <Checkbox
-                  checked={selectedIds.has(proxy.id)}
+                  checked={selectedIds.includes(proxy.id)}
                   onCheckedChange={() => toggleOne(proxy.id)}
                 />
               </TableCell>

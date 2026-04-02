@@ -16,14 +16,14 @@ export function proxyTypeKeyboard(lang: "vi" | "en"): InlineKeyboard {
 /** Language selection keyboard */
 export function languageKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("Tieng Viet", "lang:vi")
+    .text("Tiếng Việt", "lang:vi")
     .text("English", "lang:en");
 }
 
 /** Confirmation keyboard */
 export function confirmKeyboard(lang: "vi" | "en"): InlineKeyboard {
-  const yes = lang === "vi" ? "Co" : "Yes";
-  const no = lang === "vi" ? "Khong" : "No";
+  const yes = lang === "vi" ? "Có" : "Yes";
+  const no = lang === "vi" ? "Không" : "No";
 
   return new InlineKeyboard()
     .text(yes, "confirm:yes")

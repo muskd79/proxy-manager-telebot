@@ -74,9 +74,9 @@ export function useRealtime<T extends Record<string, unknown>>(
     const channel = supabase
       .channel(channelName)
       .on(
-        "postgres_changes" as never,
+        "postgres_changes" as any,
         channelConfig,
-        handleChange as never
+        handleChange as (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {

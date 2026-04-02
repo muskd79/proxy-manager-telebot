@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Settings fetch error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch settings" },
+      { success: false, error: "Failed to fetch settings" },
       { status: 500 }
     );
   }
@@ -131,13 +131,13 @@ export async function PUT(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Unknown action" },
+      { success: false, error: "Unknown action" },
       { status: 400 }
     );
   } catch (error) {
     console.error("Settings update error:", error);
     return NextResponse.json(
-      { error: "Failed to update settings" },
+      { success: false, error: "Failed to update settings" },
       { status: 500 }
     );
   }
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
 
       if (existing) {
         return NextResponse.json(
-          { error: "Admin with this email already exists" },
+          { success: false, error: "Admin with this email already exists" },
           { status: 400 }
         );
       }
@@ -184,13 +184,13 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Unknown action" },
+      { success: false, error: "Unknown action" },
       { status: 400 }
     );
   } catch (error) {
     console.error("Settings POST error:", error);
     return NextResponse.json(
-      { error: "Failed to process request" },
+      { success: false, error: "Failed to process request" },
       { status: 500 }
     );
   }

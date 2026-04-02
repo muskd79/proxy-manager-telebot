@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { UserTable } from "@/components/users/user-table";
+import { Pagination } from "@/components/shared/pagination";
 import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
 
@@ -237,6 +238,16 @@ export default function UsersPage() {
         onRefresh={fetchUsers}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
+      />
+
+      {/* Pagination */}
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        totalPages={totalPages}
+        onPageChange={(p) => setFilters({ ...filters, page: p })}
+        onPageSizeChange={(size) => setFilters({ ...filters, pageSize: size, page: 1 })}
       />
 
       {/* Bulk Action Confirmation */}
