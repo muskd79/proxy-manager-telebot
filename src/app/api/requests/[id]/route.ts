@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { ProxyRequest } from "@/types/database";
+import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 
 export async function GET(
   _request: NextRequest,
@@ -11,15 +12,8 @@ export async function GET(
     const { id } = await params;
     const supabase = await createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" } satisfies ApiResponse<never>,
-        { status: 401 }
-      );
-    }
+    const { admin, error: authError } = await requireAnyRole(supabase);
+    if (authError) return authError;
 
     const { data, error } = await supabase
       .from("proxy_requests")
@@ -59,15 +53,8 @@ export async function PUT(
     const { id } = await params;
     const supabase = await createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" } satisfies ApiResponse<never>,
-        { status: 401 }
-      );
-    }
+    const { admin, error: authError } = await requireAdminOrAbove(supabase);
+    if (authError) return authError;
 
     const body = await request.json();
     const { status, proxy_id, rejected_reason, auto_assign } = body;
@@ -135,28 +122,14 @@ export async function PUT(
         })
         .eq("id", assignProxyId);
 
-      // Get admin record for the current user
-      const { data: adminData } = await supabase
-        .from("admins")
-        .select("id")
-        .eq("id", user.id)
-        .single();
-
       updateData.status = "approved";
       updateData.proxy_id = assignProxyId;
-      updateData.approved_by = adminData?.id || null;
+      updateData.approved_by = admin.id;
       updateData.processed_at = new Date().toISOString();
     } else if (status === "rejected") {
-      // Get admin record
-      const { data: adminData } = await supabase
-        .from("admins")
-        .select("id")
-        .eq("id", user.id)
-        .single();
-
       updateData.status = "rejected";
       updateData.rejected_reason = rejected_reason || null;
-      updateData.approved_by = adminData?.id || null;
+      updateData.approved_by = admin.id;
       updateData.processed_at = new Date().toISOString();
     } else if (status === "cancelled") {
       updateData.status = "cancelled";
@@ -201,15 +174,8 @@ export async function DELETE(
     const { id } = await params;
     const supabase = await createClient();
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" } satisfies ApiResponse<never>,
-        { status: 401 }
-      );
-    }
+    const { admin, error: authError } = await requireAdminOrAbove(supabase);
+    if (authError) return authError;
 
     const { error } = await supabase
       .from("proxy_requests")

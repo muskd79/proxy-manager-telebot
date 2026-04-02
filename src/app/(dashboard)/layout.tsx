@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { RoleProvider } from "@/lib/role-context";
+import type { Role } from "@/lib/auth";
 
 export default async function DashboardLayout({
   children,
@@ -26,17 +28,9 @@ export default async function DashboardLayout({
     .single();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar
-        admin={{
-          id: admin?.id ?? user.id,
-          email: admin?.email ?? user.email ?? "",
-          display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
-          role: admin?.role ?? "admin",
-        }}
-      />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header
+    <RoleProvider role={(admin?.role as Role) ?? "viewer"}>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar
           admin={{
             id: admin?.id ?? user.id,
             email: admin?.email ?? user.email ?? "",
@@ -44,8 +38,18 @@ export default async function DashboardLayout({
             role: admin?.role ?? "admin",
           }}
         />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Header
+            admin={{
+              id: admin?.id ?? user.id,
+              email: admin?.email ?? user.email ?? "",
+              display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
+              role: admin?.role ?? "admin",
+            }}
+          />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </RoleProvider>
   );
 }

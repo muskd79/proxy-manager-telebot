@@ -1,14 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { requireSuperAdmin } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { admin, error: authError } = await requireSuperAdmin(supabase);
+  if (authError) return authError;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -44,26 +41,8 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Check super_admin role
-  const { data: admin } = await supabase
-    .from("admins")
-    .select("role")
-    .eq("auth_user_id", user.id)
-    .single();
-
-  if (!admin || admin.role !== "super_admin") {
-    return NextResponse.json(
-      { error: "Only super admins can modify settings" },
-      { status: 403 }
-    );
-  }
+  const { admin, error: authError } = await requireSuperAdmin(supabase);
+  if (authError) return authError;
 
   try {
     const body = await request.json();
@@ -80,7 +59,7 @@ export async function PUT(request: NextRequest) {
           {
             key,
             value: { value } as Record<string, unknown>,
-            updated_by: user.id,
+            updated_by: admin.id,
           },
           { onConflict: "key" }
         );
@@ -155,26 +134,8 @@ export async function PUT(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Check super_admin role
-  const { data: admin } = await supabase
-    .from("admins")
-    .select("role")
-    .eq("auth_user_id", user.id)
-    .single();
-
-  if (!admin || admin.role !== "super_admin") {
-    return NextResponse.json(
-      { error: "Only super admins can invite admins" },
-      { status: 403 }
-    );
-  }
+  const { admin, error: authError } = await requireSuperAdmin(supabase);
+  if (authError) return authError;
 
   try {
     const body = await request.json();

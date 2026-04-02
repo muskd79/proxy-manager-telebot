@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
@@ -18,6 +19,7 @@ import type { Proxy } from "@/types/database";
 import Link from "next/link";
 
 export default function ProxiesPage() {
+  const { canWrite } = useRole();
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -192,10 +194,12 @@ export default function ProxiesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" render={<Link href="/proxies/import" />}>
-            <Upload className="size-4 mr-1.5" />
-            Import
-          </Button>
+          {canWrite && (
+            <Button variant="outline" size="sm" render={<Link href="/proxies/import" />}>
+              <Upload className="size-4 mr-1.5" />
+              Import
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -212,16 +216,18 @@ export default function ProxiesPage() {
             <Download className="size-4 mr-1.5" />
             JSON
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditProxy(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="size-4 mr-1.5" />
-            Add Proxy
-          </Button>
+          {canWrite && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditProxy(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="size-4 mr-1.5" />
+              Add Proxy
+            </Button>
+          )}
         </div>
       </div>
 
@@ -245,10 +251,12 @@ export default function ProxiesPage() {
             <Activity className="size-4 mr-1" />
             Health Check
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-            <Trash2 className="size-4 mr-1" />
-            Delete
-          </Button>
+          {canWrite && (
+            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+              <Trash2 className="size-4 mr-1" />
+              Delete
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

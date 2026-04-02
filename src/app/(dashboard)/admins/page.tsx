@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { RefreshCw, Plus, Shield, ShieldAlert, Eye } from "lucide-react";
+import { RefreshCw, Plus, Shield, ShieldAlert, Eye, ShieldOff } from "lucide-react";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,6 +62,8 @@ const roleBadgeVariant: Record<
 };
 
 export default function AdminsPage() {
+  const { canManageAdmins } = useRole();
+  const router = useRouter();
   const [admins, setAdmins] = useState<AdminData[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -160,6 +164,24 @@ export default function AdminsPage() {
       toast.error("Failed to update admin");
     }
   };
+
+  if (!canManageAdmins) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+        <ShieldOff className="size-12 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Access Denied</h1>
+        <p className="text-muted-foreground">
+          You do not have permission to manage admins. Only super admins can access this page.
+        </p>
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-sm text-primary underline hover:no-underline"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">

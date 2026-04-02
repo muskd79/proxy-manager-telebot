@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Save, RefreshCw, Wifi, WifiOff, Copy } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Save, RefreshCw, Wifi, WifiOff, Copy, ShieldOff } from "lucide-react";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +31,8 @@ interface SettingsForm {
 }
 
 export default function SettingsPage() {
+  const { canManageSettings } = useRole();
+  const router = useRouter();
   const [settings, setSettings] = useState<SettingsForm>({
     default_rate_limit_hourly: 3,
     default_rate_limit_daily: 10,
@@ -157,6 +161,24 @@ export default function SettingsPage() {
       toast.success("Webhook URL copied");
     }
   };
+
+  if (!canManageSettings) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+        <ShieldOff className="size-12 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Access Denied</h1>
+        <p className="text-muted-foreground">
+          You do not have permission to manage settings. Only super admins can access this page.
+        </p>
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-sm text-primary underline hover:no-underline"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { format } from "date-fns";
 import { RefreshCw, Trash2, RotateCcw, AlertTriangle } from "lucide-react";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -55,6 +56,7 @@ interface DeletedRequest {
 }
 
 export default function TrashPage() {
+  const { canWrite } = useRole();
   const [tab, setTab] = useState("proxies");
   const [proxies, setProxies] = useState<DeletedProxy[]>([]);
   const [users, setUsers] = useState<DeletedUser[]>([]);
@@ -273,43 +275,45 @@ export default function TrashPage() {
                             : "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRestore("proxy", proxy.id)}
-                            >
-                              <RotateCcw className="size-4 mr-1" />
-                              Restore
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
-                                  <Trash2 className="size-4 mr-1" />
-                                  Delete
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Permanently delete?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. The proxy will
-                                    be permanently removed.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() =>
-                                      handlePermanentDelete("proxy", proxy.id)
-                                    }
-                                  >
-                                    Delete permanently
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
+                          {canWrite && (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRestore("proxy", proxy.id)}
+                              >
+                                <RotateCcw className="size-4 mr-1" />
+                                Restore
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
+                                    <Trash2 className="size-4 mr-1" />
+                                    Delete
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      Permanently delete?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. The proxy will
+                                      be permanently removed.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handlePermanentDelete("proxy", proxy.id)
+                                      }
+                                    >
+                                      Delete permanently
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -365,43 +369,45 @@ export default function TrashPage() {
                             : "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRestore("user", user.id)}
-                            >
-                              <RotateCcw className="size-4 mr-1" />
-                              Restore
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
-                                  <Trash2 className="size-4 mr-1" />
-                                  Delete
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Permanently delete?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. The user will
-                                    be permanently removed.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() =>
-                                      handlePermanentDelete("user", user.id)
-                                    }
-                                  >
-                                    Delete permanently
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
+                          {canWrite && (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRestore("user", user.id)}
+                              >
+                                <RotateCcw className="size-4 mr-1" />
+                                Restore
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
+                                    <Trash2 className="size-4 mr-1" />
+                                    Delete
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      Permanently delete?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. The user will
+                                      be permanently removed.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handlePermanentDelete("user", user.id)
+                                      }
+                                    >
+                                      Delete permanently
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -468,45 +474,47 @@ export default function TrashPage() {
                             : "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                handleRestore("request", req.id)
-                              }
-                            >
-                              <RotateCcw className="size-4 mr-1" />
-                              Restore
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
-                                  <Trash2 className="size-4 mr-1" />
-                                  Delete
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Permanently delete?
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. The request
-                                    will be permanently removed.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() =>
-                                      handlePermanentDelete("request", req.id)
-                                    }
-                                  >
-                                    Delete permanently
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
+                          {canWrite && (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleRestore("request", req.id)
+                                }
+                              >
+                                <RotateCcw className="size-4 mr-1" />
+                                Restore
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
+                                    <Trash2 className="size-4 mr-1" />
+                                    Delete
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                      Permanently delete?
+                                    </AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. The request
+                                      will be permanently removed.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() =>
+                                        handlePermanentDelete("request", req.id)
+                                      }
+                                    >
+                                      Delete permanently
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))

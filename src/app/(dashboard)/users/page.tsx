@@ -10,6 +10,7 @@ import {
   Trash2,
   Filter,
 } from "lucide-react";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,6 +36,7 @@ import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
 
 export default function UsersPage() {
+  const { canWrite } = useRole();
   const {
     users,
     total,
@@ -187,32 +189,34 @@ export default function UsersPage() {
           <span className="text-sm font-medium">
             {selectedIds.length} user(s) selected
           </span>
-          <div className="ml-auto flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBulkAction("block")}
-            >
-              <Ban className="mr-1 h-3.5 w-3.5" />
-              Block
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBulkAction("unblock")}
-            >
-              <CheckCircle className="mr-1 h-3.5 w-3.5" />
-              Unblock
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setBulkAction("delete")}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" />
-              Delete
-            </Button>
-          </div>
+          {canWrite && (
+            <div className="ml-auto flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAction("block")}
+              >
+                <Ban className="mr-1 h-3.5 w-3.5" />
+                Block
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAction("unblock")}
+              >
+                <CheckCircle className="mr-1 h-3.5 w-3.5" />
+                Unblock
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkAction("delete")}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                Delete
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

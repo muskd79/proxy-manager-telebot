@@ -2,15 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { ProxyFilters, PaginatedResponse } from "@/types/api";
 import type { Proxy } from "@/types/database";
+import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { admin, error: authError } = await requireAnyRole(supabase);
+  if (authError) return authError;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -85,12 +82,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { admin, error: authError } = await requireAdminOrAbove(supabase);
+  if (authError) return authError;
 
   try {
     const body = await request.json();
@@ -117,7 +110,7 @@ export async function POST(request: NextRequest) {
       notes: notes || null,
       expires_at: expires_at || null,
       is_deleted: false,
-      created_by: user.id,
+      created_by: admin.id,
     };
 
     const { data, error } = await supabase

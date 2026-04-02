@@ -2,15 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { LogFilters, PaginatedResponse } from "@/types/api";
 import type { ActivityLog } from "@/types/database";
+import { requireAnyRole } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { admin, error: authError } = await requireAnyRole(supabase);
+  if (authError) return authError;
 
   try {
     const { searchParams } = new URL(request.url);

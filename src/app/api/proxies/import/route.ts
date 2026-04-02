@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { ImportProxyResult } from "@/types/api";
 import type { ProxyType } from "@/types/database";
+import { requireAdminOrAbove } from "@/lib/auth";
 
 interface ImportProxyRow {
   host: string;
@@ -16,12 +17,8 @@ interface ImportProxyRow {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { admin, error: authError } = await requireAdminOrAbove(supabase);
+  if (authError) return authError;
 
   try {
     const body = await request.json();
@@ -80,7 +77,7 @@ export async function POST(request: NextRequest) {
         country: proxy.country || country || null,
         status: "available",
         is_deleted: false,
-        created_by: user.id,
+        created_by: admin.id,
       });
     }
 

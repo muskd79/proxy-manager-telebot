@@ -38,6 +38,7 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: number;
+  minRole?: "super_admin" | "admin";
 }
 
 const navItems: NavItem[] = [
@@ -49,8 +50,8 @@ const navItems: NavItem[] = [
   { title: "History", href: "/history", icon: History },
   { title: "Trash", href: "/trash", icon: Trash2 },
   { title: "Logs", href: "/logs", icon: ScrollText },
-  { title: "Admins", href: "/admins", icon: Shield },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Admins", href: "/admins", icon: Shield, minRole: "super_admin" },
+  { title: "Settings", href: "/settings", icon: Settings, minRole: "super_admin" },
 ];
 
 function NavContent({
@@ -63,6 +64,12 @@ function NavContent({
   onLogout: () => void;
 }) {
   const pathname = usePathname();
+
+  const roleLevel: Record<string, number> = { viewer: 0, admin: 1, super_admin: 2 };
+  const filteredItems = navItems.filter((item) => {
+    if (!item.minRole) return true;
+    return (roleLevel[admin.role] ?? 0) >= (roleLevel[item.minRole] ?? 0);
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -83,7 +90,7 @@ function NavContent({
       {/* Navigation */}
       <ScrollArea className="flex-1 px-2 py-3">
         <nav className="flex flex-col gap-0.5">
-          {navItems.map((item) => {
+          {filteredItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));

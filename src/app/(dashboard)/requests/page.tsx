@@ -9,6 +9,7 @@ import {
   Zap,
   Filter,
 } from "lucide-react";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,6 +45,7 @@ interface RequestWithUser extends ProxyRequest {
 }
 
 export default function RequestsPage() {
+  const { canWrite } = useRole();
   const [requests, setRequests] = useState<RequestWithUser[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -202,23 +204,25 @@ export default function RequestsPage() {
             <span className="text-sm font-medium">
               {pendingSelected.length} pending request(s) selected
             </span>
-            <div className="ml-auto flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => setBatchApproveOpen(true)}
-              >
-                <Zap className="mr-1 h-3.5 w-3.5" />
-                Batch Approve
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBatchReject}
-              >
-                <XCircle className="mr-1 h-3.5 w-3.5" />
-                Batch Reject
-              </Button>
-            </div>
+            {canWrite && (
+              <div className="ml-auto flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => setBatchApproveOpen(true)}
+                >
+                  <Zap className="mr-1 h-3.5 w-3.5" />
+                  Batch Approve
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBatchReject}
+                >
+                  <XCircle className="mr-1 h-3.5 w-3.5" />
+                  Batch Reject
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
