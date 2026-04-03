@@ -4,20 +4,18 @@ import { t, fillTemplate } from "../messages";
 import {
   getOrCreateUser,
   logChatMessage,
-  logActivity,
   checkRateLimit,
 } from "../utils";
 import { proxyTypeKeyboard } from "../keyboard";
 import {
   ChatDirection,
   MessageType,
-  ActorType,
   ApprovalMode,
   ProxyStatus,
-  RequestStatus,
   TeleUserStatus,
 } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
+import { autoAssignProxy, createManualRequest } from "./assign-proxy";
 
 export async function handleGetProxy(ctx: Context) {
   const user = await getOrCreateUser(ctx);
@@ -153,151 +151,12 @@ export async function handleProxyTypeSelection(
   }
 
   if (user.approval_mode === ApprovalMode.Auto) {
-    // Auto assign: find available proxy of selected type
-    const { data: proxy } = await supabaseAdmin
-      .from("proxies")
-      .select("*")
-      .eq("type", proxyType)
-      .eq("status", ProxyStatus.Available)
-      .eq("is_deleted", false)
-      .limit(1)
-      .single();
-
-    if (!proxy) {
-      const text = t("noProxyAvailable", lang);
-      await ctx.answerCallbackQuery();
-      await ctx.editMessageText(text);
-      await logChatMessage(
-        user.id,
-        null,
-        ChatDirection.Outgoing,
-        text,
-        MessageType.Text
-      );
-      return;
-    }
-
-    // Assign proxy
-    const expiresAt = new Date(
-      Date.now() + 30 * 24 * 60 * 60 * 1000
-    ).toISOString();
-    await supabaseAdmin
-      .from("proxies")
-      .update({
-        status: ProxyStatus.Assigned,
-        assigned_to: user.id,
-        assigned_at: new Date().toISOString(),
-        expires_at: expiresAt,
-      })
-      .eq("id", proxy.id);
-
-    // Create request record
-    await supabaseAdmin.from("proxy_requests").insert({
-      tele_user_id: user.id,
-      proxy_id: proxy.id,
-      proxy_type: proxyType as "http" | "https" | "socks5",
-      status: RequestStatus.AutoApproved,
-      approval_mode: ApprovalMode.Auto,
-      requested_at: new Date().toISOString(),
-      processed_at: new Date().toISOString(),
-      expires_at: expiresAt,
-      is_deleted: false,
-      deleted_at: null,
-      country: null,
-      approved_by: null,
-      rejected_reason: null,
-    });
-
-    // Increment usage
-    await supabaseAdmin
-      .from("tele_users")
-      .update({
-        proxies_used_hourly: user.proxies_used_hourly + 1,
-        proxies_used_daily: user.proxies_used_daily + 1,
-        proxies_used_total: user.proxies_used_total + 1,
-        hourly_reset_at:
-          user.hourly_reset_at ??
-          new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        daily_reset_at:
-          user.daily_reset_at ??
-          new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      })
-      .eq("id", user.id);
-
-    const text = fillTemplate(t("proxyAssigned", lang), {
-      host: proxy.host,
-      port: String(proxy.port),
-      type: proxy.type.toUpperCase(),
-      username: proxy.username ?? "N/A",
-      password: proxy.password ?? "N/A",
-      expires: new Date(expiresAt).toLocaleDateString(),
-    });
-
+    const result = await autoAssignProxy(user, proxyType, lang);
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(text, { parse_mode: "Markdown" });
-    await logChatMessage(
-      user.id,
-      null,
-      ChatDirection.Outgoing,
-      text,
-      MessageType.Text
-    );
-
-    await logActivity({
-      actor_type: ActorType.Bot,
-      actor_id: null,
-      action: "proxy_auto_assigned",
-      resource_type: "proxy",
-      resource_id: proxy.id,
-      details: { tele_user_id: user.id, proxy_type: proxyType },
-      ip_address: null,
-      user_agent: null,
-    });
+    await ctx.editMessageText(result.text, result.parseMode ? { parse_mode: result.parseMode } : undefined);
   } else {
-    // Manual mode: create pending request
-    const { data: request } = await supabaseAdmin
-      .from("proxy_requests")
-      .insert({
-        tele_user_id: user.id,
-        proxy_id: null,
-        proxy_type: proxyType as "http" | "https" | "socks5",
-        status: RequestStatus.Pending,
-        approval_mode: ApprovalMode.Manual,
-        requested_at: new Date().toISOString(),
-        is_deleted: false,
-        deleted_at: null,
-        country: null,
-        approved_by: null,
-        rejected_reason: null,
-        processed_at: null,
-        expires_at: null,
-      })
-      .select()
-      .single();
-
-    const text = fillTemplate(t("requestPending", lang), {
-      id: request?.id ?? "unknown",
-    });
-
+    const result = await createManualRequest(user, proxyType, lang);
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(text);
-    await logChatMessage(
-      user.id,
-      null,
-      ChatDirection.Outgoing,
-      text,
-      MessageType.Text
-    );
-
-    await logActivity({
-      actor_type: ActorType.TeleUser,
-      actor_id: user.id,
-      action: "proxy_request_created",
-      resource_type: "proxy_request",
-      resource_id: request?.id ?? null,
-      details: { proxy_type: proxyType },
-      ip_address: null,
-      user_agent: null,
-    });
+    await ctx.editMessageText(result.text);
   }
 }
