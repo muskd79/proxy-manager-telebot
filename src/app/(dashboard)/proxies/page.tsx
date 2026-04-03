@@ -19,6 +19,8 @@ import {
   Loader2,
   Pencil,
 } from "lucide-react";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Pagination } from "@/components/shared/pagination";
 import {
@@ -227,15 +229,15 @@ export default function ProxiesPage() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Proxies</h1>
           <p className="text-muted-foreground">
             Manage your proxy inventory ({total} total)
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {canWrite && (
             <Link href="/proxies/import" className={buttonVariants({ variant: "outline", size: "sm" })}>
               <Upload className="size-4 mr-1.5" />
@@ -344,11 +346,9 @@ export default function ProxiesPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <RefreshCw className="size-5 animate-spin text-muted-foreground" />
-          </div>
+          <TableSkeleton columns={7} rows={10} />
         ) : (
           <ProxyTable
             proxies={proxies}

@@ -20,7 +20,14 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     statsCache = { data, timestamp: Date.now() };
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        },
+      }
+    );
   } catch (error) {
     console.error("Stats error:", error);
     return NextResponse.json({ success: false, error: "Failed to fetch stats" }, { status: 500 });

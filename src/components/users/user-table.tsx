@@ -10,6 +10,7 @@ import {
   Trash2,
   Settings,
   ArrowUpDown,
+  Inbox,
 } from "lucide-react";
 import {
   Table,
@@ -40,6 +41,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import type { TeleUser, TeleUserStatus, ApprovalMode } from "@/types/database";
 import type { UserFilters } from "@/types/api";
 
@@ -162,17 +165,15 @@ export function UserTable({
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
+      <div className="rounded-md border border-border bg-card">
+        <TableSkeleton columns={8} rows={10} />
       </div>
     );
   }
 
   return (
     <>
-      <div className="rounded-md border border-border bg-card">
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -206,8 +207,12 @@ export function UserTable({
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
-                  No users found.
+                <TableCell colSpan={10} className="h-32">
+                  <EmptyState
+                    icon={<Inbox className="h-10 w-10" />}
+                    title="No users found"
+                    description="No Telegram users match the current filters. Try adjusting your search criteria."
+                  />
                 </TableCell>
               </TableRow>
             ) : (

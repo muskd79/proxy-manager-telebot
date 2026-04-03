@@ -12,6 +12,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/shared/pagination";
+import { EmptyState } from "@/components/shared/empty-state";
 import { ArrowDown, ArrowUp, ArrowUpDown, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -151,16 +152,18 @@ export function DataTable<T>({
 
   if (data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <Inbox className="mb-3 h-10 w-10 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      <div className="rounded-lg border border-dashed">
+        <EmptyState
+          icon={<Inbox className="h-10 w-10" />}
+          title={emptyMessage}
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

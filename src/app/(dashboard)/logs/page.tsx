@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Inbox } from "lucide-react";
 import type { ActivityLog } from "@/types/database";
 
 const actorTypeBadgeVariant: Record<
@@ -121,8 +124,8 @@ export default function LogsPage() {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Activity Logs</h1>
           <p className="text-muted-foreground">
@@ -154,7 +157,7 @@ export default function LogsPage() {
           <CardTitle className="text-sm font-medium">Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
@@ -237,7 +240,7 @@ export default function LogsPage() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -263,11 +266,12 @@ export default function LogsPage() {
                 ))
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No logs found
+                  <TableCell colSpan={7}>
+                    <EmptyState
+                      icon={<Inbox className="h-10 w-10" />}
+                      title="No logs found"
+                      description="No activity logs match the current filters. Try adjusting your search criteria."
+                    />
                   </TableCell>
                 </TableRow>
               ) : (

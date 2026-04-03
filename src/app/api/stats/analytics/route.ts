@@ -17,7 +17,14 @@ export async function GET(request: NextRequest) {
       date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     }));
 
-    return NextResponse.json({ success: true, data: formatted });
+    return NextResponse.json(
+      { success: true, data: formatted },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+        },
+      }
+    );
   } catch (error) {
     console.error("Analytics error:", error);
     return NextResponse.json({ success: false, error: "Failed to fetch analytics" }, { status: 500 });

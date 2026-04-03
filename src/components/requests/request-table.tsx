@@ -8,6 +8,7 @@ import {
   XCircle,
   ArrowUpDown,
   MoreHorizontal,
+  Inbox,
 } from "lucide-react";
 import {
   Table,
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import type { ProxyRequest } from "@/types/database";
 import type { RequestFilters } from "@/types/api";
 
@@ -132,17 +135,15 @@ export function RequestTable({
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
+      <div className="rounded-md border border-border bg-card">
+        <TableSkeleton columns={7} rows={10} />
       </div>
     );
   }
 
   return (
     <>
-      <div className="rounded-md border border-border bg-card">
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -180,8 +181,12 @@ export function RequestTable({
           <TableBody>
             {requests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
-                  No requests found.
+                <TableCell colSpan={10} className="h-32">
+                  <EmptyState
+                    icon={<Inbox className="h-10 w-10" />}
+                    title="No requests found"
+                    description="No proxy requests match the current filters."
+                  />
                 </TableCell>
               </TableRow>
             ) : (
