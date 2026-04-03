@@ -63,11 +63,13 @@ export const config = {
     /*
      * Match all request paths except:
      * - api/telegram/webhook (Telegram webhook endpoint)
+     * - api/health (public health check for monitoring)
+     * - api/cron/* (Vercel Cron - authenticated via Bearer token)
      * - _next/static (static files)
      * - _next/image (image optimization)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
      * - public folder assets (images, etc.)
      */
-    "/((?!api/telegram/webhook|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api/telegram/webhook|api/health|api/cron/|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
