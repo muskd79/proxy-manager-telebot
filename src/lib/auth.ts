@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 export type Role = "super_admin" | "admin" | "viewer";
 
@@ -94,4 +95,32 @@ export function canManageAdmins(role: Role): boolean {
 
 export function canManageSettings(role: Role): boolean {
   return role === "super_admin";
+}
+
+/**
+ * Verify cron secret using timing-safe comparison to prevent timing attacks.
+ * Returns null if valid, or a NextResponse error if invalid.
+ */
+export function verifyCronSecret(request: NextRequest): NextResponse | null {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured");
+    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
+  }
+
+  const authHeader = request.headers.get("authorization") || "";
+  const expected = `Bearer ${cronSecret}`;
+
+  // Timing-safe comparison to prevent timing attacks
+  try {
+    const a = Buffer.from(authHeader);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+  } catch {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  return null; // Valid
 }

@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { TRASH_AUTO_CLEAN_DAYS } from "@/lib/constants";
+import { verifyCronSecret } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
-  // Verify cron secret (Vercel Cron sends Authorization header)
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.error("CRON_SECRET not configured");
-    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
-  }
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = verifyCronSecret(request);
+  if (authError) return authError;
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - TRASH_AUTO_CLEAN_DAYS);
@@ -53,8 +46,17 @@ export async function GET(request: NextRequest) {
     .lt("created_at", logCutoff.toISOString());
   const deletedLogs = logCount ?? 0;
 
+  // Clean old chat messages (90 days)
+  const chatCutoff = new Date();
+  chatCutoff.setDate(chatCutoff.getDate() - 90);
+  const { count: chatCount } = await supabaseAdmin
+    .from("chat_messages")
+    .delete({ count: "exact" })
+    .lt("created_at", chatCutoff.toISOString());
+  const deletedChats = chatCount ?? 0;
+
   return NextResponse.json({
     success: true,
-    data: { deletedProxies, deletedUsers, deletedRequests, deletedLogs, cutoffDate: cutoff },
+    data: { deletedProxies, deletedUsers, deletedRequests, deletedLogs, deletedChats, cutoffDate: cutoff },
   });
 }

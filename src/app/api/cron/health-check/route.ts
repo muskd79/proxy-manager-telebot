@@ -2,19 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
 import { HEALTH_CHECK_CONCURRENCY } from "@/lib/constants";
+import { verifyCronSecret } from "@/lib/auth";
 
 const BATCH_SIZE = 500;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.error("CRON_SECRET not configured");
-    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
-  }
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = verifyCronSecret(request);
+  if (authError) return authError;
 
   // Fetch 500 proxies ordered by least recently checked
   const { data: proxies, error } = await supabaseAdmin
@@ -46,21 +40,39 @@ export async function GET(request: NextRequest) {
       })
     );
 
+    const nowISO = new Date().toISOString();
+    const aliveIds: string[] = [];
+    const aliveSpeedUpdates: PromiseLike<unknown>[] = [];
+    const deadIds: string[] = [];
+
     for (const r of results) {
       if (r.status !== "fulfilled") continue;
       const { id, alive: isAlive, speed_ms } = r.value;
 
+      if (isAlive) {
+        alive++;
+        aliveIds.push(id);
+        // Each alive proxy has unique speed_ms, update concurrently
+        aliveSpeedUpdates.push(
+          supabaseAdmin.from("proxies").update({ speed_ms, last_checked_at: nowISO }).eq("id", id)
+        );
+      } else {
+        dead++;
+        deadIds.push(id);
+      }
+    }
+
+    // Batch update dead proxies in one query (all share same values)
+    if (deadIds.length > 0) {
       await supabaseAdmin
         .from("proxies")
-        .update({
-          speed_ms: isAlive ? speed_ms : null,
-          last_checked_at: new Date().toISOString(),
-          ...(isAlive ? {} : { status: "maintenance" }),
-        })
-        .eq("id", id);
+        .update({ speed_ms: null, last_checked_at: nowISO, status: "maintenance" })
+        .in("id", deadIds);
+    }
 
-      if (isAlive) alive++;
-      else dead++;
+    // Update alive proxies concurrently (not sequentially)
+    if (aliveSpeedUpdates.length > 0) {
+      await Promise.all(aliveSpeedUpdates);
     }
   }
 

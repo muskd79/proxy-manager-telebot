@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import {
   getOrCreateUser,
+  getUserLanguage,
   logChatMessage,
   checkRateLimit,
   loadGlobalCaps,
@@ -15,14 +16,13 @@ import {
   ProxyStatus,
   TeleUserStatus,
 } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 import { autoAssignProxy, createManualRequest } from "./assign-proxy";
 
 export async function handleGetProxy(ctx: Context) {
   const user = await getOrCreateUser(ctx);
   if (!user) return;
 
-  const lang = user.language as SupportedLanguage;
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,
@@ -110,7 +110,7 @@ export async function handleProxyTypeSelection(
 
   if (!user) return;
 
-  const lang = user.language as SupportedLanguage;
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,

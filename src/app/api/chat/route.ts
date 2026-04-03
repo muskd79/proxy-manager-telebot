@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/types/api";
 import type { ChatMessage, TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { sendTelegramMessage } from "@/lib/telegram/send";
+import { SendChatMessageSchema } from "@/lib/validations";
 
 interface ConversationResponse {
   user: TeleUser;
@@ -126,11 +127,15 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   const body = await request.json();
-  const { tele_user_id, message } = body;
-
-  if (!tele_user_id || !message) {
-    return NextResponse.json({ success: false, error: "tele_user_id and message required" }, { status: 400 });
+  const parsed = SendChatMessageSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+
+  const { tele_user_id, message } = parsed.data;
 
   // Get user's telegram_id
   const { data: teleUser } = await supabase

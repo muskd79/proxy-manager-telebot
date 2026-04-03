@@ -4,6 +4,7 @@ import type { ProxyFilters, PaginatedResponse } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { CreateProxySchema } from "@/lib/validations";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
         (searchParams.get("status") as ProxyFilters["status"]) || undefined,
       country: searchParams.get("country") || undefined,
       tags: searchParams.get("tags")?.split(",") || undefined,
-      page: parseInt(searchParams.get("page") || "1"),
-      pageSize: parseInt(searchParams.get("pageSize") || "20"),
+      page: Math.max(1, parseInt(searchParams.get("page") || "1") || 1),
+      pageSize: Math.max(1, Math.min(parseInt(searchParams.get("pageSize") || "20") || 20, 500)),
       sortBy: searchParams.get("sortBy") || "created_at",
       sortOrder:
         (searchParams.get("sortOrder") as "asc" | "desc") || "desc",
@@ -102,18 +103,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { host, port, type, username, password, country, city, isp, tags, notes, expires_at } = body;
-
-    if (!host || !port || !type) {
+    const parsed = CreateProxySchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "host, port, and type are required" },
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
 
+    const { host, port, type, username, password, country, city, isp, tags, notes, expires_at } = parsed.data;
+
     const insertData = {
       host,
-      port: parseInt(port),
+      port,
       type,
       username: username || null,
       password: password || null,

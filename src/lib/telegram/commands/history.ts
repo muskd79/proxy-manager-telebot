@@ -1,8 +1,7 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { logChatMessage } from "../utils";
+import { getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 
 export async function handleHistory(ctx: Context) {
   const from = ctx.from;
@@ -15,7 +14,7 @@ export async function handleHistory(ctx: Context) {
     .single();
 
   if (!user) return;
-  const lang = (user.language as SupportedLanguage) || "en";
+  const lang = getUserLanguage(user);
 
   const { data: requests } = await supabaseAdmin
     .from("proxy_requests")

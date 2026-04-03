@@ -99,6 +99,7 @@ export function useChat(): UseChatReturn {
     const supabase = createClient();
 
     if (channelRef.current) {
+      channelRef.current.unsubscribe();
       supabase.removeChannel(channelRef.current);
     }
 
@@ -116,11 +117,16 @@ export function useChat(): UseChatReturn {
           setMessages((prev) => [...prev, payload.new]);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime subscription error on chat channel');
+        }
+      });
 
     channelRef.current = channel;
 
     return () => {
+      channel.unsubscribe();
       supabase.removeChannel(channel);
       channelRef.current = null;
     };

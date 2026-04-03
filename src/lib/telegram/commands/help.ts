@@ -1,13 +1,12 @@
 import type { Context } from "grammy";
 import { t } from "../messages";
-import { getOrCreateUser, getUserLang, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 
 export async function handleHelp(ctx: Context) {
-  const lang = await getUserLang(ctx.from?.id ?? 0);
   const user = await getOrCreateUser(ctx);
   if (!user) return;
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,
@@ -33,7 +32,7 @@ export async function handleUnknownCommand(ctx: Context) {
   const user = await getOrCreateUser(ctx);
   if (!user) return;
 
-  const lang = user.language as SupportedLanguage;
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,

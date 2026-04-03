@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/types/api";
 import type { TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { UpdateUserSchema } from "@/lib/validations";
 
 export async function GET(
   _request: NextRequest,
@@ -56,8 +57,26 @@ export async function PUT(
     if (authError) return authError;
 
     const body = await request.json();
+    const parsed = UpdateUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors } satisfies ApiResponse<never> & { details: unknown },
+        { status: 400 }
+      );
+    }
 
-    // Only allow updating specific fields
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    // Support restore from trash
+    if (parsed.data.is_deleted !== undefined) {
+      updateData.is_deleted = parsed.data.is_deleted;
+      if (parsed.data.is_deleted === false) {
+        updateData.deleted_at = null;
+      }
+    }
+    if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
+
+    // Only copy defined fields from validated data (excluding is_deleted/deleted_at already handled)
     const allowedFields = [
       "status",
       "approval_mode",
@@ -71,49 +90,12 @@ export async function PUT(
       "last_name",
       "phone",
       "language",
-    ];
-
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-    // Support restore from trash
-    if (body.is_deleted !== undefined) {
-      updateData.is_deleted = body.is_deleted;
-      if (body.is_deleted === false) {
-        updateData.deleted_at = null;
-      }
-    }
-    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
+    ] as const;
 
     for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field];
+      if (parsed.data[field] !== undefined) {
+        updateData[field] = parsed.data[field];
       }
-    }
-
-    // Validate numeric fields
-    if (updateData.max_proxies !== undefined && (typeof updateData.max_proxies !== "number" || updateData.max_proxies < 0 || (updateData.max_proxies as number) > 1000)) {
-      return NextResponse.json(
-        { success: false, error: "max_proxies must be 0-1000" } satisfies ApiResponse<never>,
-        { status: 400 }
-      );
-    }
-    if (updateData.rate_limit_hourly !== undefined && (typeof updateData.rate_limit_hourly !== "number" || updateData.rate_limit_hourly < 0 || (updateData.rate_limit_hourly as number) > 10000)) {
-      return NextResponse.json(
-        { success: false, error: "rate_limit_hourly must be 0-10000" } satisfies ApiResponse<never>,
-        { status: 400 }
-      );
-    }
-    if (updateData.rate_limit_daily !== undefined && (typeof updateData.rate_limit_daily !== "number" || updateData.rate_limit_daily < 0 || (updateData.rate_limit_daily as number) > 100000)) {
-      return NextResponse.json(
-        { success: false, error: "rate_limit_daily must be 0-100000" } satisfies ApiResponse<never>,
-        { status: 400 }
-      );
-    }
-    if (updateData.rate_limit_total !== undefined && (typeof updateData.rate_limit_total !== "number" || updateData.rate_limit_total < 0 || (updateData.rate_limit_total as number) > 1000000)) {
-      return NextResponse.json(
-        { success: false, error: "rate_limit_total must be 0-1000000" } satisfies ApiResponse<never>,
-        { status: 400 }
-      );
     }
 
     const { data, error } = await supabase

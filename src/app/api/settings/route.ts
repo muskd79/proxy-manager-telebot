@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { SettingsPutSchema, SettingsPostSchema } from "@/lib/validations";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -47,13 +48,18 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { action } = body;
+    const parsed = SettingsPutSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { action } = parsed.data;
 
     if (action === "update_settings") {
-      const { settings, applyToExisting } = body as {
-        settings: Record<string, unknown>;
-        applyToExisting?: boolean;
-      };
+      const { settings, applyToExisting } = parsed.data;
 
       // Upsert each setting
       for (const [key, value] of Object.entries(settings)) {
@@ -110,7 +116,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === "update_admin_role") {
-      const { adminId, role } = body;
+      const { adminId, role } = parsed.data;
       const { error } = await supabase
         .from("admins")
         .update({ role, updated_at: new Date().toISOString() })
@@ -121,7 +127,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === "toggle_admin_active") {
-      const { adminId, is_active } = body;
+      const { adminId, is_active } = parsed.data;
       const { error } = await supabase
         .from("admins")
         .update({ is_active, updated_at: new Date().toISOString() })
@@ -180,10 +186,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { action } = body;
+    const parsed = SettingsPostSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { action } = parsed.data;
 
     if (action === "invite_admin") {
-      const { email, role } = body;
+      const { email, role } = parsed.data;
 
       // Check if admin already exists
       const { data: existing } = await supabase

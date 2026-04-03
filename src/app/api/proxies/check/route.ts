@@ -4,6 +4,7 @@ import type { Proxy } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { checkProxy } from "@/lib/proxy-checker";
 import { HEALTH_CHECK_CONCURRENCY } from "@/lib/constants";
+import { CheckProxiesSchema } from "@/lib/validations";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -12,14 +13,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { ids } = body as { ids: string[] };
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    const parsed = CheckProxiesSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "ids array is required" },
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+
+    const { ids } = parsed.data;
 
     // Fetch proxy details
     const { data: rawProxies, error } = await supabase
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
       const batch = proxies.slice(i, i + HEALTH_CHECK_CONCURRENCY);
 
       const batchResults = await Promise.allSettled(
-        batch.map(async (proxy: any) => {
+        batch.map(async (proxy) => {
           try {
             const { alive, speed_ms } = await checkProxy(proxy.host, proxy.port, proxy.type);
             return { id: proxy.id, alive, speed_ms };
@@ -59,15 +61,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Batch update results
-    for (const r of results) {
+    const nowISO = new Date().toISOString();
+    const deadIds = results.filter(r => !r.alive).map(r => r.id);
+
+    // Dead proxies: single batch update (same values)
+    if (deadIds.length > 0) {
       await supabase
         .from("proxies")
-        .update({
-          speed_ms: r.alive ? r.speed_ms : null,
-          last_checked_at: new Date().toISOString(),
-          status: r.alive ? undefined : "maintenance",
-        })
-        .eq("id", r.id);
+        .update({ speed_ms: null, last_checked_at: nowISO, status: "maintenance" })
+        .in("id", deadIds);
+    }
+
+    // Alive proxies: concurrent updates (each has unique speed_ms)
+    const aliveUpdates = results
+      .filter(r => r.alive)
+      .map(r => supabase.from("proxies").update({ speed_ms: r.speed_ms, last_checked_at: nowISO }).eq("id", r.id));
+
+    if (aliveUpdates.length > 0) {
+      await Promise.all(aliveUpdates);
     }
 
     return NextResponse.json({ success: true, data: results });

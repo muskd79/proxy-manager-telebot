@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
 import type { ProxyRequest, RequestStatus, ProxyType } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { CreateRequestSchema } from "@/lib/validations";
 
 export async function GET(request: NextRequest) {
   try {
@@ -115,14 +116,15 @@ export async function POST(request: NextRequest) {
     if (authError) return authError;
 
     const body = await request.json();
-    const { tele_user_id, proxy_type, country, approval_mode } = body;
-
-    if (!tele_user_id) {
+    const parsed = CreateRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "tele_user_id is required" } satisfies ApiResponse<never>,
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors } satisfies ApiResponse<never> & { details: unknown },
         { status: 400 }
       );
     }
+
+    const { tele_user_id, proxy_type, country, approval_mode } = parsed.data;
 
     const { data, error } = await supabase
       .from("proxy_requests")

@@ -1,7 +1,7 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
-import { getOrCreateUser, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
 import { languageKeyboard } from "../keyboard";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
@@ -10,7 +10,7 @@ export async function handleLanguage(ctx: Context) {
   const user = await getOrCreateUser(ctx);
   if (!user) return;
 
-  const lang = user.language as SupportedLanguage;
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,

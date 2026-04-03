@@ -1,8 +1,7 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { logChatMessage } from "../utils";
+import { getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 
 export async function handleSupport(ctx: Context) {
   const from = ctx.from;
@@ -18,7 +17,7 @@ export async function handleSupport(ctx: Context) {
     await ctx.reply("Please use /start first.");
     return;
   }
-  const lang = (user.language as SupportedLanguage) || "en";
+  const lang = getUserLanguage(user);
 
   const text = lang === "vi"
     ? [

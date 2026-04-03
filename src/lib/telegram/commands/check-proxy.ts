@@ -1,9 +1,8 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
-import { logChatMessage } from "../utils";
+import { getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 
 export async function handleCheckProxy(ctx: Context) {
   const from = ctx.from;
@@ -16,7 +15,7 @@ export async function handleCheckProxy(ctx: Context) {
     .single();
 
   if (!user) return;
-  const lang = (user.language as SupportedLanguage) || "en";
+  const lang = getUserLanguage(user);
 
   if (user.status === "blocked" || user.status === "banned") {
     await ctx.reply(lang === "vi" ? "[X] Tai khoan bi chan." : "[X] Account blocked.");

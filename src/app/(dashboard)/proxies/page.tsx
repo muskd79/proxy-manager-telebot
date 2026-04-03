@@ -21,6 +21,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/shared/pagination";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import Link from "next/link";
@@ -40,6 +50,7 @@ export default function ProxiesPage() {
   const [checking, setChecking] = useState(false);
   const [checkProgress, setCheckProgress] = useState(0);
   const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   const [filters, setFilters] = useState<ProxyFiltersType>({
     page: 1,
@@ -106,9 +117,16 @@ export default function ProxiesPage() {
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => {
         fetchProxies();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime subscription error on proxies channel');
+        }
+      });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [fetchProxies]);
 
   function handleSort(column: string) {
@@ -117,6 +135,7 @@ export default function ProxiesPage() {
       sortBy: column,
       sortOrder:
         prev.sortBy === column && prev.sortOrder === "asc" ? "desc" : "asc",
+      page: 1,
     }));
   }
 
@@ -309,7 +328,7 @@ export default function ProxiesPage() {
                 <Pencil className="size-4 mr-1" />
                 Edit ({selectedIds.length})
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+              <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)}>
                 <Trash2 className="size-4 mr-1" />
                 Delete
               </Button>
@@ -371,6 +390,34 @@ export default function ProxiesPage() {
         selectedIds={selectedIds}
         onComplete={() => { setSelectedIds([]); fetchProxies(); }}
       />
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={setShowBulkDeleteConfirm}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Proxies</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedIds.length} proxy(ies)?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowBulkDeleteConfirm(false);
+                handleBulkDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { ProxyRequest } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { sendTelegramMessage } from "@/lib/telegram/send";
+import { UpdateRequestSchema } from "@/lib/validations";
 
 export async function GET(
   _request: NextRequest,
@@ -59,7 +60,15 @@ export async function PUT(
     if (authError) return authError;
 
     const body = await request.json();
-    const { status, proxy_id, rejected_reason, auto_assign } = body;
+    const parsed = UpdateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors } satisfies ApiResponse<never> & { details: unknown },
+        { status: 400 }
+      );
+    }
+
+    const { status, proxy_id, rejected_reason, auto_assign } = parsed.data;
 
     // Get the current request
     const { data: currentRequest, error: fetchError } = await supabase
@@ -78,13 +87,13 @@ export async function PUT(
     const updateData: Record<string, unknown> = {};
 
     // Support restore from trash
-    if (body.is_deleted !== undefined) {
-      updateData.is_deleted = body.is_deleted;
-      if (body.is_deleted === false) {
+    if (parsed.data.is_deleted !== undefined) {
+      updateData.is_deleted = parsed.data.is_deleted;
+      if (parsed.data.is_deleted === false) {
         updateData.deleted_at = null;
       }
     }
-    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
+    if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
 
     if (status === "approved") {
       let assignProxyId = proxy_id;

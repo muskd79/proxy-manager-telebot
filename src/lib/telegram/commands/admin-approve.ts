@@ -154,7 +154,7 @@ export async function handleAdminApproveCallback(
     .single();
 
   if (teleUser) {
-    const lang = teleUser.language || "en";
+    const lang = (teleUser.language === "vi" || teleUser.language === "en") ? teleUser.language : "en";
     const text =
       lang === "vi"
         ? `Proxy da duoc cap!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nLoai: ${proxy.type.toUpperCase()}`
@@ -206,7 +206,7 @@ export async function handleAdminRejectCallback(
       language?: string;
     };
     if (user) {
-      const lang = user.language || "en";
+      const lang = (user.language === "vi" || user.language === "en") ? user.language : "en";
       const text =
         lang === "vi"
           ? "Yeu cau proxy bi tu choi."

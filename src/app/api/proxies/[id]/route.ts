@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Proxy, ProxyUpdate } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { UpdateProxySchema } from "@/lib/validations";
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +55,14 @@ export async function PUT(
 
   try {
     const body = await request.json();
+    const parsed = UpdateProxySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
     const {
       host,
       port,
@@ -68,21 +77,21 @@ export async function PUT(
       notes,
       expires_at,
       assigned_to,
-    } = body;
+    } = parsed.data;
 
     const updateData: ProxyUpdate = {};
 
     // Support restore from trash
-    if (body.is_deleted !== undefined) {
-      updateData.is_deleted = body.is_deleted;
-      if (body.is_deleted === false) {
+    if (parsed.data.is_deleted !== undefined) {
+      updateData.is_deleted = parsed.data.is_deleted;
+      if (parsed.data.is_deleted === false) {
         updateData.deleted_at = null;
       }
     }
-    if (body.deleted_at !== undefined) updateData.deleted_at = body.deleted_at;
+    if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
 
     if (host !== undefined) updateData.host = host;
-    if (port !== undefined) updateData.port = parseInt(String(port));
+    if (port !== undefined) updateData.port = port;
     if (type !== undefined) updateData.type = type;
     if (username !== undefined) updateData.username = username || null;
     if (password !== undefined) updateData.password = password || null;

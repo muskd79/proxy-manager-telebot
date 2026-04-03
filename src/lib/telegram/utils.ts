@@ -15,6 +15,18 @@ import type { SupportedLanguage } from "@/types/telegram";
 // User helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Safely extract a SupportedLanguage from a user record.
+ * Centralises the fallback so every command behaves the same.
+ */
+export function getUserLanguage(user: {
+  language?: string | null;
+}): SupportedLanguage {
+  const lang = user?.language;
+  if (lang === "vi" || lang === "en") return lang;
+  return "en"; // default fallback
+}
+
 export async function getUserLang(
   telegramId: number
 ): Promise<SupportedLanguage> {

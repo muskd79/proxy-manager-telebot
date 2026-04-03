@@ -121,51 +121,38 @@ export async function incrementUsage(userId: string): Promise<void> {
 }
 
 // ----------------------
-// API rate limiting (in-memory, per admin IP)
+// API rate limiting (DB-backed via Supabase RPC, persists across cold starts)
 // ----------------------
 
-interface ApiRateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-const apiRateLimitMap = new Map<string, ApiRateLimitEntry>();
-
 const API_RATE_LIMIT = API_RATE_LIMIT_PER_MINUTE;
-const API_RATE_WINDOW_MS = API_RATE_LIMIT_WINDOW_MS;
+const API_RATE_WINDOW_SECONDS = Math.ceil(API_RATE_LIMIT_WINDOW_MS / 1000);
 
-export function checkApiRateLimit(ip: string): {
+export async function checkApiRateLimit(ip: string): Promise<{
   allowed: boolean;
   remaining: number;
   resetAt: number;
-} {
-  const now = Date.now();
-  const entry = apiRateLimitMap.get(ip);
+}> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc("check_api_rate_limit", {
+      p_ip: ip,
+      p_max_requests: API_RATE_LIMIT,
+      p_window_seconds: API_RATE_WINDOW_SECONDS,
+    });
 
-  // Clean up expired entries periodically
-  if (apiRateLimitMap.size > 10000) {
-    for (const [key, val] of apiRateLimitMap.entries()) {
-      if (val.resetAt <= now) {
-        apiRateLimitMap.delete(key);
-      }
+    if (error) {
+      // On DB error, allow request (fail-open to avoid blocking all traffic)
+      console.error("Rate limit check error:", error.message);
+      return { allowed: true, remaining: API_RATE_LIMIT, resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS };
     }
-  }
 
-  if (!entry || entry.resetAt <= now) {
-    // New window
-    const resetAt = now + API_RATE_WINDOW_MS;
-    apiRateLimitMap.set(ip, { count: 1, resetAt });
-    return { allowed: true, remaining: API_RATE_LIMIT - 1, resetAt };
+    const result = data as { allowed: boolean; remaining: number };
+    return {
+      allowed: result.allowed,
+      remaining: result.remaining,
+      resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS,
+    };
+  } catch {
+    // Fail-open on unexpected errors
+    return { allowed: true, remaining: API_RATE_LIMIT, resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS };
   }
-
-  if (entry.count >= API_RATE_LIMIT) {
-    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
-  }
-
-  entry.count += 1;
-  return {
-    allowed: true,
-    remaining: API_RATE_LIMIT - entry.count,
-    resetAt: entry.resetAt,
-  };
 }

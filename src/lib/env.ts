@@ -5,7 +5,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(10, "Supabase anon key required"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(10, "Supabase service role key required"),
   TELEGRAM_BOT_TOKEN: z.string().min(10, "Telegram bot token required"),
-  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(10, "Webhook secret required for security"),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
 });
 

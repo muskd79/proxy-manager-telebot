@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { TagActionSchema } from "@/lib/validations";
 
 // GET: List all tags with counts
 export async function GET(request: NextRequest) {
@@ -37,11 +38,18 @@ export async function PUT(request: NextRequest) {
   if (authError) return authError;
 
   const body = await request.json();
-  const { action } = body;
+  const parsed = TagActionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const { action } = parsed.data;
 
   if (action === "rename") {
-    const { from, to } = body;
-    if (!from || !to) return NextResponse.json({ success: false, error: "from and to required" }, { status: 400 });
+    const { from, to } = parsed.data;
 
     // Get all proxies with this tag
     const { data: proxies } = await supabase
@@ -63,8 +71,7 @@ export async function PUT(request: NextRequest) {
   }
 
   if (action === "delete") {
-    const { tag } = body;
-    if (!tag) return NextResponse.json({ success: false, error: "tag required" }, { status: 400 });
+    const { tag } = parsed.data;
 
     const { data: proxies } = await supabase
       .from("proxies")

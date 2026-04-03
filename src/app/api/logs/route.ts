@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
       resourceType: searchParams.get("resourceType") || undefined,
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,
-      page: parseInt(searchParams.get("page") || "1"),
-      pageSize: parseInt(searchParams.get("pageSize") || "25"),
+      page: Math.max(1, parseInt(searchParams.get("page") || "1") || 1),
+      pageSize: Math.max(1, Math.min(parseInt(searchParams.get("pageSize") || "25") || 25, 500)),
       sortBy: searchParams.get("sortBy") || "created_at",
       sortOrder:
         (searchParams.get("sortOrder") as "asc" | "desc") || "desc",

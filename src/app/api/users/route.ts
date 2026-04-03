@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { UserFilters, PaginatedResponse, ApiResponse } from "@/types/api";
 import type { TeleUser, TeleUserStatus } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { CreateUserSchema } from "@/lib/validations";
 
 export async function GET(request: NextRequest) {
   try {
@@ -88,15 +89,15 @@ export async function POST(request: NextRequest) {
     if (authError) return authError;
 
     const body = await request.json();
-
-    const { telegram_id, username, first_name, last_name, phone, status, approval_mode, max_proxies, rate_limit_hourly, rate_limit_daily, rate_limit_total } = body;
-
-    if (!telegram_id) {
+    const parsed = CreateUserSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "telegram_id is required" } satisfies ApiResponse<never>,
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors } satisfies ApiResponse<never> & { details: unknown },
         { status: 400 }
       );
     }
+
+    const { telegram_id, username, first_name, last_name, phone, status, approval_mode, max_proxies, rate_limit_hourly, rate_limit_daily, rate_limit_total } = parsed.data;
 
     const { data, error } = await supabase
       .from("tele_users")

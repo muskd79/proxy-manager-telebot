@@ -62,9 +62,16 @@ export default function UsersPage() {
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => {
         fetchUsers();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime subscription error on users channel');
+        }
+      });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [fetchUsers]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

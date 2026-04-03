@@ -1,8 +1,7 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getOrCreateUser, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType, RequestStatus } from "@/types/database";
-import type { SupportedLanguage } from "@/types/telegram";
 
 export async function handleCancel(ctx: Context) {
   const from = ctx.from;
@@ -10,7 +9,7 @@ export async function handleCancel(ctx: Context) {
 
   const user = await getOrCreateUser(ctx);
   if (!user) return;
-  const lang = (user.language as SupportedLanguage) || "vi";
+  const lang = getUserLanguage(user);
 
   await logChatMessage(
     user.id,

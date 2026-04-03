@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
       request.headers.get("x-real-ip") ||
       "unknown";
 
-    const { allowed, remaining, resetAt } = checkApiRateLimit(ip);
+    const { allowed, remaining, resetAt } = await checkApiRateLimit(ip);
 
     if (!allowed) {
       return NextResponse.json(

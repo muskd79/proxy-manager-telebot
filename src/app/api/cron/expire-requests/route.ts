@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
+import { verifyCronSecret } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.error("CRON_SECRET not configured");
-    return NextResponse.json(
-      { success: false, error: "Server misconfigured" },
-      { status: 500 }
-    );
-  }
-
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
+  const authError = verifyCronSecret(request);
+  if (authError) return authError;
 
   // Expire requests pending for more than 7 days
   const sevenDaysAgo = new Date();

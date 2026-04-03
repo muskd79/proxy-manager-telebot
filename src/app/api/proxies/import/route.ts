@@ -5,6 +5,7 @@ import type { ProxyType } from "@/types/database";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { IMPORT_BATCH_SIZE } from "@/lib/constants";
+import { ImportProxiesSchema } from "@/lib/validations";
 
 interface ImportProxyRow {
   host: string;
@@ -24,28 +25,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { proxies, type, country, tags, notes, isp } = body as {
-      proxies: ImportProxyRow[];
-      type?: ProxyType;
-      country?: string;
-      tags?: string[];
-      notes?: string;
-      isp?: string;
-    };
-
-    if (!proxies || !Array.isArray(proxies) || proxies.length === 0) {
+    const parsed = ImportProxiesSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "proxies array is required and must not be empty" },
+        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
 
-    if (proxies.length > 10000) {
-      return NextResponse.json(
-        { success: false, error: "Maximum 10,000 proxies per import" },
-        { status: 400 }
-      );
-    }
+    const { proxies, type, country, tags, notes, isp } = parsed.data;
 
     const result: ImportProxyResult = {
       total: proxies.length,
