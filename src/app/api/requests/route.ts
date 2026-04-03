@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("proxy_requests")
       .select(
-        "*, tele_user:tele_users(id, username, first_name, last_name, telegram_id), admin:admins!proxy_requests_approved_by_fkey(full_name, email)",
+        "*, tele_user:tele_users(id, username, first_name, last_name, telegram_id), admin:admins!proxy_requests_approved_by_fkey(full_name, email), proxy:proxies(id, host, port, type)",
         { count: "exact" }
       )
       .eq("is_deleted", filters.isDeleted ?? false);

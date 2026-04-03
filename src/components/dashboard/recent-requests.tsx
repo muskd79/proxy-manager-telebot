@@ -22,6 +22,7 @@ import { Check, X } from "lucide-react";
 import type { ProxyRequest, TeleUser } from "@/types/database";
 
 interface RequestWithUser extends ProxyRequest {
+  tele_user?: Pick<TeleUser, "username" | "first_name" | "telegram_id"> | null;
   tele_users?: Pick<TeleUser, "username" | "first_name" | "telegram_id"> | null;
 }
 
@@ -130,8 +131,8 @@ export function RecentRequests() {
               {requests.map((req) => (
                 <TableRow key={req.id}>
                   <TableCell className="font-medium">
-                    {req.tele_users?.username ||
-                      req.tele_users?.first_name ||
+                    {req.tele_user?.username || req.tele_user?.first_name ||
+                      req.tele_users?.username || req.tele_users?.first_name ||
                       "Unknown"}
                   </TableCell>
                   <TableCell>
