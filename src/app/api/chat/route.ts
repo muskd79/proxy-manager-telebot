@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { ChatMessage, TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { sendTelegramMessage } from "@/lib/telegram/send";
 
 interface ConversationResponse {
   user: TeleUser;
@@ -143,22 +144,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Send via Telegram Bot API
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token || token.startsWith("placeholder")) {
-    return NextResponse.json({ success: false, error: "Bot token not configured" }, { status: 500 });
-  }
-
-  const teleRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: teleUser.telegram_id,
-      text: message,
-    }),
-  });
-
-  if (!teleRes.ok) {
-    return NextResponse.json({ success: false, error: "Failed to send Telegram message" }, { status: 500 });
+  const result = await sendTelegramMessage(teleUser.telegram_id, message);
+  if (!result.success) {
+    return NextResponse.json({ success: false, error: result.error || "Failed to send" }, { status: 500 });
   }
 
   // Log message in chat_messages

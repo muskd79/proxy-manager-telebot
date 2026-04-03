@@ -4,25 +4,7 @@ import type { ApiResponse } from "@/types/api";
 import type { ProxyRequest } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
-
-async function sendTelegramMessage(chatId: number, text: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token || token === "placeholder:token") return;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "Markdown",
-      }),
-    });
-  } catch (err) {
-    console.error("Failed to send Telegram notification:", err);
-  }
-}
+import { sendTelegramMessage } from "@/lib/telegram/send";
 
 export async function GET(
   _request: NextRequest,

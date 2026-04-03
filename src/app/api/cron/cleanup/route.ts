@@ -5,7 +5,12 @@ import { TRASH_AUTO_CLEAN_DAYS } from "@/lib/constants";
 export async function GET(request: NextRequest) {
   // Verify cron secret (Vercel Cron sends Authorization header)
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured");
+    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -39,8 +44,17 @@ export async function GET(request: NextRequest) {
     .lt("deleted_at", cutoff);
   deletedRequests = rc ?? 0;
 
+  // Clean old activity logs (90 days)
+  const logCutoff = new Date();
+  logCutoff.setDate(logCutoff.getDate() - 90);
+  const { count: logCount } = await supabaseAdmin
+    .from("activity_logs")
+    .delete({ count: "exact" })
+    .lt("created_at", logCutoff.toISOString());
+  const deletedLogs = logCount ?? 0;
+
   return NextResponse.json({
     success: true,
-    data: { deletedProxies, deletedUsers, deletedRequests, cutoffDate: cutoff },
+    data: { deletedProxies, deletedUsers, deletedRequests, deletedLogs, cutoffDate: cutoff },
   });
 }

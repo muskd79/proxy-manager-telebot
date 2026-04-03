@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Proxy Manager TeleBot
 
-## Getting Started
+Web-based proxy management system with Telegram bot distribution for 50+ admins and 1000+ users.
 
-First, run the development server:
+## Features
+- Manage 50,000+ proxies (HTTP/HTTPS/SOCKS5)
+- Telegram bot with 11 commands for proxy distribution
+- Real-time dashboard with analytics
+- RBAC (Super Admin / Admin / Viewer)
+- Rate limiting (hourly/daily/total per user)
+- Auto health checks, expiry warnings, trash cleanup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Quick Start
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Prerequisites
+- Node.js 22+
+- Supabase account (Pro recommended)
+- Vercel account (Pro recommended)
+- Telegram Bot Token from @BotFather
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Setup
+1. Clone and install:
+   ```bash
+   git clone https://github.com/muskd79/proxy-manager-telebot.git
+   cd proxy-manager-telebot
+   npm install
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. Copy environment variables:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-## Learn More
+3. Fill in `.env.local` with your Supabase and Telegram credentials.
 
-To learn more about Next.js, take a look at the following resources:
+4. Run database migrations:
+   ```bash
+   npx supabase link --project-ref YOUR_PROJECT_REF
+   npx supabase db push
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+5. Start development server:
+   ```bash
+   npm run dev
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+6. Set Telegram webhook:
+   ```bash
+   curl -X POST "https://api.telegram.org/botYOUR_TOKEN/setWebhook?url=https://your-app.vercel.app/api/telegram/webhook&secret_token=YOUR_SECRET"
+   ```
 
-## Deploy on Vercel
+## Scripts
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Production build |
+| `npm test` | Run tests |
+| `npm run test:watch` | Watch mode tests |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech Stack
+- Next.js 16 + TypeScript
+- Supabase (PostgreSQL + Auth + Realtime)
+- Vercel (Hosting + Cron)
+- Grammy (Telegram Bot)
+- shadcn/ui + Tailwind CSS
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deployment
+Push to `master` branch -> GitHub Actions CI -> Vercel auto-deploy.
+
+## License
+Private

@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendTelegramMessage } from "@/lib/telegram/send";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured");
+    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
   }
-
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token || token.startsWith("placeholder")) {
-    return NextResponse.json({ success: true, data: { warned: 0, reason: "Bot not configured" } });
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
   // Find proxies expiring in next 3 days that haven't been warned yet
@@ -65,12 +66,8 @@ export async function GET(request: NextRequest) {
         ].join("\n");
 
     try {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: user.telegram_id, text, parse_mode: "Markdown" }),
-      });
-      warned++;
+      const result = await sendTelegramMessage(user.telegram_id, text);
+      if (result.success) warned++;
     } catch (err) {
       console.error("Failed to send expiry warning:", err);
     }

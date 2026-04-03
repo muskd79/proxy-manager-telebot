@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendTelegramMessage } from "@/lib/telegram/send";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured");
+    return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +29,6 @@ export async function GET(request: NextRequest) {
   }
 
   let expired = 0;
-  const token = process.env.TELEGRAM_BOT_TOKEN;
 
   for (const proxy of expiredProxies) {
     // Revoke proxy
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
     expired++;
 
     // Notify user if possible
-    if (proxy.assigned_to && token && !token.startsWith("placeholder")) {
+    if (proxy.assigned_to) {
       const { data: user } = await supabaseAdmin
         .from("tele_users")
         .select("telegram_id, language")
@@ -48,11 +53,7 @@ export async function GET(request: NextRequest) {
           ? `[!] Proxy het han\n\nProxy ${proxy.host}:${proxy.port} (${proxy.type}) da het han va bi thu hoi.`
           : `[!] Proxy expired\n\nProxy ${proxy.host}:${proxy.port} (${proxy.type}) has expired and been revoked.`;
 
-        fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: user.telegram_id, text }),
-        }).catch(console.error);
+        await sendTelegramMessage(user.telegram_id, text).catch(console.error);
       }
     }
   }
