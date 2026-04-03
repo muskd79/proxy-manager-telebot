@@ -6,6 +6,7 @@ import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
 import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
+import { ProxyTagManager } from "@/components/proxies/proxy-tag-manager";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Plus,
@@ -168,9 +169,10 @@ export default function ProxiesPage() {
     setCheckProgress(0);
     try {
       // Get all proxy IDs
-      const res = await fetch("/api/proxies?pageSize=10000&fields=id");
+      const res = await fetch("/api/proxies?pageSize=10000");
       const result = await res.json();
-      const allIds = (result?.data?.data || []).map((p: any) => p.id);
+      const rawData = result?.data?.data || result?.data || [];
+      const allIds = (Array.isArray(rawData) ? rawData : []).map((p: any) => p.id);
 
       if (allIds.length === 0) {
         toast.info("No proxies to check");
@@ -274,6 +276,11 @@ export default function ProxiesPage() {
             </>
           )}
         </Button>
+      </div>
+
+      {/* Tag Management */}
+      <div className="flex items-center gap-2">
+        <ProxyTagManager />
       </div>
 
       <ProxyFilters
