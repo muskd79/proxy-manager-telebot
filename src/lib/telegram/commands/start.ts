@@ -69,4 +69,19 @@ export async function handleStart(ctx: Context) {
     text,
     MessageType.Text
   );
+
+  // Notify admins about new user registration
+  if (isNew) {
+    const { notifyAllAdmins } = await import("../notify-admins");
+    const { InlineKeyboard } = await import("grammy");
+
+    const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
+    const notifyText = `[New User] ${username} (ID: ${user.telegram_id}) registered.\n\nApprove or block?`;
+
+    const keyboard = new InlineKeyboard()
+      .text("Approve", `admin_approve_user:${user.id}`)
+      .text("Block", `admin_block_user:${user.id}`);
+
+    notifyAllAdmins(notifyText, { inlineKeyboard: keyboard }).catch(console.error);
+  }
 }

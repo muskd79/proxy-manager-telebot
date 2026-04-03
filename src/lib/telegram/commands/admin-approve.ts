@@ -2,21 +2,15 @@ import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
+import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
 
 // ---------------------------------------------------------------------------
-// Admin check helper
+// Admin check helper (uses centralized getAdminByTelegramId)
 // ---------------------------------------------------------------------------
 
 async function isAdmin(telegramId: number): Promise<boolean> {
-  const { data } = await supabaseAdmin
-    .from("settings")
-    .select("value")
-    .eq("key", "admin_telegram_ids")
-    .single();
-
-  if (!data?.value?.value) return false;
-  const adminIds: number[] = data.value.value;
-  return adminIds.includes(telegramId);
+  const result = await getAdminByTelegramId(telegramId);
+  return result.isAdmin;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +159,18 @@ export async function handleAdminApproveCallback(
 
   await ctx.answerCallbackQuery("Approved!");
   await ctx.editMessageText("Request approved. Proxy assigned to user.");
+
+  // Notify other admins about this approval
+  if (from) {
+    const adminInfo = await getAdminByTelegramId(from.id);
+    const userName = teleUser
+      ? `user ${teleUser.telegram_id}`
+      : "unknown user";
+    notifyOtherAdmins(
+      from.id,
+      `${adminInfo.label || "Admin"} approved proxy request for ${userName}`
+    ).catch(console.error);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -217,4 +223,112 @@ export async function handleAdminRejectCallback(
 
   await ctx.answerCallbackQuery("Rejected");
   await ctx.editMessageText("Request rejected.");
+
+  // Notify other admins about this rejection
+  if (from) {
+    const adminInfo = await getAdminByTelegramId(from.id);
+    const userName = request
+      ? `user request ${requestId}`
+      : "unknown request";
+    notifyOtherAdmins(
+      from.id,
+      `${adminInfo.label || "Admin"} rejected proxy request ${requestId}`
+    ).catch(console.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Callback: approve a new user (from /start notification)
+// ---------------------------------------------------------------------------
+
+export async function handleAdminApproveUser(
+  ctx: Context,
+  userId: string
+) {
+  if (!ctx.from) return;
+
+  const adminInfo = await getAdminByTelegramId(ctx.from.id);
+  if (!adminInfo.isAdmin) {
+    await ctx.answerCallbackQuery("Not authorized");
+    return;
+  }
+
+  // Update user status to active
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .update({ status: "active" })
+    .eq("id", userId)
+    .eq("is_deleted", false)
+    .select("telegram_id, username, first_name")
+    .single();
+
+  if (!user) {
+    await ctx.answerCallbackQuery("User not found");
+    return;
+  }
+
+  // Notify the user
+  sendTelegramMessage(
+    user.telegram_id,
+    "Your account has been approved! Use /getproxy to request proxies."
+  ).catch(console.error);
+
+  // Update the admin message
+  const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
+  await ctx.editMessageText(`[Approved] ${username} - approved by ${adminInfo.label}`);
+  await ctx.answerCallbackQuery("User approved");
+
+  // Notify other admins
+  notifyOtherAdmins(
+    ctx.from.id,
+    `${adminInfo.label} approved user ${username}`
+  ).catch(console.error);
+}
+
+// ---------------------------------------------------------------------------
+// Callback: block a new user (from /start notification)
+// ---------------------------------------------------------------------------
+
+export async function handleAdminBlockUser(
+  ctx: Context,
+  userId: string
+) {
+  if (!ctx.from) return;
+
+  const adminInfo = await getAdminByTelegramId(ctx.from.id);
+  if (!adminInfo.isAdmin) {
+    await ctx.answerCallbackQuery("Not authorized");
+    return;
+  }
+
+  // Update user status to blocked
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .update({ status: "blocked" })
+    .eq("id", userId)
+    .eq("is_deleted", false)
+    .select("telegram_id, username, first_name")
+    .single();
+
+  if (!user) {
+    await ctx.answerCallbackQuery("User not found");
+    return;
+  }
+
+  // Notify the user
+  sendTelegramMessage(
+    user.telegram_id,
+    "Your account has been blocked. Contact support if you believe this is an error."
+  ).catch(console.error);
+
+  // Update the admin message
+  const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
+  await ctx.editMessageText(`[Blocked] ${username} - blocked by ${adminInfo.label}`);
+  await ctx.answerCallbackQuery("User blocked");
+
+  // Notify other admins
+  notifyOtherAdmins(
+    ctx.from.id,
+    `${adminInfo.label} blocked user ${username}`
+  ).catch(console.error);
 }

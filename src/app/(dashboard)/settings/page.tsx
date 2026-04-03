@@ -444,6 +444,10 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+            Deprecated: Each admin should set their Telegram ID in their own
+            Profile page.
+          </p>
           <p className="text-sm text-muted-foreground">
             Comma-separated Telegram user IDs that can approve/reject proxy
             requests via the bot using /requests command.

@@ -137,7 +137,7 @@ export function Header({ admin }: { admin: Admin }) {
               <p className="text-xs text-muted-foreground">{admin.email}</p>
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <DropdownMenuItem onClick={() => router.push("/profile")}>
               <User className="mr-2 h-4 w-4" />
               {t("common.profile")}
             </DropdownMenuItem>

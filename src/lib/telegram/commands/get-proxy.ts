@@ -8,7 +8,7 @@ import {
   checkRateLimit,
   loadGlobalCaps,
 } from "../utils";
-import { proxyTypeKeyboard } from "../keyboard";
+import { proxyTypeKeyboard, quantityKeyboard } from "../keyboard";
 import {
   ChatDirection,
   MessageType,
@@ -158,13 +158,8 @@ export async function handleProxyTypeSelection(
     return;
   }
 
-  if (user.approval_mode === ApprovalMode.Auto) {
-    const result = await autoAssignProxy(user, proxyType, lang);
-    await ctx.answerCallbackQuery();
-    await ctx.editMessageText(result.text, result.parseMode ? { parse_mode: result.parseMode } : undefined);
-  } else {
-    const result = await createManualRequest(user, proxyType, lang);
-    await ctx.answerCallbackQuery();
-    await ctx.editMessageText(result.text);
-  }
+  // Show quantity selection keyboard
+  const qtyText = t("selectQuantity", lang);
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(qtyText, { reply_markup: quantityKeyboard(proxyType, lang) });
 }

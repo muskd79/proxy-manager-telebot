@@ -43,6 +43,7 @@ interface AdminData {
   full_name: string | null;
   role: string;
   is_active: boolean;
+  telegram_id: number | null;
   created_at: string;
 }
 
@@ -269,6 +270,7 @@ export default function AdminsPage() {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Telegram ID</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Joined</TableHead>
@@ -279,7 +281,7 @@ export default function AdminsPage() {
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -289,7 +291,7 @@ export default function AdminsPage() {
               ) : admins.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No admins found
@@ -300,6 +302,9 @@ export default function AdminsPage() {
                   <TableRow key={admin.id}>
                     <TableCell>{admin.email}</TableCell>
                     <TableCell>{admin.full_name ?? "-"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {admin.telegram_id ?? "-"}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={roleBadgeVariant[admin.role] ?? "outline"}

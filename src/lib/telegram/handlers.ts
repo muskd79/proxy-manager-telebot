@@ -23,7 +23,14 @@ import {
   handleAdminRequests,
   handleAdminApproveCallback,
   handleAdminRejectCallback,
+  handleAdminApproveUser,
+  handleAdminBlockUser,
 } from "./commands";
+import {
+  handleQuantitySelection,
+  handleAdminBulkApproveCallback,
+  handleAdminBulkRejectCallback,
+} from "./commands/bulk-proxy";
 
 // ---------------------------------------------------------------------------
 // Register command handlers
@@ -97,6 +104,40 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith("admin_reject:")) {
     const requestId = data.replace("admin_reject:", "");
     await handleAdminRejectCallback(ctx, requestId);
+    return;
+  }
+
+  if (data.startsWith("admin_approve_user:")) {
+    const userId = data.replace("admin_approve_user:", "");
+    await handleAdminApproveUser(ctx, userId);
+    return;
+  }
+
+  if (data.startsWith("admin_block_user:")) {
+    const userId = data.replace("admin_block_user:", "");
+    await handleAdminBlockUser(ctx, userId);
+    return;
+  }
+
+  if (data.startsWith("qty:")) {
+    const parts = data.split(":");
+    const proxyType = parts[1];
+    const quantity = parseInt(parts[2], 10);
+    if (proxyType && !isNaN(quantity) && quantity > 0) {
+      await handleQuantitySelection(ctx, proxyType, quantity);
+    }
+    return;
+  }
+
+  if (data.startsWith("admin_bulk_approve:")) {
+    const requestId = data.replace("admin_bulk_approve:", "");
+    await handleAdminBulkApproveCallback(ctx, requestId);
+    return;
+  }
+
+  if (data.startsWith("admin_bulk_reject:")) {
+    const requestId = data.replace("admin_bulk_reject:", "");
+    await handleAdminBulkRejectCallback(ctx, requestId);
     return;
   }
 

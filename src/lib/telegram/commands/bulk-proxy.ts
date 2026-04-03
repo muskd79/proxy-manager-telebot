@@ -1,0 +1,241 @@
+import type { Context } from "grammy";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { t, fillTemplate } from "../messages";
+import { getUserLanguage, logChatMessage } from "../utils";
+import { sendTelegramMessage, sendTelegramDocument } from "../send";
+import { formatProxiesAsText, formatProxiesAsBuffer } from "../format-proxies";
+import { notifyAllAdmins, notifyOtherAdmins, getAdminByTelegramId } from "../notify-admins";
+import { autoAssignProxy, createManualRequest } from "./assign-proxy";
+import { ChatDirection, MessageType, ApprovalMode } from "@/types/database";
+import { InlineKeyboard } from "grammy";
+
+const BULK_AUTO_THRESHOLD = 5; // Above this, force manual approval
+
+export async function handleQuantitySelection(ctx: Context, proxyType: string, quantity: number) {
+  if (!ctx.from) return;
+
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("*")
+    .eq("telegram_id", ctx.from.id)
+    .single();
+
+  if (!user) return;
+  const lang = getUserLanguage(user);
+
+  await logChatMessage(user.id, null, ChatDirection.Incoming, `qty:${proxyType}:${quantity}`, MessageType.Callback);
+
+  // For qty=1, delegate to existing flow
+  if (quantity === 1) {
+    if (user.approval_mode === ApprovalMode.Auto) {
+      const result = await autoAssignProxy(user, proxyType, lang);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(result.text, result.parseMode ? { parse_mode: result.parseMode } : undefined);
+    } else {
+      const result = await createManualRequest(user, proxyType, lang);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(result.text);
+    }
+    return;
+  }
+
+  // For qty>1: Check if auto mode and below threshold
+  const forceManual = quantity > BULK_AUTO_THRESHOLD || user.approval_mode === ApprovalMode.Manual;
+
+  if (!forceManual) {
+    // Auto-assign bulk
+    const batchId = crypto.randomUUID();
+    const { data, error } = await supabaseAdmin.rpc("bulk_assign_proxies", {
+      p_user_id: user.id,
+      p_type: proxyType,
+      p_quantity: quantity,
+      p_admin_id: null,
+      p_batch_id: batchId,
+    });
+
+    if (error || !data?.success || data.assigned === 0) {
+      const text = t("noProxyAvailable", lang);
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(text);
+      return;
+    }
+
+    const proxies = data.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;
+    await ctx.answerCallbackQuery();
+
+    if (proxies.length <= 3) {
+      // Send inline
+      const proxyLines = formatProxiesAsText(proxies);
+      const text = fillTemplate(t("bulkProxyAssigned", lang), {
+        count: String(data.assigned),
+        type: proxyType.toUpperCase(),
+      }) + "\n\n`" + proxyLines + "`";
+      await ctx.editMessageText(text, { parse_mode: "Markdown" });
+    } else {
+      // Send as file
+      const buffer = formatProxiesAsBuffer(proxies);
+      const caption = fillTemplate(t("bulkProxyAssigned", lang), {
+        count: String(data.assigned),
+        type: proxyType.toUpperCase(),
+      });
+      await ctx.editMessageText(caption);
+      await sendTelegramDocument(ctx.from.id, buffer, `proxies_${proxyType}_${data.assigned}.txt`, caption);
+    }
+
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, `Bulk assigned ${data.assigned} ${proxyType} proxies`, MessageType.Text);
+  } else {
+    // Manual approval needed - create pending request with quantity
+    const { data: request } = await supabaseAdmin
+      .from("proxy_requests")
+      .insert({
+        tele_user_id: user.id,
+        proxy_id: null,
+        proxy_type: proxyType as "http" | "https" | "socks5",
+        status: "pending",
+        approval_mode: "manual",
+        requested_at: new Date().toISOString(),
+        quantity,
+        is_deleted: false,
+      })
+      .select()
+      .single();
+
+    const text = fillTemplate(t("bulkRequestPending", lang), {
+      count: String(quantity),
+      type: proxyType.toUpperCase(),
+    });
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(text);
+
+    // Notify admins
+    const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
+    const adminText = `[!] Bulk proxy request\n\nUser: ${username}\nType: ${proxyType.toUpperCase()}\nQuantity: ${quantity}\n\nUse /requests or web dashboard to approve.`;
+
+    if (request) {
+      const keyboard = new InlineKeyboard()
+        .text("Approve", `admin_bulk_approve:${request.id}`)
+        .text("Reject", `admin_bulk_reject:${request.id}`);
+      notifyAllAdmins(adminText, { inlineKeyboard: keyboard }).catch(console.error);
+    }
+
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+  }
+}
+
+export async function handleAdminBulkApproveCallback(ctx: Context, requestId: string) {
+  if (!ctx.from) return;
+
+  const adminInfo = await getAdminByTelegramId(ctx.from.id);
+  if (!adminInfo.isAdmin) {
+    await ctx.answerCallbackQuery("Not authorized");
+    return;
+  }
+
+  // Fetch request
+  const { data: request } = await supabaseAdmin
+    .from("proxy_requests")
+    .select("*, tele_users(id, telegram_id, username, first_name)")
+    .eq("id", requestId)
+    .single();
+
+  if (!request || request.status !== "pending") {
+    await ctx.answerCallbackQuery("Request already processed");
+    await ctx.editMessageText("[Already processed]");
+    return;
+  }
+
+  const teleUser = (request as Record<string, unknown>).tele_users as {
+    id: string;
+    telegram_id: number;
+    username: string | null;
+    first_name: string | null;
+  } | null;
+  const batchId = crypto.randomUUID();
+
+  // Bulk assign
+  const { data, error } = await supabaseAdmin.rpc("bulk_assign_proxies", {
+    p_user_id: request.tele_user_id,
+    p_type: request.proxy_type,
+    p_quantity: request.quantity,
+    p_admin_id: adminInfo.adminId || null,
+    p_batch_id: batchId,
+  });
+
+  if (error || !data?.success || data.assigned === 0) {
+    await ctx.answerCallbackQuery("No proxies available");
+    return;
+  }
+
+  // Update original request
+  await supabaseAdmin
+    .from("proxy_requests")
+    .update({
+      status: "approved",
+      approved_by: adminInfo.adminId || null,
+      processed_at: new Date().toISOString(),
+      batch_id: batchId,
+    })
+    .eq("id", requestId);
+
+  // Send proxies to user
+  const proxies = data.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;
+  if (teleUser?.telegram_id) {
+    if (proxies.length <= 3) {
+      const proxyLines = formatProxiesAsText(proxies);
+      sendTelegramMessage(teleUser.telegram_id, `[OK] ${data.assigned} proxies assigned!\n\n\`${proxyLines}\``).catch(console.error);
+    } else {
+      const buffer = formatProxiesAsBuffer(proxies);
+      sendTelegramDocument(teleUser.telegram_id, buffer, `proxies_${request.proxy_type}_${data.assigned}.txt`, `[OK] ${data.assigned} proxies assigned!`).catch(console.error);
+    }
+  }
+
+  // Update admin message
+  const username = teleUser?.username ? `@${teleUser.username}` : teleUser?.first_name || "Unknown";
+  await ctx.editMessageText(`[Approved] ${data.assigned}/${request.quantity} ${request.proxy_type} proxies for ${username} - by ${adminInfo.label}`);
+  await ctx.answerCallbackQuery(`Approved ${data.assigned} proxies`);
+
+  // Notify other admins
+  notifyOtherAdmins(ctx.from.id, `${adminInfo.label} approved ${data.assigned} ${request.proxy_type} proxies for ${username}`).catch(console.error);
+}
+
+export async function handleAdminBulkRejectCallback(ctx: Context, requestId: string) {
+  if (!ctx.from) return;
+
+  const adminInfo = await getAdminByTelegramId(ctx.from.id);
+  if (!adminInfo.isAdmin) {
+    await ctx.answerCallbackQuery("Not authorized");
+    return;
+  }
+
+  const { data: request } = await supabaseAdmin
+    .from("proxy_requests")
+    .select("*, tele_users(telegram_id, username, first_name)")
+    .eq("id", requestId)
+    .single();
+
+  if (!request || request.status !== "pending") {
+    await ctx.answerCallbackQuery("Already processed");
+    await ctx.editMessageText("[Already processed]");
+    return;
+  }
+
+  await supabaseAdmin
+    .from("proxy_requests")
+    .update({ status: "rejected", approved_by: adminInfo.adminId || null, processed_at: new Date().toISOString() })
+    .eq("id", requestId);
+
+  const teleUser = (request as Record<string, unknown>).tele_users as {
+    telegram_id: number;
+    username: string | null;
+    first_name: string | null;
+  } | null;
+  if (teleUser?.telegram_id) {
+    sendTelegramMessage(teleUser.telegram_id, `[X] Your bulk proxy request for ${request.quantity} ${request.proxy_type} has been rejected.`).catch(console.error);
+  }
+
+  const username = teleUser?.username ? `@${teleUser.username}` : "Unknown";
+  await ctx.editMessageText(`[Rejected] Bulk request for ${username} - by ${adminInfo.label}`);
+  await ctx.answerCallbackQuery("Rejected");
+
+  notifyOtherAdmins(ctx.from.id, `${adminInfo.label} rejected bulk ${request.proxy_type} request from ${username}`).catch(console.error);
+}

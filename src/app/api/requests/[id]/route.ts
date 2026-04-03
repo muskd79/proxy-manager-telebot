@@ -4,10 +4,12 @@ import type { ApiResponse } from "@/types/api";
 import type { ProxyRequest } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
-import { sendTelegramMessage } from "@/lib/telegram/send";
+import { sendTelegramMessage, sendTelegramDocument } from "@/lib/telegram/send";
 import { msg, fillTemplate } from "@/lib/telegram/messages";
+import { formatProxiesAsText, formatProxiesAsBuffer } from "@/lib/telegram/format-proxies";
 import type { SupportedLanguage } from "@/types/telegram";
 import { UpdateRequestSchema } from "@/lib/validations";
+import { notifyOtherAdmins } from "@/lib/telegram/notify-admins";
 
 export async function GET(
   _request: NextRequest,
@@ -98,6 +100,115 @@ export async function PUT(
     if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
 
     if (status === "approved") {
+      const requestQuantity = (currentRequest.quantity as number) || 1;
+
+      // --- Bulk approval path (quantity > 1) ---
+      if (requestQuantity > 1) {
+        const batchId = crypto.randomUUID();
+        const { data: bulkResult, error: bulkError } = await supabase.rpc("bulk_assign_proxies", {
+          p_user_id: currentRequest.tele_user_id,
+          p_type: currentRequest.proxy_type,
+          p_quantity: requestQuantity,
+          p_admin_id: admin.id,
+          p_batch_id: batchId,
+        });
+
+        if (bulkError || !bulkResult?.success || bulkResult.assigned === 0) {
+          return NextResponse.json(
+            { success: false, error: "No matching proxies available for bulk assign" } satisfies ApiResponse<never>,
+            { status: 400 }
+          );
+        }
+
+        // Update original request
+        await supabase
+          .from("proxy_requests")
+          .update({
+            status: "approved",
+            approved_by: admin.id,
+            processed_at: new Date().toISOString(),
+            batch_id: batchId,
+          })
+          .eq("id", id);
+
+        // Log activity
+        logActivity({
+          actorType: "admin",
+          actorId: admin.id,
+          action: "request.bulk_approve",
+          resourceType: "request",
+          resourceId: id,
+          details: {
+            status: "approved",
+            quantity: requestQuantity,
+            assigned: bulkResult.assigned,
+            batchId,
+          },
+          ipAddress: request.headers.get("x-forwarded-for") || undefined,
+          userAgent: request.headers.get("user-agent") || undefined,
+        }).catch(console.error);
+
+        // Notify user via Telegram
+        try {
+          const { data: teleUser } = await supabase
+            .from("tele_users")
+            .select("telegram_id, language")
+            .eq("id", currentRequest.tele_user_id)
+            .single();
+
+          if (teleUser?.telegram_id) {
+            const proxies = bulkResult.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;
+            const lang = ((teleUser.language as string) || "en") as SupportedLanguage;
+            const caption = fillTemplate(msg.bulkProxyAssigned[lang], {
+              count: String(bulkResult.assigned),
+              type: (currentRequest.proxy_type || "").toUpperCase(),
+            });
+
+            if (proxies.length <= 3) {
+              const proxyLines = formatProxiesAsText(proxies);
+              await sendTelegramMessage(teleUser.telegram_id, `${caption}\n\n\`${proxyLines}\``);
+            } else {
+              const buffer = formatProxiesAsBuffer(proxies);
+              await sendTelegramDocument(
+                teleUser.telegram_id,
+                buffer,
+                `proxies_${currentRequest.proxy_type}_${bulkResult.assigned}.txt`,
+                caption
+              );
+            }
+
+            await supabase.from("chat_messages").insert({
+              tele_user_id: currentRequest.tele_user_id,
+              telegram_message_id: null,
+              direction: "outgoing",
+              message_text: caption,
+              message_type: "text",
+              raw_data: null,
+            });
+          }
+        } catch (notifyErr) {
+          console.error("Failed to notify user via Telegram:", notifyErr);
+        }
+
+        notifyOtherAdmins(
+          null,
+          `${admin.email} bulk-approved ${bulkResult.assigned} ${currentRequest.proxy_type} proxies for request ${id} via web`
+        ).catch(console.error);
+
+        const { data: updatedRequest } = await supabase
+          .from("proxy_requests")
+          .select()
+          .eq("id", id)
+          .single();
+
+        return NextResponse.json({
+          success: true,
+          data: updatedRequest,
+          message: `Bulk approved: ${bulkResult.assigned}/${requestQuantity} proxies assigned`,
+        } satisfies ApiResponse<ProxyRequest>);
+      }
+
+      // --- Single approval path (quantity = 1) ---
       let assignProxyId = proxy_id;
 
       // Auto-assign: find an available proxy matching request criteria
@@ -207,6 +318,12 @@ export async function PUT(
         console.error("Failed to notify user via Telegram:", notifyErr);
       }
 
+      // Notify other admins about the approval (fire-and-forget)
+      notifyOtherAdmins(
+        null,
+        `${admin.email} approved proxy request ${id} via web`
+      ).catch(console.error);
+
       // Re-fetch the updated request for response
       const { data: updatedRequest } = await supabase
         .from("proxy_requests")
@@ -258,6 +375,14 @@ export async function PUT(
         ipAddress: request.headers.get("x-forwarded-for") || undefined,
         userAgent: request.headers.get("user-agent") || undefined,
       }).catch(console.error);
+    }
+
+    // Notify other admins about the rejection (fire-and-forget)
+    if (status === "rejected") {
+      notifyOtherAdmins(
+        null,
+        `${admin.email} rejected proxy request ${id} via web`
+      ).catch(console.error);
     }
 
     // Notify user via Telegram (reject only; approve handled above)

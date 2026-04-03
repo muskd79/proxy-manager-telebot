@@ -145,6 +145,18 @@ export const msg = {
     vi: "[!] B\u1EA1n \u0111\u00E3 \u0111\u1EA1t gi\u1EDBi h\u1EA1n proxy t\u1ED1i \u0111a ({max_proxies}). Kh\u00F4ng th\u1EC3 y\u00EAu c\u1EA7u th\u00EAm.",
     en: "[!] You have reached the maximum proxy limit ({max_proxies}). Cannot request more.",
   },
+  selectQuantity: {
+    vi: "B\u1EA1n c\u1EA7n bao nhi\u00EAu proxy?",
+    en: "How many proxies do you need?",
+  },
+  bulkProxyAssigned: {
+    vi: "[OK] \u0110\u00E3 c\u1EA5p {count} proxy {type}!",
+    en: "[OK] {count} {type} proxies assigned!",
+  },
+  bulkRequestPending: {
+    vi: "[i] Y\u00EAu c\u1EA7u {count} proxy {type} \u0111ang ch\u1EDD duy\u1EC7t.",
+    en: "[i] Request for {count} {type} proxies is pending approval.",
+  },
 };
 
 export function t(key: keyof typeof msg, lang: SupportedLanguage): string {

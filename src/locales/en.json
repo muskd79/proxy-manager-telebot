@@ -161,7 +161,10 @@
     "cancelled": "Cancelled",
     "approve": "Approve",
     "reject": "Reject",
-    "assignedProxy": "Assigned Proxy"
+    "assignedProxy": "Assigned Proxy",
+    "quantity": "Quantity",
+    "bulkApproved": "Bulk Approved",
+    "bulkRejected": "Bulk Rejected"
   },
   "chat": {
     "title": "Messages",

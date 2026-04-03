@@ -80,6 +80,7 @@ export interface Admin {
   role: "super_admin" | "admin" | "viewer";
   is_active: boolean;
   language: string;
+  telegram_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -148,6 +149,8 @@ export interface ProxyRequest {
   requested_at: string;
   processed_at: string | null;
   expires_at: string | null;
+  quantity: number;
+  batch_id: string | null;
   is_deleted: boolean;
   deleted_at: string | null;
   created_at: string;

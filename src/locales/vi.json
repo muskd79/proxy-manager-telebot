@@ -161,7 +161,10 @@
     "cancelled": "Đã hủy",
     "approve": "Duyệt",
     "reject": "Từ chối",
-    "assignedProxy": "Proxy được gán"
+    "assignedProxy": "Proxy \u0111\u01B0\u1EE3c g\u00E1n",
+    "quantity": "S\u1ED1 l\u01B0\u1EE3ng",
+    "bulkApproved": "\u0110\u00E3 duy\u1EC7t h\u00E0ng lo\u1EA1t",
+    "bulkRejected": "\u0110\u00E3 t\u1EEB ch\u1ED1i h\u00E0ng lo\u1EA1t"
   },
   "chat": {
     "title": "Tin nhắn",

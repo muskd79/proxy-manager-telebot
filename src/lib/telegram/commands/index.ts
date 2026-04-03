@@ -13,4 +13,6 @@ export {
   handleAdminRequests,
   handleAdminApproveCallback,
   handleAdminRejectCallback,
+  handleAdminApproveUser,
+  handleAdminBlockUser,
 } from "./admin-approve";
