@@ -21,25 +21,34 @@ export async function handleStart(ctx: Context) {
     MessageType.Command
   );
 
-  let text: string;
-  if (isNew) {
-    text = t("welcome", lang);
-  } else {
-    const statusLabel = lang === "vi" ? "Tr\u1EA1ng th\u00E1i" : "Status";
-    const proxyLabel = lang === "vi" ? "Proxy hi\u1EC7n t\u1EA1i" : "Current proxies";
-    const { count: proxyCount } = await supabaseAdmin
-      .from("proxies")
-      .select("*", { count: "exact", head: true })
-      .eq("assigned_to", user.id)
-      .eq("status", ProxyStatus.Assigned);
+  // Always show full welcome with commands
+  const { count: proxyCount } = await supabaseAdmin
+    .from("proxies")
+    .select("*", { count: "exact", head: true })
+    .eq("assigned_to", user.id)
+    .eq("status", ProxyStatus.Assigned);
 
-    text = [
-      t("welcomeBack", lang),
-      "",
-      `${statusLabel}: ${user.status}`,
-      `${proxyLabel}: ${proxyCount ?? 0}/${user.max_proxies}`,
-    ].join("\n");
-  }
+  const statusLabel = lang === "vi" ? "Trang thai" : "Status";
+  const proxyLabel = lang === "vi" ? "Proxy hien tai" : "Current proxies";
+  const greeting = isNew
+    ? (lang === "vi" ? "Xin chao! Ban da dang ky thanh cong." : "Hello! You have been registered successfully.")
+    : t("welcomeBack", lang);
+
+  const text = [
+    "*Proxy Manager Bot*",
+    "",
+    greeting,
+    "",
+    `${statusLabel}: *${user.status}*`,
+    `${proxyLabel}: *${proxyCount ?? 0}*/${user.max_proxies}`,
+    "",
+    lang === "vi" ? "*Cac lenh co san:*" : "*Available commands:*",
+    "/getproxy - " + (lang === "vi" ? "Yeu cau proxy" : "Request proxy"),
+    "/myproxies - " + (lang === "vi" ? "Xem proxy" : "View proxies"),
+    "/checkproxy - " + (lang === "vi" ? "Kiem tra proxy" : "Check health"),
+    "/status - " + (lang === "vi" ? "Trang thai" : "Status"),
+    "/help - " + (lang === "vi" ? "Huong dan" : "Help"),
+  ].join("\n");
   const menuKeyboard = new Keyboard()
     .text("/getproxy").text("/myproxies").row()
     .text("/checkproxy").text("/status").row()
