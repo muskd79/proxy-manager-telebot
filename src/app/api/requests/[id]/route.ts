@@ -267,12 +267,15 @@ export async function PUT(
       try {
         const { data: teleUser } = await supabase
           .from("tele_users")
-          .select("telegram_id")
+          .select("telegram_id, language")
           .eq("id", currentRequest.tele_user_id)
           .single();
 
         if (teleUser?.telegram_id) {
-          const notifyText = `[X] Y\u00EAu c\u1EA7u proxy b\u1ECB t\u1EEB ch\u1ED1i.\nL\u00FD do: ${rejected_reason || "Kh\u00F4ng r\u00F5"}`;
+          const lang = teleUser?.language || "en";
+          const notifyText = lang === "vi"
+            ? `[X] Yeu cau proxy bi tu choi.\nLy do: ${rejected_reason || "Khong ro"}`
+            : `[X] Proxy request rejected.\nReason: ${rejected_reason || "Not specified"}`;
 
           await sendTelegramMessage(teleUser.telegram_id, notifyText);
 

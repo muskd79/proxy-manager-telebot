@@ -42,8 +42,9 @@ export async function handleStart(ctx: Context) {
   }
   const menuKeyboard = new Keyboard()
     .text("/getproxy").text("/myproxies").row()
-    .text("/status").text("/revoke").row()
-    .text("/help").text("/language")
+    .text("/checkproxy").text("/status").row()
+    .text("/history").text("/revoke").row()
+    .text("/support").text("/help")
     .resized()
     .persistent();
 

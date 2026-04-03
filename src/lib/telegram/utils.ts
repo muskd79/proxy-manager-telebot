@@ -176,11 +176,11 @@ export async function revokeProxy(proxyId: string, userId: string) {
     })
     .eq("id", proxyId);
 
-  // Decrement usage counters (RPC may not exist, just skip on error)
+  // Decrement usage counters
   try {
     await supabaseAdmin.rpc("decrement_usage", { p_user_id: userId });
-  } catch {
-    // RPC may not exist - ignore
+  } catch (err) {
+    console.error("Failed to decrement usage:", err);
   }
 
   await logActivity({

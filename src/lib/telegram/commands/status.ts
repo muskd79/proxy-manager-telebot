@@ -60,6 +60,20 @@ export async function handleStatus(ctx: Context) {
           `Total:   ${tBar} ${user.proxies_used_total}/${user.rate_limit_total}`,
         ];
 
+  // Add reset time info
+  const hourlyReset = user.hourly_reset_at ? new Date(user.hourly_reset_at) : null;
+  const dailyReset = user.daily_reset_at ? new Date(user.daily_reset_at) : null;
+  const now = new Date();
+
+  if (hourlyReset && hourlyReset > now) {
+    const mins = Math.ceil((hourlyReset.getTime() - now.getTime()) / 60000);
+    statusLines.push(lang === "vi" ? `Reset theo gio: ${mins} phut` : `Hourly reset: ${mins} min`);
+  }
+  if (dailyReset && dailyReset > now) {
+    const hours = Math.ceil((dailyReset.getTime() - now.getTime()) / 3600000);
+    statusLines.push(lang === "vi" ? `Reset theo ngay: ${hours} gio` : `Daily reset: ${hours} hrs`);
+  }
+
   const text = statusLines.join("\n");
   await ctx.reply(text, { parse_mode: "Markdown" });
   await logChatMessage(

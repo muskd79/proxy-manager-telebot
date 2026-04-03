@@ -6,3 +6,6 @@ export { handleRevoke, handleRevokeSelection } from "./revoke";
 export { handleCancel } from "./cancel";
 export { handleLanguage, handleLanguageSelection } from "./language";
 export { handleHelp, handleUnknownCommand } from "./help";
+export { handleCheckProxy } from "./check-proxy";
+export { handleHistory } from "./history";
+export { handleSupport } from "./support";

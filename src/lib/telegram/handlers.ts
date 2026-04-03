@@ -15,6 +15,9 @@ import {
   handleCancel,
   handleRevoke,
   handleRevokeSelection,
+  handleCheckProxy,
+  handleHistory,
+  handleSupport,
 } from "./commands";
 
 // ---------------------------------------------------------------------------
@@ -29,20 +32,26 @@ bot.command("status", handleStatus);
 bot.command("language", handleLanguage);
 bot.command("cancel", handleCancel);
 bot.command("revoke", handleRevoke);
+bot.command("checkproxy", handleCheckProxy);
+bot.command("history", handleHistory);
+bot.command("support", handleSupport);
 
 // ---------------------------------------------------------------------------
 // Set bot commands menu (visible in Telegram UI)
 // ---------------------------------------------------------------------------
 
 bot.api.setMyCommands([
-  { command: "start", description: "Bắt đầu / Start" },
-  { command: "getproxy", description: "Lấy proxy / Get proxy" },
-  { command: "myproxies", description: "Proxy của tôi / My proxies" },
-  { command: "status", description: "Trạng thái / Status" },
-  { command: "revoke", description: "Trả proxy / Return proxy" },
-  { command: "cancel", description: "Huỷ yêu cầu / Cancel request" },
-  { command: "language", description: "Đổi ngôn ngữ / Language" },
-  { command: "help", description: "Hướng dẫn / Help" },
+  { command: "start", description: "Bat dau / Start" },
+  { command: "getproxy", description: "Lay proxy / Get proxy" },
+  { command: "myproxies", description: "Proxy cua toi / My proxies" },
+  { command: "checkproxy", description: "Kiem tra proxy / Check proxy health" },
+  { command: "status", description: "Trang thai / Status" },
+  { command: "history", description: "Lich su / Request history" },
+  { command: "revoke", description: "Tra proxy / Return proxy" },
+  { command: "cancel", description: "Huy yeu cau / Cancel request" },
+  { command: "support", description: "Ho tro / Support" },
+  { command: "language", description: "Doi ngon ngu / Language" },
+  { command: "help", description: "Huong dan / Help" },
 ]).catch(console.error);
 
 // ---------------------------------------------------------------------------
