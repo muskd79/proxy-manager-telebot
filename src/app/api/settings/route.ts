@@ -102,6 +102,31 @@ export async function PUT(request: NextRequest) {
         }
       }
 
+      // If global_max_total_requests changed, retrofit existing users
+      if (settings.global_max_total_requests !== undefined) {
+        const newGlobalMax = Number(settings.global_max_total_requests);
+        if (newGlobalMax > 0) {
+          // Cap all users whose rate_limit_total exceeds the new global max
+          await supabase
+            .from("tele_users")
+            .update({ rate_limit_total: newGlobalMax })
+            .gt("rate_limit_total", newGlobalMax)
+            .eq("is_deleted", false);
+        }
+      }
+
+      // Similarly for global_max_proxies
+      if (settings.global_max_proxies !== undefined) {
+        const newGlobalMax = Number(settings.global_max_proxies);
+        if (newGlobalMax > 0) {
+          await supabase
+            .from("tele_users")
+            .update({ max_proxies: newGlobalMax })
+            .gt("max_proxies", newGlobalMax)
+            .eq("is_deleted", false);
+        }
+      }
+
       logActivity({
         actorType: "admin",
         actorId: admin.id,

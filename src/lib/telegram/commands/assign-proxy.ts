@@ -1,7 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
-import { logChatMessage, logActivity } from "../utils";
+import { logChatMessage, logActivity, loadGlobalCaps } from "../utils";
+import { checkAndIncrementUsage } from "@/lib/rate-limiter";
 import {
   ChatDirection,
   MessageType,
@@ -28,6 +29,25 @@ export async function autoAssignProxy(
   lang: SupportedLanguage
 ): Promise<AssignResult> {
   const userId = user.id as string;
+
+  // Atomic rate limit check + increment (uses DB row lock to prevent races)
+  const globalCaps = await loadGlobalCaps();
+  const rateLimitResult = await checkAndIncrementUsage(
+    userId,
+    globalCaps.global_max_total_requests
+  );
+
+  if (!rateLimitResult.allowed) {
+    const text = t("rateLimitExceeded", lang);
+    await logChatMessage(
+      userId,
+      null,
+      ChatDirection.Outgoing,
+      text,
+      MessageType.Text
+    );
+    return { success: false, text };
+  }
 
   // Find available proxy of selected type
   const { data: proxy } = await supabaseAdmin
@@ -82,21 +102,7 @@ export async function autoAssignProxy(
     rejected_reason: null,
   });
 
-  // Increment usage
-  await supabaseAdmin
-    .from("tele_users")
-    .update({
-      proxies_used_hourly: (user.proxies_used_hourly as number) + 1,
-      proxies_used_daily: (user.proxies_used_daily as number) + 1,
-      proxies_used_total: (user.proxies_used_total as number) + 1,
-      hourly_reset_at:
-        (user.hourly_reset_at as string | null) ??
-        new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      daily_reset_at:
-        (user.daily_reset_at as string | null) ??
-        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    })
-    .eq("id", userId);
+  // Usage counters already incremented atomically by checkAndIncrementUsage()
 
   const text = fillTemplate(t("proxyAssigned", lang), {
     host: proxy.host,

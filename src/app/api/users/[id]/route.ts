@@ -59,11 +59,22 @@ export async function PUT(
     const body = await request.json();
     const parsed = UpdateUserSchema.safeParse(body);
     if (!parsed.success) {
+      const flat = parsed.error.flatten();
+      const errorMessage = flat.formErrors.length > 0
+        ? flat.formErrors.join("; ")
+        : "Validation failed";
       return NextResponse.json(
-        { success: false, error: "Validation failed", details: parsed.error.flatten().fieldErrors } satisfies ApiResponse<never> & { details: unknown },
+        { success: false, error: errorMessage, details: flat.fieldErrors } satisfies ApiResponse<never> & { details: unknown },
         { status: 400 }
       );
     }
+
+    // Fetch current values before updating for audit trail
+    const { data: currentUser } = await supabase
+      .from("tele_users")
+      .select("rate_limit_hourly, rate_limit_daily, rate_limit_total, max_proxies, approval_mode")
+      .eq("id", id)
+      .single();
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -98,6 +109,34 @@ export async function PUT(
       }
     }
 
+    // Enforce global caps on per-user rate limits and max_proxies
+    if (updateData.rate_limit_total !== undefined || updateData.max_proxies !== undefined) {
+      const { data: globalSettings } = await supabase
+        .from("settings")
+        .select("key, value")
+        .in("key", ["global_max_total_requests", "global_max_proxies"]);
+
+      const getGlobalCap = (key: string): number | null => {
+        const row = globalSettings?.find((r: { key: string; value: { value?: unknown } }) => r.key === key);
+        const val = row?.value?.value;
+        return typeof val === "number" && val > 0 ? val : null;
+      };
+
+      const globalMaxTotal = getGlobalCap("global_max_total_requests");
+      const globalMaxProxies = getGlobalCap("global_max_proxies");
+
+      if (updateData.rate_limit_total !== undefined && globalMaxTotal !== null) {
+        if (Number(updateData.rate_limit_total) > globalMaxTotal) {
+          updateData.rate_limit_total = globalMaxTotal;
+        }
+      }
+      if (updateData.max_proxies !== undefined && globalMaxProxies !== null) {
+        if (Number(updateData.max_proxies) > globalMaxProxies) {
+          updateData.max_proxies = globalMaxProxies;
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from("tele_users")
       .update(updateData)
@@ -118,7 +157,16 @@ export async function PUT(
       action: "user.update",
       resourceType: "user",
       resourceId: id,
-      details: updateData,
+      details: {
+        ...updateData,
+        previous: currentUser ? {
+          rate_limit_hourly: currentUser.rate_limit_hourly,
+          rate_limit_daily: currentUser.rate_limit_daily,
+          rate_limit_total: currentUser.rate_limit_total,
+          max_proxies: currentUser.max_proxies,
+          approval_mode: currentUser.approval_mode,
+        } : null,
+      },
       ipAddress: request.headers.get("x-forwarded-for") || undefined,
       userAgent: request.headers.get("user-agent") || undefined,
     }).catch(console.error);

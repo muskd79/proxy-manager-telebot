@@ -136,7 +136,20 @@ export const UpdateUserSchema = z.object({
   language: z.enum(["en", "vi"]).optional(),
   is_deleted: z.boolean().optional(),
   deleted_at: z.string().datetime().nullable().optional(),
-});
+}).refine(
+  (data) => {
+    // If both hourly and daily are set, hourly must be <= daily
+    if (data.rate_limit_hourly !== undefined && data.rate_limit_daily !== undefined) {
+      if (data.rate_limit_hourly > data.rate_limit_daily) return false;
+    }
+    // If both daily and total are set, daily must be <= total
+    if (data.rate_limit_daily !== undefined && data.rate_limit_total !== undefined) {
+      if (data.rate_limit_daily > data.rate_limit_total) return false;
+    }
+    return true;
+  },
+  { message: "Rate limits must follow hierarchy: hourly \u2264 daily \u2264 total" }
+);
 
 // ─── Settings schemas ────────────────────────────────────────────
 

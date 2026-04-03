@@ -28,6 +28,12 @@ interface RateLimitResult {
   };
 }
 
+/**
+ * @deprecated Use checkAndIncrementUsage() for atomic check + increment.
+ * This function has a race condition: two concurrent requests can both pass
+ * the check, then both increment, exceeding the limit.
+ * Kept only for backward compatibility with read-only checks in utils.ts.
+ */
 export async function checkRateLimit(
   userId: string
 ): Promise<RateLimitResult> {
@@ -101,23 +107,38 @@ export async function checkRateLimit(
   };
 }
 
-export async function incrementUsage(userId: string): Promise<void> {
-  const { data: user } = await supabaseAdmin
-    .from("tele_users")
-    .select("proxies_used_hourly, proxies_used_daily, proxies_used_total")
-    .eq("id", userId)
-    .single();
+/**
+ * Atomic rate limit check + increment.
+ * Uses database-level row locking (FOR UPDATE) to prevent race conditions.
+ * Replaces the old checkRateLimit() + incrementUsage() pattern.
+ *
+ * Call this right before actually assigning a proxy. If it returns
+ * allowed: false, the proxy should NOT be assigned.
+ */
+export async function checkAndIncrementUsage(
+  userId: string,
+  globalMaxTotal?: number
+): Promise<{
+  allowed: boolean;
+  reason?: string;
+  remaining?: { hourly: number; daily: number; total: number };
+}> {
+  const { data, error } = await supabaseAdmin.rpc("check_and_increment_usage", {
+    p_user_id: userId,
+    p_global_max_total: globalMaxTotal ?? null,
+  });
 
-  if (!user) return;
+  if (error) {
+    console.error("Rate limit check error:", error.message);
+    // Fail-closed for rate limiting (safer than fail-open)
+    return { allowed: false, reason: "Rate limit check failed" };
+  }
 
-  await supabaseAdmin
-    .from("tele_users")
-    .update({
-      proxies_used_hourly: user.proxies_used_hourly + 1,
-      proxies_used_daily: user.proxies_used_daily + 1,
-      proxies_used_total: user.proxies_used_total + 1,
-    })
-    .eq("id", userId);
+  return data as {
+    allowed: boolean;
+    reason?: string;
+    remaining?: { hourly: number; daily: number; total: number };
+  };
 }
 
 // ----------------------

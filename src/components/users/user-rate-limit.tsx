@@ -30,6 +30,22 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
   const [maxProxies, setMaxProxies] = useState(user.max_proxies);
   const [approvalMode, setApprovalMode] = useState<string>(user.approval_mode);
   const [isSaving, setIsSaving] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  // Validate limit hierarchy on every change
+  useEffect(() => {
+    const newErrors: string[] = [];
+    if (hourlyLimit > dailyLimit) {
+      newErrors.push("Hourly limit cannot exceed daily limit");
+    }
+    if (dailyLimit > totalLimit) {
+      newErrors.push("Daily limit cannot exceed total limit");
+    }
+    if (hourlyLimit === 0 || dailyLimit === 0 || totalLimit === 0) {
+      newErrors.push("Warning: Setting limit to 0 will block all proxy requests for this user");
+    }
+    setErrors(newErrors);
+  }, [hourlyLimit, dailyLimit, totalLimit]);
 
   useEffect(() => {
     setHourlyLimit(user.rate_limit_hourly);
@@ -63,7 +79,7 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
   };
 
   const getUsagePercentage = (used: number, limit: number) => {
-    if (limit === 0) return 0;
+    if (limit === 0) return 100; // 0 means blocked = 100% used
     return Math.min(Math.round((used / limit) * 100), 100);
   };
 
@@ -157,7 +173,7 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
                 className="bg-background"
               />
               <p className="text-xs text-muted-foreground">
-                Max requests per hour
+                Max requests per hour (0 = blocked)
               </p>
             </div>
 
@@ -172,7 +188,7 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
                 className="bg-background"
               />
               <p className="text-xs text-muted-foreground">
-                Max requests per day
+                Max requests per day (0 = blocked)
               </p>
             </div>
 
@@ -187,7 +203,7 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
                 className="bg-background"
               />
               <p className="text-xs text-muted-foreground">
-                Max total requests (lifetime)
+                Max total requests, lifetime (0 = blocked)
               </p>
             </div>
 
@@ -224,7 +240,15 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
             />
           </div>
 
-          <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto">
+          {errors.length > 0 && (
+            <div className="rounded-md border border-yellow-500 bg-yellow-500/10 p-3 space-y-1">
+              {errors.map((err, i) => (
+                <p key={i} className="text-sm text-yellow-600 dark:text-yellow-400">{err}</p>
+              ))}
+            </div>
+          )}
+
+          <Button onClick={handleSave} disabled={isSaving || hourlyLimit > dailyLimit || dailyLimit > totalLimit} className="w-full sm:w-auto">
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
