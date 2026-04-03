@@ -5,6 +5,7 @@ import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
+import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Plus,
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   Zap,
   Loader2,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/shared/pagination";
@@ -33,6 +35,7 @@ export default function ProxiesPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkProgress, setCheckProgress] = useState(0);
   const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export default function ProxiesPage() {
       if (filters.status) params.set("status", filters.status);
       if (filters.country) params.set("country", filters.country);
       if (filters.tags) params.set("tags", filters.tags.join(","));
+      if (filters.isp) params.set("isp", filters.isp);
       params.set("page", String(filters.page || 1));
       params.set("pageSize", String(filters.pageSize || 20));
       params.set("sortBy", filters.sortBy || "created_at");
@@ -293,10 +297,16 @@ export default function ProxiesPage() {
             Health Check
           </Button>
           {canWrite && (
-            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-              <Trash2 className="size-4 mr-1" />
-              Delete
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
+                <Pencil className="size-4 mr-1" />
+                Edit ({selectedIds.length})
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                <Trash2 className="size-4 mr-1" />
+                Delete
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -346,6 +356,13 @@ export default function ProxiesPage() {
         onOpenChange={setFormOpen}
         proxy={editProxy}
         onSave={handleSaveProxy}
+      />
+
+      <ProxyBulkEdit
+        open={bulkEditOpen}
+        onOpenChange={setBulkEditOpen}
+        selectedIds={selectedIds}
+        onComplete={() => { setSelectedIds([]); fetchProxies(); }}
       />
     </div>
   );

@@ -78,6 +78,7 @@ export function ProxyFilters({
     filters.type ||
     filters.status ||
     filters.country ||
+    filters.isp ||
     (filters.tags && filters.tags.length > 0);
 
   return (
@@ -147,6 +148,14 @@ export function ProxyFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {/* ISP filter */}
+        <Input
+          placeholder="ISP..."
+          value={filters.isp || ""}
+          onChange={(e) => updateFilter("isp", e.target.value)}
+          className="w-32"
+        />
 
         {/* Tags filter input */}
         <div className="relative min-w-[200px] max-w-sm">

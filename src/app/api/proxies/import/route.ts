@@ -24,10 +24,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { proxies, type, country } = body as {
+    const { proxies, type, country, tags, notes, isp } = body as {
       proxies: ImportProxyRow[];
       type?: ProxyType;
       country?: string;
+      tags?: string[];
+      notes?: string;
+      isp?: string;
     };
 
     if (!proxies || !Array.isArray(proxies) || proxies.length === 0) {
@@ -84,6 +87,9 @@ export async function POST(request: NextRequest) {
         username: proxy.username || null,
         password: proxy.password || null,
         country: proxy.country || country || null,
+        tags: tags || null,
+        notes: notes || null,
+        isp: isp || null,
         status: "available",
         is_deleted: false,
         created_by: admin.id,

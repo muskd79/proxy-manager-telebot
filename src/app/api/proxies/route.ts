@@ -48,6 +48,11 @@ export async function GET(request: NextRequest) {
       query = query.overlaps("tags", filters.tags);
     }
 
+    const isp = searchParams.get("isp");
+    if (isp) {
+      query = query.ilike("isp", `%${isp}%`);
+    }
+
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;
     const from = (page - 1) * pageSize;

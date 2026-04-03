@@ -40,6 +40,7 @@ export interface ProxyFilters {
   country?: string;
   assignedTo?: string;
   tags?: string[];
+  isp?: string;
   isDeleted?: boolean;
   page?: number;
   pageSize?: number;

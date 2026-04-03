@@ -138,6 +138,7 @@ export function ProxyTable({
           <SortableHead column="status">Status</SortableHead>
           <TableHead>Tags</TableHead>
           <TableHead>Country</TableHead>
+          <TableHead>ISP</TableHead>
           <TableHead>Assigned To</TableHead>
           <SortableHead column="speed_ms">Speed</SortableHead>
           <SortableHead column="expires_at">Expires</SortableHead>
@@ -147,7 +148,7 @@ export function ProxyTable({
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={10} className="text-center py-8">
+            <TableCell colSpan={11} className="text-center py-8">
               <p className="text-muted-foreground">No proxies found</p>
             </TableCell>
           </TableRow>
@@ -203,6 +204,9 @@ export function ProxyTable({
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {proxy.country || "-"}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {proxy.isp || "-"}
               </TableCell>
               <TableCell>
                 {proxy.assigned_to ? (

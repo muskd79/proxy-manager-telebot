@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Distinct countries list for autocomplete
+    const countries = Object.keys(byCountry).sort();
+
     return NextResponse.json({
       success: true,
       data: {
@@ -40,6 +43,7 @@ export async function GET(request: NextRequest) {
         byType,
         byStatus,
         byCountry,
+        countries,
       },
     });
   } catch (error) {

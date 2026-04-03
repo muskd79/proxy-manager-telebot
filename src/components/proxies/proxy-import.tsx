@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -27,7 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Upload, FileText, CheckCircle, XCircle, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
@@ -47,9 +48,22 @@ export function ProxyImport() {
   const [parsedProxies, setParsedProxies] = useState<ParsedProxy[]>([]);
   const [proxyType, setProxyType] = useState<ProxyType>(ProxyType.HTTP);
   const [country, setCountry] = useState("");
+  const [tags, setTags] = useState("");
+  const [notes, setNotes] = useState("");
+  const [isp, setIsp] = useState("");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [countries, setCountries] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/proxies/stats")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.data?.countries) setCountries(d.data.countries);
+      })
+      .catch(() => {});
+  }, []);
 
   function parseProxyLine(line: string, lineNum: number): ParsedProxy {
     const trimmed = line.trim();
@@ -164,6 +178,11 @@ export function ProxyImport() {
           proxies: validProxies,
           type: proxyType,
           country: country || undefined,
+          tags: tags
+            ? tags.split(",").map((t) => t.trim()).filter(Boolean)
+            : undefined,
+          notes: notes || undefined,
+          isp: isp || undefined,
         }),
       });
 
@@ -239,11 +258,102 @@ export function ProxyImport() {
               <Label htmlFor="import-country">Country</Label>
               <Input
                 id="import-country"
-                placeholder="e.g. US"
+                list="import-country-list"
+                placeholder="e.g. US, VN, JP"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               />
+              <datalist id="import-country-list">
+                {countries.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-isp">ISP</Label>
+              <Input
+                id="import-isp"
+                placeholder="e.g. Viettel, AWS"
+                value={isp}
+                onChange={(e) => setIsp(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-tags">Tags</Label>
+              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 min-h-[38px]">
+                {tags
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+                  .map((tag, idx) => (
+                    <Badge key={`${tag}-${idx}`} variant="secondary" className="gap-1 text-xs">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tagList = tags
+                            .split(",")
+                            .map((t) => t.trim())
+                            .filter(Boolean)
+                            .filter((_, i) => i !== idx);
+                          setTags(tagList.join(", "));
+                        }}
+                        className="ml-0.5 rounded-full hover:bg-foreground/20 p-0.5"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                <Input
+                  id="import-tags"
+                  placeholder={
+                    tags.split(",").filter((t) => t.trim()).length > 0
+                      ? "Add more..."
+                      : "Type a tag and press Enter"
+                  }
+                  className="flex-1 min-w-[120px] border-0 bg-transparent p-0 h-auto shadow-none focus-visible:ring-0"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      const val = e.currentTarget.value.trim();
+                      if (val) {
+                        const existing = tags
+                          .split(",")
+                          .map((t) => t.trim())
+                          .filter(Boolean);
+                        if (!existing.includes(val)) {
+                          setTags([...existing, val].join(", "));
+                        }
+                        e.currentTarget.value = "";
+                      }
+                    }
+                    if (e.key === "Backspace" && !e.currentTarget.value) {
+                      const existing = tags
+                        .split(",")
+                        .map((t) => t.trim())
+                        .filter(Boolean);
+                      if (existing.length > 0) {
+                        setTags(existing.slice(0, -1).join(", "));
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Press Enter or comma to add a tag</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="import-notes">Notes</Label>
+            <Textarea
+              id="import-notes"
+              placeholder="Notes to apply to all imported proxies..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>

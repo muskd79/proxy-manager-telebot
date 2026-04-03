@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +72,16 @@ export function ProxyForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [countries, setCountries] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/proxies/stats")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.data?.countries) setCountries(d.data.countries);
+      })
+      .catch(() => {});
+  }, []);
 
   function handleChange(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -216,10 +226,16 @@ export function ProxyForm({
               <Label htmlFor="country">Country</Label>
               <Input
                 id="country"
-                placeholder="US"
+                list="country-list"
+                placeholder="e.g. US, VN, JP"
                 value={formData.country}
                 onChange={(e) => handleChange("country", e.target.value)}
               />
+              <datalist id="country-list">
+                {countries.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <Label htmlFor="city">City</Label>
