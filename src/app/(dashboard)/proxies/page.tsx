@@ -184,46 +184,7 @@ export default function ProxiesPage() {
   };
 
   function handleExport(format: "csv" | "json") {
-    const dataToExport = proxies.map((p) => ({
-      host: p.host,
-      port: p.port,
-      type: p.type,
-      status: p.status,
-      username: p.username || "",
-      password: p.password || "",
-      country: p.country || "",
-      city: p.city || "",
-      speed_ms: p.speed_ms ?? "",
-      expires_at: p.expires_at || "",
-    }));
-
-    let content: string;
-    let mimeType: string;
-    let ext: string;
-
-    if (format === "csv") {
-      const headers = Object.keys(dataToExport[0] || {}).join(",");
-      const rows = dataToExport.map((row) =>
-        Object.values(row)
-          .map((v) => `"${v}"`)
-          .join(",")
-      );
-      content = [headers, ...rows].join("\n");
-      mimeType = "text/csv";
-      ext = "csv";
-    } else {
-      content = JSON.stringify(dataToExport, null, 2);
-      mimeType = "application/json";
-      ext = "json";
-    }
-
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `proxies.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    window.open(`/api/proxies/export?format=${format}`, "_blank");
   }
 
   return (

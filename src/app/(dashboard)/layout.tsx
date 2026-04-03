@@ -31,17 +31,8 @@ export default async function DashboardLayout({
   return (
     <RoleProvider role={(admin?.role as Role) ?? "viewer"}>
       <I18nProvider>
-      <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar
-          admin={{
-            id: admin?.id ?? user.id,
-            email: admin?.email ?? user.email ?? "",
-            display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
-            role: admin?.role ?? "admin",
-          }}
-        />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Header
+        <div className="flex h-screen overflow-hidden bg-background">
+          <Sidebar
             admin={{
               id: admin?.id ?? user.id,
               email: admin?.email ?? user.email ?? "",
@@ -49,9 +40,18 @@ export default async function DashboardLayout({
               role: admin?.role ?? "admin",
             }}
           />
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Header
+              admin={{
+                id: admin?.id ?? user.id,
+                email: admin?.email ?? user.email ?? "",
+                display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
+                role: admin?.role ?? "admin",
+              }}
+            />
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          </div>
         </div>
-      </div>
       </I18nProvider>
     </RoleProvider>
   );

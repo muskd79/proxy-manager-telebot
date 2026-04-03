@@ -11,6 +11,9 @@ export const HEALTH_CHECK_TIMEOUT_MS = 10_000;
 export const HEALTH_CHECK_CONCURRENCY = 50;
 export const IMPORT_BATCH_SIZE = 100;
 
+// Health Check Cron
+export const HEALTH_CHECK_CRON_BATCH_SIZE = 500;
+
 // Trash
 export const TRASH_AUTO_CLEAN_DAYS = 30;
 
