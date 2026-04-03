@@ -52,3 +52,76 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  migrate:
+    name: Apply Supabase Migrations
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect new migration files
+        id: detect
+        run: |
+          # Find migration files changed in this push
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'supabase/migrations/*.sql' 2>/dev/null || echo "")
+          if [ -z "$CHANGED" ]; then
+            echo "No new migrations detected"
+            echo "has_migrations=false" >> $GITHUB_OUTPUT
+          else
+            echo "New migrations found:"
+            echo "$CHANGED"
+            echo "has_migrations=true" >> $GITHUB_OUTPUT
+            echo "files<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply migrations to Supabase
+        if: steps.detect.outputs.has_migrations == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: nylcszlznehzcrlaexoo
+        run: |
+          echo "Applying migrations to Supabase..."
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            echo "  → $file"
+            node -e "
+              const fs = require('fs');
+              const https = require('https');
+              const sql = fs.readFileSync('$file', 'utf8');
+              const body = JSON.stringify({ query: sql });
+              const req = https.request({
+                hostname: 'api.supabase.com',
+                path: '/v1/projects/${SUPABASE_PROJECT_REF}/database/query',
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Bearer ' + process.env.SUPABASE_ACCESS_TOKEN,
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(body),
+                },
+              }, (res) => {
+                let data = '';
+                res.on('data', (c) => data += c);
+                res.on('end', () => {
+                  if (res.statusCode >= 400) {
+                    console.error('Migration failed:', data);
+                    process.exit(1);
+                  }
+                  console.log('    Applied successfully');
+                });
+              });
+              req.on('error', (e) => { console.error(e); process.exit(1); });
+              req.write(body);
+              req.end();
+            "
+          done <<< "${{ steps.detect.outputs.files }}"
+          echo "All migrations applied successfully!"
