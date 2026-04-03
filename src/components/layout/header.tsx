@@ -47,6 +47,22 @@ export function Header({ admin }: { admin: Admin }) {
     return () => clearInterval(interval);
   }, []);
 
+  // Realtime sync: instant notification updates on proxy_requests changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("pending-requests")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
+        fetch("/api/requests?status=pending&pageSize=1")
+          .then(r => r.json())
+          .then(d => setPendingCount(d?.data?.total || 0))
+          .catch(() => {});
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();

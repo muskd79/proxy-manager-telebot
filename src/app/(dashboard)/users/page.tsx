@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Users,
   Search,
@@ -35,6 +35,7 @@ import { UserTable } from "@/components/users/user-table";
 import { Pagination } from "@/components/shared/pagination";
 import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
 
 export default function UsersPage() {
   const { canWrite } = useRole();
@@ -52,6 +53,19 @@ export default function UsersPage() {
     unblockUser,
     deleteUser,
   } = useUsers();
+
+  // Realtime sync: re-fetch when tele_users table changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("users-changes")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchUsers]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkAction, setBulkAction] = useState<"block" | "unblock" | "delete" | null>(null);

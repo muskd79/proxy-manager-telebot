@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, ChevronUp, MessageCircle, ExternalLink, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -113,10 +113,10 @@ export function ChatWindow({
             {user.username ? `@${user.username}` : `Telegram ID: ${user.telegram_id}`}
           </p>
         </div>
-        <Button variant="ghost" size="sm" render={<Link href={`/users/${user.id}`} />}>
+        <Link href={`/users/${user.id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>
             <ExternalLink className="mr-1 h-3.5 w-3.5" />
             Profile
-        </Button>
+        </Link>
       </div>
 
       {/* Messages Area */}

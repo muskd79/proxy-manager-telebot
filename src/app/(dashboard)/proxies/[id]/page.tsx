@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, use } from "react";
 import { ProxyDetail } from "@/components/proxies/proxy-detail";
 import { ProxyForm } from "@/components/proxies/proxy-form";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -93,10 +93,10 @@ export default function ProxyDetailPage({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-muted-foreground">Proxy not found</p>
-        <Button variant="outline" render={<Link href="/proxies" />}>
+        <Link href="/proxies" className={buttonVariants({ variant: "outline" })}>
           <ArrowLeft className="size-4 mr-1.5" />
           Back to Proxies
-        </Button>
+        </Link>
       </div>
     );
   }
@@ -104,9 +104,9 @@ export default function ProxyDetailPage({
   return (
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" render={<Link href="/proxies" />}>
+        <Link href="/proxies" className={buttonVariants({ variant: "ghost", size: "icon" })}>
           <ArrowLeft className="size-4" />
-        </Button>
+        </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Proxy Details</h1>
           <p className="text-muted-foreground font-mono">

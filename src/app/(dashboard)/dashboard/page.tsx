@@ -8,6 +8,7 @@ import { ActiveUsers } from "@/components/dashboard/active-users";
 import type { DashboardStats } from "@/types/api";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -32,9 +33,22 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchStats();
 
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 30 seconds (fallback)
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  // Realtime sync: instant dashboard updates on data changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("dashboard-changes")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => fetchStats())
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => fetchStats())
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => fetchStats())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [fetchStats]);
 
   return (

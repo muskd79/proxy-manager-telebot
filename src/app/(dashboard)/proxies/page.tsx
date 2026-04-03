@@ -5,7 +5,7 @@ import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Plus,
   Upload,
@@ -21,6 +21,7 @@ import { Pagination } from "@/components/shared/pagination";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 export default function ProxiesPage() {
   const { canWrite } = useRole();
@@ -91,6 +92,19 @@ export default function ProxiesPage() {
   useEffect(() => {
     fetchCountries();
   }, [fetchCountries]);
+
+  // Realtime sync: re-fetch when proxies table changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("proxies-changes")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => {
+        fetchProxies();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchProxies]);
 
   function handleSort(column: string) {
     setFilters((prev) => ({
@@ -198,10 +212,10 @@ export default function ProxiesPage() {
         </div>
         <div className="flex items-center gap-2">
           {canWrite && (
-            <Button variant="outline" size="sm" render={<Link href="/proxies/import" />}>
+            <Link href="/proxies/import" className={buttonVariants({ variant: "outline", size: "sm" })}>
               <Upload className="size-4 mr-1.5" />
               Import
-            </Button>
+            </Link>
           )}
           <Button
             variant="outline"

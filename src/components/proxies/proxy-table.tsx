@@ -248,11 +248,11 @@ export function ProxyTable({
                     }
                   />
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      render={<Link href={`/proxies/${proxy.id}`} />}
-                    >
-                      <Eye className="size-4" />
-                      View Details
+                    <DropdownMenuItem>
+                      <Link href={`/proxies/${proxy.id}`} className="flex items-center gap-2 w-full">
+                        <Eye className="size-4" />
+                        View Details
+                      </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onEdit(proxy)}>
                       <Pencil className="size-4" />

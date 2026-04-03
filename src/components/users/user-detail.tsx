@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -183,10 +183,10 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
         <p className="text-lg">User not found</p>
-        <Button variant="ghost" render={<Link href="/users" />} className="mt-4">
+        <Link href="/users" className={buttonVariants({ variant: "ghost" }) + " mt-4"}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Users
-        </Button>
+        </Link>
       </div>
     );
   }
@@ -198,10 +198,10 @@ export function UserDetail({ userId, initialTab = "info" }: UserDetailProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" render={<Link href="/users" />}>
+          <Link href="/users" className={buttonVariants({ variant: "ghost", size: "sm" })}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
-          </Button>
+          </Link>
           <div>
             <h1 className="text-2xl font-bold">{displayName}</h1>
             <p className="text-sm text-muted-foreground">

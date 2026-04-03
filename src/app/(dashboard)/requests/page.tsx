@@ -22,6 +22,7 @@ import {
 } from "@/components/requests/request-actions";
 import type { ProxyRequest, RequestStatus } from "@/types/database";
 import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
+import { createClient } from "@/lib/supabase/client";
 
 interface RequestWithUser extends ProxyRequest {
   tele_user?: {
@@ -98,6 +99,19 @@ export default function RequestsPage() {
 
   useEffect(() => {
     fetchRequests();
+  }, [fetchRequests]);
+
+  // Realtime sync: re-fetch when proxy_requests table changes
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("requests-changes")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
+        fetchRequests();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [fetchRequests]);
 
   const handleTabChange = (tab: string) => {

@@ -263,13 +263,17 @@ export function UserTable({
                           <Settings className="h-4 w-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem render={<Link href={`/users/${user.id}`} />}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Details
+                        <DropdownMenuItem>
+                            <Link href={`/users/${user.id}`} className="flex items-center w-full">
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem render={<Link href={`/users/${user.id}?tab=rate-limits`} />}>
-                            <Settings className="mr-2 h-4 w-4" />
-                            Edit Rate Limits
+                        <DropdownMenuItem>
+                            <Link href={`/users/${user.id}?tab=rate-limits`} className="flex items-center w-full">
+                              <Settings className="mr-2 h-4 w-4" />
+                              Edit Rate Limits
+                            </Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleBlockToggle(user)}>
