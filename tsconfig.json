@@ -19,6 +19,8 @@
       }
     ],
     "paths": {
+      "@test/*": ["./src/__tests__/setup/*"],
+      "@test": ["./src/__tests__/setup"],
       "@/*": ["./src/*"]
     }
   },

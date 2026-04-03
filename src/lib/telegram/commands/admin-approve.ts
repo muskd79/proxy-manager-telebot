@@ -54,7 +54,7 @@ export async function handleAdminRequests(ctx: Context) {
       ? `@${user.username}`
       : user?.first_name || "Unknown";
     const type = req.proxy_type?.toUpperCase() || "ANY";
-    const date = new Date(req.created_at).toLocaleDateString();
+    const date = new Date(req.created_at).toISOString().split("T")[0];
 
     lines.push(`${name} - ${type} - ${date}`);
     keyboard

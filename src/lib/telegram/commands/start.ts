@@ -20,7 +20,67 @@ export async function handleStart(ctx: Context) {
     MessageType.Command
   );
 
-  // Always show full welcome with commands
+  // If user is new or pending, show limited message
+  if (isNew || user.status === "pending") {
+    const pendingText = lang === "vi"
+      ? [
+          "*Proxy Manager Bot*",
+          "",
+          "Xin chao! Ban da dang ky thanh cong.",
+          "",
+          "[i] Tai khoan cua ban dang cho admin duyet. Ban se duoc thong bao khi duoc phe duyet.",
+          "",
+          "/support - Ho tro",
+          "/language - Doi ngon ngu",
+        ].join("\n")
+      : [
+          "*Proxy Manager Bot*",
+          "",
+          "Hello! You have been registered successfully.",
+          "",
+          "[i] Your account is pending admin approval. You will be notified when approved.",
+          "",
+          "/support - Contact support",
+          "/language - Change language",
+        ].join("\n");
+
+    const pendingKeyboard = new Keyboard()
+      .text("/support").text("/language")
+      .resized()
+      .persistent();
+
+    await ctx.reply(pendingText, {
+      parse_mode: "Markdown",
+      reply_markup: pendingKeyboard,
+    });
+
+    // Log outgoing
+    await logChatMessage(
+      user.id,
+      null,
+      ChatDirection.Outgoing,
+      pendingText,
+      MessageType.Text
+    );
+
+    // Notify admins about new user registration
+    if (isNew) {
+      const { notifyAllAdmins } = await import("../notify-admins");
+      const { InlineKeyboard } = await import("grammy");
+
+      const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
+      const notifyText = `[New User] ${username} (ID: ${user.telegram_id}) registered.\n\nApprove or block?`;
+
+      const keyboard = new InlineKeyboard()
+        .text("Approve", `admin_approve_user:${user.id}`)
+        .text("Block", `admin_block_user:${user.id}`);
+
+      notifyAllAdmins(notifyText, { inlineKeyboard: keyboard }).catch(console.error);
+    }
+    return;
+  }
+
+  // Active user: show full welcome with commands
   const { count: proxyCount } = await supabaseAdmin
     .from("proxies")
     .select("*", { count: "exact", head: true })
@@ -29,9 +89,7 @@ export async function handleStart(ctx: Context) {
 
   const statusLabel = lang === "vi" ? "Trang thai" : "Status";
   const proxyLabel = lang === "vi" ? "Proxy hien tai" : "Current proxies";
-  const greeting = isNew
-    ? (lang === "vi" ? "Xin chao! Ban da dang ky thanh cong." : "Hello! You have been registered successfully.")
-    : t("welcomeBack", lang);
+  const greeting = t("welcomeBack", lang);
 
   const text = [
     "*Proxy Manager Bot*",
@@ -70,18 +128,4 @@ export async function handleStart(ctx: Context) {
     MessageType.Text
   );
 
-  // Notify admins about new user registration
-  if (isNew) {
-    const { notifyAllAdmins } = await import("../notify-admins");
-    const { InlineKeyboard } = await import("grammy");
-
-    const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
-    const notifyText = `[New User] ${username} (ID: ${user.telegram_id}) registered.\n\nApprove or block?`;
-
-    const keyboard = new InlineKeyboard()
-      .text("Approve", `admin_approve_user:${user.id}`)
-      .text("Block", `admin_block_user:${user.id}`);
-
-    notifyAllAdmins(notifyText, { inlineKeyboard: keyboard }).catch(console.error);
-  }
 }

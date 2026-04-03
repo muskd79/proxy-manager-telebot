@@ -40,10 +40,17 @@ export async function handleCheckProxy(ctx: Context) {
   for (const proxy of proxies) {
     try {
       const { alive, speed_ms } = await checkProxy(proxy.host, proxy.port, proxy.type);
-      const status = alive ? `[OK] ${speed_ms}ms` : "[X] Dead";
+      let status: string;
+      if (alive) {
+        status = `[OK] ${speed_ms}ms`;
+      } else if (speed_ms >= 10_000) {
+        status = "[X] Timeout";
+      } else {
+        status = "[X] Refused";
+      }
       results.push(`${proxy.host}:${proxy.port} (${proxy.type.toUpperCase()}) - ${status}`);
     } catch {
-      results.push(`${proxy.host}:${proxy.port} (${proxy.type.toUpperCase()}) - [X] Error`);
+      results.push(`${proxy.host}:${proxy.port} (${proxy.type.toUpperCase()}) - [!] Error`);
     }
   }
 

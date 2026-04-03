@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
           `[!] Proxy sap het han`,
           "",
           `\`${proxy.host}:${proxy.port}\` (${proxy.type.toUpperCase()})`,
-          `Het han sau: ${daysLeft} ngay (${expiresDate.toLocaleDateString()})`,
+          `Het han sau: ${daysLeft} ngay (${expiresDate.toISOString().split("T")[0]})`,
           "",
           `Dung /revoke de tra proxy hoac lien he admin de gia han.`,
         ].join("\n")
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
           `[!] Proxy expiring soon`,
           "",
           `\`${proxy.host}:${proxy.port}\` (${proxy.type.toUpperCase()})`,
-          `Expires in: ${daysLeft} day(s) (${expiresDate.toLocaleDateString()})`,
+          `Expires in: ${daysLeft} day(s) (${expiresDate.toISOString().split("T")[0]})`,
           "",
           `Use /revoke to return or contact admin to renew.`,
         ].join("\n");

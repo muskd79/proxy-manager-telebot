@@ -71,7 +71,7 @@ export async function handleRevoke(ctx: Context) {
         .row();
     });
     keyboard
-      .text(lang === "vi" ? "Tr\u1EA3 t\u1EA5t c\u1EA3" : "Return all", "revoke:all")
+      .text(lang === "vi" ? "Tr\u1EA3 t\u1EA5t c\u1EA3" : "Return all", `revoke_confirm:all:${proxies.length}`)
       .row();
 
     const text =
@@ -85,6 +85,30 @@ export async function handleRevoke(ctx: Context) {
       MessageType.Text
     );
   }
+}
+
+export async function handleRevokeConfirm(ctx: Context, count: string) {
+  if (!ctx.from) return;
+
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("*")
+    .eq("telegram_id", ctx.from.id)
+    .single();
+
+  if (!user) return;
+  const lang = getUserLanguage(user);
+
+  const confirmText = lang === "vi"
+    ? `Ban co chac khong? Hanh dong nay se tra tat ca ${count} proxy.`
+    : `Are you sure? This will return ALL ${count} proxies.`;
+
+  const keyboard = new InlineKeyboard()
+    .text(lang === "vi" ? "Co" : "Yes", "revoke:all")
+    .text(lang === "vi" ? "Khong" : "No", "revoke:cancel");
+
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(confirmText, { reply_markup: keyboard });
 }
 
 export async function handleRevokeSelection(ctx: Context, proxyId: string) {

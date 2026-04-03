@@ -84,8 +84,23 @@ export async function handleGetProxy(ctx: Context) {
     return;
   }
 
-  // Show proxy type selection
-  const text = t("selectProxyType", lang);
+  // Show proxy type selection with descriptions
+  const typeDesc = lang === "vi"
+    ? [
+        t("selectProxyType", lang),
+        "",
+        "HTTP - Duyet web thong thuong",
+        "HTTPS - Duyet web ma hoa",
+        "SOCKS5 - Ho tro tat ca giao thuc, linh hoat nhat",
+      ].join("\n")
+    : [
+        t("selectProxyType", lang),
+        "",
+        "HTTP - Standard web browsing",
+        "HTTPS - Encrypted web browsing",
+        "SOCKS5 - All protocols, most flexible",
+      ].join("\n");
+  const text = typeDesc;
   await ctx.reply(text, { reply_markup: proxyTypeKeyboard(lang) });
   await logChatMessage(
     user.id,
@@ -158,8 +173,11 @@ export async function handleProxyTypeSelection(
     return;
   }
 
-  // Show quantity selection keyboard
-  const qtyText = t("selectQuantity", lang);
+  // Show quantity selection keyboard with note
+  const qtyNote = lang === "vi"
+    ? "Luu y: Yeu cau > 5 can admin duyet"
+    : "Note: Requests > 5 require admin approval";
+  const qtyText = `${t("selectQuantity", lang)}\n\n${qtyNote}`;
   await ctx.answerCallbackQuery();
   await ctx.editMessageText(qtyText, { reply_markup: quantityKeyboard(proxyType, lang) });
 }

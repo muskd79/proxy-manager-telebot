@@ -35,16 +35,16 @@ export async function handleStatus(ctx: Context) {
   const statusLines =
     lang === "vi"
       ? [
-          "*Tr\u1EA1ng th\u00E1i t\u00E0i kho\u1EA3n*",
+          "*Trang thai tai khoan*",
           "",
-          `Tr\u1EA1ng th\u00E1i: *${user.status}*`,
-          `Ch\u1EBF \u0111\u1ED9 duy\u1EC7t: *${user.approval_mode}*`,
-          `Proxy hi\u1EC7n t\u1EA1i: *${proxyCount ?? 0}* / ${user.max_proxies}`,
+          `Trang thai: *${user.status}*`,
+          `Che do duyet: *${user.approval_mode}*`,
+          `Proxy hien tai: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
-          "*Gi\u1EDBi h\u1EA1n y\u00EAu c\u1EA7u:*",
-          `Theo gi\u1EDD: ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly}`,
-          `Theo ng\u00E0y: ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily}`,
-          `T\u1ED5ng c\u1ED9ng: ${tBar} ${user.proxies_used_total}/${user.rate_limit_total}`,
+          "*Gioi han yeu cau:*",
+          `Theo gio: ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset moi gio)`,
+          `Theo ngay: ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset moi 24 gio)`,
+          `Tong cong: ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (gioi han tron doi)`,
         ]
       : [
           "*Account Status*",
@@ -54,9 +54,9 @@ export async function handleStatus(ctx: Context) {
           `Current proxies: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
           "*Rate limits:*",
-          `Hourly:  ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly}`,
-          `Daily:   ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily}`,
-          `Total:   ${tBar} ${user.proxies_used_total}/${user.rate_limit_total}`,
+          `Hourly:  ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (resets every hour)`,
+          `Daily:   ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (resets every 24 hours)`,
+          `Total:   ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (lifetime limit)`,
         ];
 
   // Add reset time info

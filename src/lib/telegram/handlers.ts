@@ -15,7 +15,9 @@ import {
   handleLanguageSelection,
   handleUnknownCommand,
   handleCancel,
+  handleCancelConfirm,
   handleRevoke,
+  handleRevokeConfirm,
   handleRevokeSelection,
   handleCheckProxy,
   handleHistory,
@@ -86,6 +88,30 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith("lang:")) {
     const lang = data.replace("lang:", "") as SupportedLanguage;
     await handleLanguageSelection(ctx, lang);
+    return;
+  }
+
+  if (data.startsWith("cancel_confirm:")) {
+    const confirmed = data.replace("cancel_confirm:", "") === "yes";
+    await handleCancelConfirm(ctx, confirmed);
+    return;
+  }
+
+  if (data.startsWith("revoke_confirm:all:")) {
+    const count = data.split(":")[2];
+    await handleRevokeConfirm(ctx, count);
+    return;
+  }
+
+  if (data === "revoke:cancel") {
+    await ctx.answerCallbackQuery();
+    const { data: user } = await supabaseAdmin
+      .from("tele_users")
+      .select("language")
+      .eq("telegram_id", ctx.from.id)
+      .single();
+    const lang = (user?.language === "vi") ? "vi" : "en";
+    await ctx.editMessageText(lang === "vi" ? "Da huy." : "Cancelled.");
     return;
   }
 
@@ -177,12 +203,31 @@ bot.on("message:text", async (ctx) => {
     raw_data: null,
   });
 
-  // Reply with guidance
   const lang = (user.language as SupportedLanguage) || "en";
-  const text =
-    lang === "vi"
-      ? "Sử dụng /help để xem các lệnh có sẵn."
-      : "Use /help to see available commands.";
+
+  // Check if the user's last command was /support (within last 30 minutes)
+  const { data: lastSupportCmd } = await supabaseAdmin
+    .from("chat_messages")
+    .select("created_at")
+    .eq("tele_user_id", user.id)
+    .eq("direction", ChatDirection.Incoming)
+    .eq("message_text", "/support")
+    .eq("message_type", MessageType.Command)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const isSupportMode = lastSupportCmd && lastSupportCmd.created_at > thirtyMinAgo;
+
+  // Reply with appropriate response
+  const text = isSupportMode
+    ? (lang === "vi"
+        ? "Tin nhan da nhan. Admin se phan hoi som."
+        : "Message received. Admin will respond soon.")
+    : (lang === "vi"
+        ? "Su dung /help de xem cac lenh co san."
+        : "Use /help to see available commands.");
 
   await ctx.reply(text);
 

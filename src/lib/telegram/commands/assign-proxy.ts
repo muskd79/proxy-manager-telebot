@@ -110,7 +110,7 @@ export async function autoAssignProxy(
     type: proxy.type.toUpperCase(),
     username: proxy.username ?? "N/A",
     password: proxy.password ?? "N/A",
-    expires: new Date(expiresAt).toLocaleDateString(),
+    expires: new Date(expiresAt).toISOString().split("T")[0],
   });
 
   await logChatMessage(

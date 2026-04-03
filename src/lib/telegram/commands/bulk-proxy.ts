@@ -63,23 +63,28 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
     const proxies = data.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;
     await ctx.answerCallbackQuery();
 
+    // Build result message - clarify partial assignment
+    let resultMsg = fillTemplate(t("bulkProxyAssigned", lang), {
+      count: String(data.assigned),
+      type: proxyType.toUpperCase(),
+    });
+    if (data.assigned < quantity) {
+      const missing = quantity - data.assigned;
+      resultMsg = lang === "vi"
+        ? `[OK] ${data.assigned}/${quantity} proxy ${proxyType.toUpperCase()} da cap! (${missing} khong kha dung - thu lai sau)`
+        : `[OK] ${data.assigned}/${quantity} proxies assigned! (${missing} not available - try again later)`;
+    }
+
     if (proxies.length <= 3) {
       // Send inline
       const proxyLines = formatProxiesAsText(proxies);
-      const text = fillTemplate(t("bulkProxyAssigned", lang), {
-        count: String(data.assigned),
-        type: proxyType.toUpperCase(),
-      }) + "\n\n`" + proxyLines + "`";
+      const text = resultMsg + "\n\n`" + proxyLines + "`";
       await ctx.editMessageText(text, { parse_mode: "Markdown" });
     } else {
       // Send as file
       const buffer = formatProxiesAsBuffer(proxies);
-      const caption = fillTemplate(t("bulkProxyAssigned", lang), {
-        count: String(data.assigned),
-        type: proxyType.toUpperCase(),
-      });
-      await ctx.editMessageText(caption);
-      await sendTelegramDocument(ctx.from.id, buffer, `proxies_${proxyType}_${data.assigned}.txt`, caption);
+      await ctx.editMessageText(resultMsg);
+      await sendTelegramDocument(ctx.from.id, buffer, `proxies_${proxyType}_${data.assigned}.txt`, resultMsg);
     }
 
     await logChatMessage(user.id, null, ChatDirection.Outgoing, `Bulk assigned ${data.assigned} ${proxyType} proxies`, MessageType.Text);
@@ -180,12 +185,20 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
   // Send proxies to user
   const proxies = data.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;
   if (teleUser?.telegram_id) {
+    let userMsg: string;
+    if (data.assigned < request.quantity) {
+      const missing = request.quantity - data.assigned;
+      userMsg = `[OK] ${data.assigned}/${request.quantity} proxies assigned! (${missing} not available - try again later)`;
+    } else {
+      userMsg = `[OK] ${data.assigned} proxies assigned!`;
+    }
+
     if (proxies.length <= 3) {
       const proxyLines = formatProxiesAsText(proxies);
-      sendTelegramMessage(teleUser.telegram_id, `[OK] ${data.assigned} proxies assigned!\n\n\`${proxyLines}\``).catch(console.error);
+      sendTelegramMessage(teleUser.telegram_id, `${userMsg}\n\n\`${proxyLines}\``).catch(console.error);
     } else {
       const buffer = formatProxiesAsBuffer(proxies);
-      sendTelegramDocument(teleUser.telegram_id, buffer, `proxies_${request.proxy_type}_${data.assigned}.txt`, `[OK] ${data.assigned} proxies assigned!`).catch(console.error);
+      sendTelegramDocument(teleUser.telegram_id, buffer, `proxies_${request.proxy_type}_${data.assigned}.txt`, userMsg).catch(console.error);
     }
   }
 
