@@ -18,6 +18,9 @@ import {
   handleCheckProxy,
   handleHistory,
   handleSupport,
+  handleAdminRequests,
+  handleAdminApproveCallback,
+  handleAdminRejectCallback,
 } from "./commands";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +38,7 @@ bot.command("revoke", handleRevoke);
 bot.command("checkproxy", handleCheckProxy);
 bot.command("history", handleHistory);
 bot.command("support", handleSupport);
+bot.command("requests", handleAdminRequests);
 
 // ---------------------------------------------------------------------------
 // Set bot commands menu (visible in Telegram UI)
@@ -52,6 +56,7 @@ bot.api.setMyCommands([
   { command: "support", description: "Ho tro / Support" },
   { command: "language", description: "Doi ngon ngu / Language" },
   { command: "help", description: "Huong dan / Help" },
+  { command: "requests", description: "Yeu cau dang cho (Admin) / Pending requests (Admin)" },
 ]).catch(console.error);
 
 // ---------------------------------------------------------------------------
@@ -76,6 +81,18 @@ bot.on("callback_query:data", async (ctx) => {
   if (data.startsWith("revoke:")) {
     const proxyId = data.replace("revoke:", "");
     await handleRevokeSelection(ctx, proxyId);
+    return;
+  }
+
+  if (data.startsWith("admin_approve:")) {
+    const requestId = data.replace("admin_approve:", "");
+    await handleAdminApproveCallback(ctx, requestId);
+    return;
+  }
+
+  if (data.startsWith("admin_reject:")) {
+    const requestId = data.replace("admin_reject:", "");
+    await handleAdminRejectCallback(ctx, requestId);
     return;
   }
 

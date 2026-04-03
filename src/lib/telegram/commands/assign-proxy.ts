@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
+import { sendTelegramMessage } from "../send";
 import { logChatMessage, logActivity } from "../utils";
 import {
   ChatDirection,
@@ -181,5 +182,34 @@ export async function createManualRequest(
     user_agent: null,
   });
 
+  // Notify admins about the new pending request
+  notifyAdminsNewRequest(user, proxyType).catch(console.error);
+
   return { success: true, text };
+}
+
+/**
+ * Notify all admin Telegram IDs about a new pending proxy request.
+ */
+async function notifyAdminsNewRequest(
+  user: Record<string, unknown>,
+  proxyType: string
+) {
+  const { data: setting } = await supabaseAdmin
+    .from("settings")
+    .select("value")
+    .eq("key", "admin_telegram_ids")
+    .single();
+
+  if (!setting?.value?.value) return;
+  const adminIds: number[] = setting.value.value;
+
+  const username = user.username
+    ? "@" + user.username
+    : (user.first_name as string) || "Unknown";
+  const text = `[!] New proxy request\n\nUser: ${username}\nType: ${proxyType.toUpperCase()}\n\nUse /requests to approve/reject.`;
+
+  for (const adminId of adminIds) {
+    sendTelegramMessage(adminId, text).catch(console.error);
+  }
 }

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Save, RefreshCw, Wifi, WifiOff, Copy, ShieldOff } from "lucide-react";
+import { Save, RefreshCw, Wifi, WifiOff, Copy, ShieldOff, Users } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,9 @@ interface SettingsForm {
   telegram_bot_token: string;
   telegram_webhook_secret: string;
   webhook_url: string;
+  global_max_proxies: number;
+  global_max_total_requests: number;
+  admin_telegram_ids: string;
 }
 
 export default function SettingsPage() {
@@ -42,9 +46,13 @@ export default function SettingsPage() {
     telegram_bot_token: "",
     telegram_webhook_secret: "",
     webhook_url: "",
+    global_max_proxies: 5,
+    global_max_total_requests: 100,
+    admin_telegram_ids: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [applyToExisting, setApplyToExisting] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
   const [botConnected, setBotConnected] = useState<boolean | null>(null);
 
@@ -88,6 +96,18 @@ export default function SettingsPage() {
               prev.telegram_webhook_secret,
             webhook_url:
               (loaded.webhook_url as string) ?? prev.webhook_url,
+            global_max_proxies:
+              (loaded.global_max_proxies as number) ??
+              prev.global_max_proxies,
+            global_max_total_requests:
+              (loaded.global_max_total_requests as number) ??
+              prev.global_max_total_requests,
+            admin_telegram_ids:
+              loaded.admin_telegram_ids
+                ? Array.isArray(loaded.admin_telegram_ids)
+                  ? (loaded.admin_telegram_ids as number[]).join(", ")
+                  : String(loaded.admin_telegram_ids)
+                : prev.admin_telegram_ids,
           }));
         }
       }
@@ -105,10 +125,24 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Transform admin_telegram_ids from comma-separated string to number array
+      const settingsToSave = {
+        ...settings,
+        admin_telegram_ids: settings.admin_telegram_ids
+          ? settings.admin_telegram_ids
+              .split(",")
+              .map((s) => parseInt(s.trim()))
+              .filter((n) => !isNaN(n))
+          : [],
+      };
       const res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update_settings", settings }),
+        body: JSON.stringify({
+          action: "update_settings",
+          settings: settingsToSave,
+          applyToExisting,
+        }),
       });
       if (res.ok) {
         toast.success("Settings saved successfully");
@@ -267,6 +301,55 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Global Limits */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Global Limits</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Hard caps applied to all users who have not been given custom limits.
+            These override per-user defaults as upper bounds.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="global-max-proxies">
+                Global Max Proxies Per User
+              </Label>
+              <Input
+                id="global-max-proxies"
+                type="number"
+                min={1}
+                value={settings.global_max_proxies}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    global_max_proxies: parseInt(e.target.value) || 5,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="global-max-total">
+                Global Max Total Requests
+              </Label>
+              <Input
+                id="global-max-total"
+                type="number"
+                min={1}
+                value={settings.global_max_total_requests}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    global_max_total_requests: parseInt(e.target.value) || 100,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Approval Mode */}
       <Card>
         <CardHeader>
@@ -323,6 +406,60 @@ export default function SettingsPage() {
                 }))
               }
               className="w-[150px]"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Apply to Existing Users */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="apply-existing"
+              checked={applyToExisting}
+              onCheckedChange={(checked) =>
+                setApplyToExisting(checked === true)
+              }
+            />
+            <Label htmlFor="apply-existing" className="cursor-pointer">
+              Apply default limits to all existing users when saving
+            </Label>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            When checked, saving will bulk-update all non-deleted users with the
+            current default rate limits, max proxies, and approval mode.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Admin Telegram IDs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="size-5" />
+            Admin Telegram IDs
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Comma-separated Telegram user IDs that can approve/reject proxy
+            requests via the bot using /requests command.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="admin-tg-ids">Telegram IDs</Label>
+            <Input
+              id="admin-tg-ids"
+              value={settings.admin_telegram_ids}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  admin_telegram_ids: e.target.value,
+                }))
+              }
+              placeholder="e.g. 123456789, 987654321"
             />
           </div>
         </CardContent>

@@ -50,8 +50,9 @@ export async function PUT(request: NextRequest) {
     const { action } = body;
 
     if (action === "update_settings") {
-      const { settings } = body as {
+      const { settings, applyToExisting } = body as {
         settings: Record<string, unknown>;
+        applyToExisting?: boolean;
       };
 
       // Upsert each setting
@@ -66,12 +67,41 @@ export async function PUT(request: NextRequest) {
         );
       }
 
+      // Bulk-update all existing non-deleted users with current defaults
+      if (applyToExisting) {
+        const updatePayload: Record<string, unknown> = {};
+        if (settings.default_rate_limit_hourly !== undefined) {
+          updatePayload.rate_limit_hourly = Number(settings.default_rate_limit_hourly);
+        }
+        if (settings.default_rate_limit_daily !== undefined) {
+          updatePayload.rate_limit_daily = Number(settings.default_rate_limit_daily);
+        }
+        if (settings.default_rate_limit_total !== undefined) {
+          updatePayload.rate_limit_total = Number(settings.default_rate_limit_total);
+        }
+        if (settings.global_max_proxies !== undefined) {
+          updatePayload.max_proxies = Number(settings.global_max_proxies);
+        } else if (settings.default_max_proxies !== undefined) {
+          updatePayload.max_proxies = Number(settings.default_max_proxies);
+        }
+        if (settings.default_approval_mode !== undefined) {
+          updatePayload.approval_mode = String(settings.default_approval_mode);
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await supabase
+            .from("tele_users")
+            .update(updatePayload)
+            .eq("is_deleted", false);
+        }
+      }
+
       logActivity({
         actorType: "admin",
         actorId: admin.id,
         action: "settings.update",
         resourceType: "settings",
-        details: { keys: Object.keys(settings) },
+        details: { keys: Object.keys(settings), applyToExisting: !!applyToExisting },
         ipAddress: request.headers.get("x-forwarded-for") || undefined,
         userAgent: request.headers.get("user-agent") || undefined,
       }).catch(console.error);

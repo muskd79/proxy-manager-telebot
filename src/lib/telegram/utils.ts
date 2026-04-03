@@ -128,16 +128,23 @@ export async function logActivity(log: ActivityLogInsert) {
 // Rate-limit check
 // ---------------------------------------------------------------------------
 
-export function checkRateLimit(user: {
-  rate_limit_hourly: number;
-  rate_limit_daily: number;
-  rate_limit_total: number;
-  proxies_used_hourly: number;
-  proxies_used_daily: number;
-  proxies_used_total: number;
-  hourly_reset_at: string | null;
-  daily_reset_at: string | null;
-}): { allowed: boolean; resetHourly: boolean; resetDaily: boolean } {
+export function checkRateLimit(
+  user: {
+    rate_limit_hourly: number;
+    rate_limit_daily: number;
+    rate_limit_total: number;
+    proxies_used_hourly: number;
+    proxies_used_daily: number;
+    proxies_used_total: number;
+    hourly_reset_at: string | null;
+    daily_reset_at: string | null;
+    max_proxies?: number;
+  },
+  globalCaps?: {
+    global_max_proxies?: number;
+    global_max_total_requests?: number;
+  }
+): { allowed: boolean; resetHourly: boolean; resetDaily: boolean } {
   const now = new Date();
   let resetHourly = false;
   let resetDaily = false;
@@ -154,12 +161,53 @@ export function checkRateLimit(user: {
     resetDaily = true;
   }
 
+  // Apply per-user limits
+  let effectiveTotalLimit = user.rate_limit_total;
+
+  // Check global caps as upper bounds (override if user hasn't been customized)
+  // The global caps enforce hard limits at runtime even if settings changed after user creation
+  if (globalCaps) {
+    if (
+      globalCaps.global_max_total_requests !== undefined &&
+      globalCaps.global_max_total_requests > 0
+    ) {
+      effectiveTotalLimit = Math.min(
+        effectiveTotalLimit,
+        globalCaps.global_max_total_requests
+      );
+    }
+  }
+
   const allowed =
     usedHourly < user.rate_limit_hourly &&
     usedDaily < user.rate_limit_daily &&
-    user.proxies_used_total < user.rate_limit_total;
+    user.proxies_used_total < effectiveTotalLimit;
 
   return { allowed, resetHourly, resetDaily };
+}
+
+/**
+ * Load global cap settings from the database.
+ */
+export async function loadGlobalCaps(): Promise<{
+  global_max_proxies?: number;
+  global_max_total_requests?: number;
+}> {
+  const { data: settings } = await supabaseAdmin
+    .from("settings")
+    .select("key, value")
+    .in("key", ["global_max_proxies", "global_max_total_requests"]);
+
+  const caps: Record<string, number> = {};
+  if (settings) {
+    for (const s of settings) {
+      const val = s.value?.value;
+      if (typeof val === "number" && val > 0) {
+        caps[s.key] = val;
+      }
+    }
+  }
+  return caps;
 }
 
 // ---------------------------------------------------------------------------

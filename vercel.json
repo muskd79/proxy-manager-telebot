@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/expiry-warning",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/expire-requests",
+      "schedule": "0 4 * * *"
     }
   ]
 }

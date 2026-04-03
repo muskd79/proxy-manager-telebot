@@ -9,3 +9,8 @@ export { handleHelp, handleUnknownCommand } from "./help";
 export { handleCheckProxy } from "./check-proxy";
 export { handleHistory } from "./history";
 export { handleSupport } from "./support";
+export {
+  handleAdminRequests,
+  handleAdminApproveCallback,
+  handleAdminRejectCallback,
+} from "./admin-approve";

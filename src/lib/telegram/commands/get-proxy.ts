@@ -5,6 +5,7 @@ import {
   getOrCreateUser,
   logChatMessage,
   checkRateLimit,
+  loadGlobalCaps,
 } from "../utils";
 import { proxyTypeKeyboard } from "../keyboard";
 import {
@@ -48,8 +49,9 @@ export async function handleGetProxy(ctx: Context) {
     return;
   }
 
-  // Check rate limit
-  const { allowed, resetHourly, resetDaily } = checkRateLimit(user);
+  // Check rate limit (with global caps)
+  const globalCaps = await loadGlobalCaps();
+  const { allowed, resetHourly, resetDaily } = checkRateLimit(user, globalCaps);
 
   // Reset counters if needed
   if (resetHourly || resetDaily) {
@@ -118,15 +120,21 @@ export async function handleProxyTypeSelection(
     MessageType.Callback
   );
 
-  // Re-check rate limit
-  const { allowed } = checkRateLimit(user);
+  // Re-check rate limit (with global caps)
+  const globalCaps = await loadGlobalCaps();
+  const { allowed } = checkRateLimit(user, globalCaps);
   if (!allowed) {
     const text = t("rateLimitExceeded", lang);
     await ctx.answerCallbackQuery(text);
     return;
   }
 
-  // Check max_proxies limit
+  // Check max_proxies limit (enforce global cap as upper bound)
+  const effectiveMaxProxies =
+    globalCaps.global_max_proxies && globalCaps.global_max_proxies > 0
+      ? Math.min(user.max_proxies, globalCaps.global_max_proxies)
+      : user.max_proxies;
+
   const { count: assignedCount } = await supabaseAdmin
     .from("proxies")
     .select("*", { count: "exact", head: true })
@@ -134,9 +142,9 @@ export async function handleProxyTypeSelection(
     .eq("status", ProxyStatus.Assigned)
     .eq("is_deleted", false);
 
-  if (assignedCount !== null && assignedCount >= user.max_proxies) {
+  if (assignedCount !== null && assignedCount >= effectiveMaxProxies) {
     const text = fillTemplate(t("maxProxiesReached", lang), {
-      max_proxies: String(user.max_proxies),
+      max_proxies: String(effectiveMaxProxies),
     });
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(text);
