@@ -36,9 +36,11 @@ import {
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import type { Proxy } from "@/types/database";
 import Link from "next/link";
+import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ProxiesPage() {
+  const { t } = useI18n();
   const { canWrite } = useRole();
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,6 +112,46 @@ export default function ProxiesPage() {
   useEffect(() => {
     fetchCountries();
   }, [fetchCountries]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const isInputFocused = (): boolean => {
+      const active = document.activeElement;
+      return (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        active?.getAttribute("contenteditable") === "true"
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + A: Select all visible proxies
+      if ((e.ctrlKey || e.metaKey) && e.key === "a" && !isInputFocused()) {
+        e.preventDefault();
+        const allIds = proxies.map((p) => p.id);
+        setSelectedIds(allIds);
+      }
+
+      // Escape: Deselect all
+      if (e.key === "Escape" && selectedIds.length > 0) {
+        setSelectedIds([]);
+      }
+
+      // Delete/Backspace: Trigger bulk delete (if items selected)
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedIds.length > 0 &&
+        !isInputFocused()
+      ) {
+        e.preventDefault();
+        setShowBulkDeleteConfirm(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [proxies, selectedIds]);
 
   // Realtime sync: re-fetch when proxies table changes
   useEffect(() => {
@@ -196,7 +238,7 @@ export default function ProxiesPage() {
       const allIds = (Array.isArray(rawData) ? rawData : []).map((p: any) => p.id);
 
       if (allIds.length === 0) {
-        toast.info("No proxies to check");
+        toast.info(t("proxies.noProxiesToCheck"));
         return;
       }
 
@@ -212,12 +254,12 @@ export default function ProxiesPage() {
         setCheckProgress(Math.round(((i + batch.length) / allIds.length) * 100));
       }
 
-      toast.success(`Health check complete for ${allIds.length} proxies`);
+      toast.success(t("proxies.healthCheckComplete").replace("{count}", String(allIds.length)));
       setLastCheckTime(new Date().toLocaleTimeString());
       fetchProxies(); // refresh list
     } catch (err) {
       console.error("Health check failed:", err);
-      toast.error("Health check failed");
+      toast.error(t("proxies.healthCheckFailed"));
     } finally {
       setChecking(false);
       setCheckProgress(0);
@@ -232,16 +274,16 @@ export default function ProxiesPage() {
     <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Proxies</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("sidebar.proxies")}</h1>
           <p className="text-muted-foreground">
-            Manage your proxy inventory ({total} total)
+            {t("proxies.subtitle")} ({total} {t("proxies.total")})
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canWrite && (
             <Link href="/proxies/import" className={buttonVariants({ variant: "outline", size: "sm" })}>
               <Upload className="size-4 mr-1.5" />
-              Import
+              {t("common.import")}
             </Link>
           )}
           <Button
@@ -269,7 +311,7 @@ export default function ProxiesPage() {
               }}
             >
               <Plus className="size-4 mr-1.5" />
-              Add Proxy
+              {t("proxies.addProxy")}
             </Button>
           )}
         </div>
@@ -278,7 +320,7 @@ export default function ProxiesPage() {
       {/* Health Check Status */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <Activity className="size-4" />
-        <span>Last check: {lastCheckTime || "Never"}</span>
+        <span>{t("proxies.lastCheck")}: {lastCheckTime || t("proxies.never")}</span>
         <Button
           variant="outline"
           size="sm"
@@ -288,12 +330,12 @@ export default function ProxiesPage() {
           {checking ? (
             <>
               <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-              Checking ({checkProgress}%)
+              {t("proxies.checking")} ({checkProgress}%)
             </>
           ) : (
             <>
               <Zap className="size-3.5 mr-1.5" />
-              Check All Proxies
+              {t("proxies.checkAllProxies")}
             </>
           )}
         </Button>
@@ -314,7 +356,7 @@ export default function ProxiesPage() {
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2">
           <span className="text-sm text-muted-foreground">
-            {selectedIds.length} selected
+            {t("proxies.selected").replace("{count}", String(selectedIds.length))}
           </span>
           <Button
             variant="outline"
@@ -322,17 +364,17 @@ export default function ProxiesPage() {
             onClick={() => handleHealthCheck(selectedIds)}
           >
             <Activity className="size-4 mr-1" />
-            Health Check
+            {t("proxies.healthCheck")}
           </Button>
           {canWrite && (
             <>
               <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
                 <Pencil className="size-4 mr-1" />
-                Edit ({selectedIds.length})
+                {t("common.edit")} ({selectedIds.length})
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)}>
+              <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} title="Delete selected (Delete)">
                 <Trash2 className="size-4 mr-1" />
-                Delete
+                {t("common.delete")}
               </Button>
             </>
           )}
@@ -340,9 +382,13 @@ export default function ProxiesPage() {
             variant="ghost"
             size="sm"
             onClick={() => setSelectedIds([])}
+            title="Deselect all (Esc)"
           >
-            Clear
+            {t("proxies.clear")}
           </Button>
+          <span className="text-xs text-muted-foreground ml-2">
+            Ctrl+A: Select all | Esc: Deselect | Del: Delete
+          </span>
         </div>
       )}
 
@@ -398,14 +444,13 @@ export default function ProxiesPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Proxies</AlertDialogTitle>
+            <AlertDialogTitle>{t("proxies.deleteProxies")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete {selectedIds.length} proxy(ies)?
-              This action cannot be undone.
+              {t("proxies.deleteProxiesConfirm").replace("{count}", String(selectedIds.length))}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 setShowBulkDeleteConfirm(false);
@@ -413,7 +458,7 @@ export default function ProxiesPage() {
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

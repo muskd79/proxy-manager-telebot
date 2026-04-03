@@ -8,9 +8,11 @@ import { ActiveUsers } from "@/components/dashboard/active-users";
 import type { DashboardStats } from "@/types/api";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 
 export default function DashboardPage() {
+  const { t } = useI18n();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -55,15 +57,15 @@ export default function DashboardPage() {
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
           <p className="text-muted-foreground">
-            Overview of your proxy management system
+            {t("dashboard.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <span className="text-xs text-muted-foreground">
-              Updated {lastUpdated.toLocaleTimeString()}
+              {t("dashboard.updated")} {lastUpdated.toLocaleTimeString()}
             </span>
           )}
           <Button
@@ -75,7 +77,7 @@ export default function DashboardPage() {
             <RefreshCw
               className={`size-4 mr-1.5 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("common.refresh")}
           </Button>
         </div>
       </div>

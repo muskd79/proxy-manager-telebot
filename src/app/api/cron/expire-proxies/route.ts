@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { verifyCronSecret } from "@/lib/auth";
+import { captureError } from "@/lib/error-tracking";
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
@@ -47,7 +48,9 @@ export async function GET(request: NextRequest) {
           ? `[!] Proxy het han\n\nProxy ${proxy.host}:${proxy.port} (${proxy.type}) da het han va bi thu hoi.`
           : `[!] Proxy expired\n\nProxy ${proxy.host}:${proxy.port} (${proxy.type}) has expired and been revoked.`;
 
-        await sendTelegramMessage(user.telegram_id, text).catch(console.error);
+        await sendTelegramMessage(user.telegram_id, text).catch((err) =>
+          captureError(err, { source: "cron.expire-proxies", extra: { proxyId: proxy.id, telegramId: user.telegram_id } })
+        );
       }
     }
   }

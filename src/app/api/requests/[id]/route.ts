@@ -5,6 +5,8 @@ import type { ProxyRequest } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { sendTelegramMessage } from "@/lib/telegram/send";
+import { msg, fillTemplate } from "@/lib/telegram/messages";
+import type { SupportedLanguage } from "@/types/telegram";
 import { UpdateRequestSchema } from "@/lib/validations";
 
 export async function GET(
@@ -178,11 +180,16 @@ export async function PUT(
             .select("language")
             .eq("id", rpcResult.tele_user_id)
             .single();
-          const lang = (teleUserFull?.language as string) || "en";
+          const lang = ((teleUserFull?.language as string) || "en") as SupportedLanguage;
 
-          const notifyText = lang === "vi"
-            ? `[OK] Proxy đã được cấp!\n\n\`${proxy.host}:${proxy.port}:${proxy.username ?? ""}:${proxy.password ?? ""}\`\n\nLoại: ${proxy.type.toUpperCase()}`
-            : `[OK] Proxy assigned!\n\n\`${proxy.host}:${proxy.port}:${proxy.username ?? ""}:${proxy.password ?? ""}\`\n\nType: ${proxy.type.toUpperCase()}`;
+          const notifyText = fillTemplate(msg.proxyAssigned[lang], {
+            host: proxy.host,
+            port: String(proxy.port),
+            username: proxy.username ?? "",
+            password: proxy.password ?? "",
+            type: proxy.type.toUpperCase(),
+            expires: "",
+          });
 
           await sendTelegramMessage(teleUser.telegram_id, notifyText);
 

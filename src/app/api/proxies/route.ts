@@ -5,6 +5,7 @@ import type { Proxy } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { CreateProxySchema } from "@/lib/validations";
+import { captureError } from "@/lib/error-tracking";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, ...response });
   } catch (error) {
-    console.error("Proxies list error:", error);
+    captureError(error, { source: "api.proxies.list", extra: { adminId: admin?.id } });
     return NextResponse.json(
       { success: false, error: "Failed to fetch proxies" },
       { status: 500 }
@@ -147,11 +148,11 @@ export async function POST(request: NextRequest) {
       details: { host: data.host, port: data.port, type: data.type },
       ipAddress: request.headers.get("x-forwarded-for") || undefined,
       userAgent: request.headers.get("user-agent") || undefined,
-    }).catch(console.error);
+    }).catch((err) => captureError(err, { source: "api.proxies.create.log", extra: { adminId: admin.id } }));
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error) {
-    console.error("Create proxy error:", error);
+    captureError(error, { source: "api.proxies.create", extra: { adminId: admin?.id } });
     return NextResponse.json(
       { success: false, error: "Failed to create proxy" },
       { status: 500 }

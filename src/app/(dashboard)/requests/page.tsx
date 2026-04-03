@@ -22,6 +22,7 @@ import {
 } from "@/components/requests/request-actions";
 import type { ProxyRequest, RequestStatus } from "@/types/database";
 import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
+import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 
 interface RequestWithUser extends ProxyRequest {
@@ -39,6 +40,7 @@ interface RequestWithUser extends ProxyRequest {
 }
 
 export default function RequestsPage() {
+  const { t } = useI18n();
   const { canWrite } = useRole();
   const [requests, setRequests] = useState<RequestWithUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -91,7 +93,7 @@ export default function RequestsPage() {
       }
     } catch (err) {
       console.error("Failed to load requests:", err);
-      toast.error("Failed to load requests");
+      toast.error(t("requests.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -170,7 +172,7 @@ export default function RequestsPage() {
         console.error(`Failed to reject request ${id}:`, err);
       }
     }
-    toast.success(`${successCount}/${selectedIds.length} requests rejected`);
+    toast.success(t("requests.batchRejectResult").replace("{success}", String(successCount)).replace("{total}", String(selectedIds.length)));
     setSelectedIds([]);
     fetchRequests();
   };
@@ -187,9 +189,9 @@ export default function RequestsPage() {
           <FileText className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Proxy Requests</h1>
+          <h1 className="text-2xl font-bold">{t("requests.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage proxy requests from Telegram users
+            {t("requests.subtitle")}
           </p>
         </div>
       </div>
@@ -198,8 +200,8 @@ export default function RequestsPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <TabsList className="bg-muted">
-            <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="recent">Recent (7 days)</TabsTrigger>
+            <TabsTrigger value="pending">{t("requests.pendingTab")}</TabsTrigger>
+            <TabsTrigger value="recent">{t("requests.recentTab")}</TabsTrigger>
           </TabsList>
 
           {/* Filters */}
@@ -207,7 +209,7 @@ export default function RequestsPage() {
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by user..."
+                placeholder={t("requests.searchByUser")}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -216,7 +218,7 @@ export default function RequestsPage() {
             </div>
             <Button onClick={handleSearch} size="sm">
               <Filter className="mr-1 h-3.5 w-3.5" />
-              Filter
+              {t("common.filter")}
             </Button>
           </div>
         </div>
@@ -225,7 +227,7 @@ export default function RequestsPage() {
         {activeTab === "pending" && pendingSelected.length > 0 && (
           <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
             <span className="text-sm font-medium">
-              {pendingSelected.length} pending request(s) selected
+              {t("requests.pendingSelected").replace("{count}", String(pendingSelected.length))}
             </span>
             {canWrite && (
               <div className="ml-auto flex gap-2">
@@ -234,7 +236,7 @@ export default function RequestsPage() {
                   onClick={() => setBatchApproveOpen(true)}
                 >
                   <Zap className="mr-1 h-3.5 w-3.5" />
-                  Batch Approve
+                  {t("requests.batchApprove")}
                 </Button>
                 <Button
                   variant="destructive"
@@ -242,7 +244,7 @@ export default function RequestsPage() {
                   onClick={handleBatchReject}
                 >
                   <XCircle className="mr-1 h-3.5 w-3.5" />
-                  Batch Reject
+                  {t("requests.batchReject")}
                 </Button>
               </div>
             )}

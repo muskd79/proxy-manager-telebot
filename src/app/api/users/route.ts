@@ -4,6 +4,7 @@ import type { UserFilters, PaginatedResponse, ApiResponse } from "@/types/api";
 import type { TeleUser, TeleUserStatus } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateUserSchema } from "@/lib/validations";
+import { captureError } from "@/lib/error-tracking";
 
 export async function GET(request: NextRequest) {
   try {
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (err) {
+    captureError(err, { source: "api.users.list" });
     return NextResponse.json(
       {
         success: false,
@@ -134,6 +136,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    captureError(err, { source: "api.users.create" });
     return NextResponse.json(
       {
         success: false,

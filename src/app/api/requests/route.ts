@@ -4,6 +4,7 @@ import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api
 import type { ProxyRequest, RequestStatus, ProxyType } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateRequestSchema } from "@/lib/validations";
+import { captureError } from "@/lib/error-tracking";
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
   } catch (err) {
+    captureError(err, { source: "api.requests.list" });
     return NextResponse.json(
       {
         success: false,
@@ -152,6 +154,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    captureError(err, { source: "api.requests.create" });
     return NextResponse.json(
       {
         success: false,

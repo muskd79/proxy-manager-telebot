@@ -106,7 +106,15 @@ export function ProxyTable({
     children: React.ReactNode;
   }) {
     return (
-      <TableHead>
+      <TableHead
+        aria-sort={
+          sortBy === column
+            ? sortOrder === "asc"
+              ? "ascending"
+              : "descending"
+            : "none"
+        }
+      >
         <button
           onClick={() => onSort(column)}
           className="flex items-center gap-1 hover:text-foreground transition-colors"
@@ -123,7 +131,7 @@ export function ProxyTable({
   }
 
   return (
-    <Table>
+    <Table aria-label="Proxy inventory" aria-rowcount={proxies.length}>
       <TableHeader>
         <TableRow>
           <TableHead className="w-10">
@@ -131,6 +139,7 @@ export function ProxyTable({
               checked={allSelected}
               indeterminate={someSelected && !allSelected}
               onCheckedChange={toggleAll}
+              aria-label="Select all proxies"
             />
           </TableHead>
           <SortableHead column="host">Host:Port</SortableHead>
@@ -157,6 +166,8 @@ export function ProxyTable({
             <TableRow
               key={proxy.id}
               className={selectedIds.includes(proxy.id) ? "bg-muted/50" : ""}
+              aria-selected={selectedIds.includes(proxy.id)}
+              tabIndex={0}
             >
               <TableCell>
                 <Checkbox

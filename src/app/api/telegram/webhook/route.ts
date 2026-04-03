@@ -3,6 +3,7 @@ import { webhookCallback } from "@/lib/telegram/bot";
 import "@/lib/telegram/handlers"; // register all handlers
 import { bot } from "@/lib/telegram/handlers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { captureError } from "@/lib/error-tracking";
 
 // === Layer 1: In-memory dedup (fast, covers warm instances) ===
 const processedUpdates = new Set<number>();
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
   // Verify Telegram webhook secret (required)
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("TELEGRAM_WEBHOOK_SECRET not configured");
+    captureError(new Error("TELEGRAM_WEBHOOK_SECRET not configured"), { source: "webhook.config" });
     return NextResponse.json({ ok: false, error: "Server misconfigured" }, { status: 500 });
   }
 
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Webhook error:", error);
+    captureError(error, { source: "webhook.process", extra: { method: "POST" } });
     return NextResponse.json({ ok: true });
   }
 }

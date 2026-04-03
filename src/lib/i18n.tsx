@@ -4,30 +4,60 @@ import { createContext, useContext, useState, useEffect } from "react";
 import viMessages from "@/locales/vi.json";
 import enMessages from "@/locales/en.json";
 
-type Locale = "vi" | "en";
+// ---------------------------------------------------------------------------
+// Type-safe locale key helpers
+// ---------------------------------------------------------------------------
+
+type NestedKeys<T, Prefix extends string = ""> = T extends object
+  ? {
+      [K in keyof T & string]: T[K] extends object
+        ? NestedKeys<T[K], `${Prefix}${K}.`>
+        : `${Prefix}${K}`;
+    }[keyof T & string]
+  : never;
+
+/** All valid dot-separated translation keys derived from the English locale file. */
+export type TranslationKey = NestedKeys<typeof enMessages>;
+
+export type Locale = "vi" | "en";
+
 const messages: Record<Locale, Record<string, unknown>> = { vi: viMessages, en: enMessages };
 
-function getNestedValue(obj: Record<string, unknown>, path: string): string {
+function getNestedValue(obj: Record<string, unknown>, path: string): string | undefined {
   const keys = path.split(".");
   let current: unknown = obj;
   for (const key of keys) {
     if (current && typeof current === "object" && key in current) {
       current = (current as Record<string, unknown>)[key];
     } else {
-      return path; // fallback to key
+      return undefined;
     }
   }
-  return typeof current === "string" ? current : path;
+  return typeof current === "string" ? current : undefined;
 }
 
-export function t(key: string, locale: Locale = "vi"): string {
-  return getNestedValue(messages[locale] as Record<string, unknown>, key);
+/**
+ * Translate a key with automatic fallback:
+ *   1. Try the requested locale
+ *   2. Fall back to English
+ *   3. Fall back to the raw key itself
+ */
+export function t(key: TranslationKey, locale: Locale = "vi"): string {
+  const translated = getNestedValue(messages[locale] as Record<string, unknown>, key);
+  if (translated !== undefined) return translated;
+
+  // Fallback to English
+  const fallback = getNestedValue(messages.en as Record<string, unknown>, key);
+  if (fallback !== undefined) return fallback;
+
+  // Last resort: return the key itself
+  return key;
 }
 
 interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: string) => string;
+  t: (key: TranslationKey) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({

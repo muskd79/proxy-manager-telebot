@@ -2,6 +2,8 @@ import { bot } from "./bot";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
+import { captureError } from "@/lib/error-tracking";
+import { BOT_COMMANDS } from "@/lib/constants";
 import {
   handleStart,
   handleHelp,
@@ -42,22 +44,24 @@ bot.command("requests", handleAdminRequests);
 
 // ---------------------------------------------------------------------------
 // Set bot commands menu (visible in Telegram UI)
+// Uses BOT_COMMANDS from constants and registers per-language menus so
+// Telegram shows the right descriptions based on the user's app language.
 // ---------------------------------------------------------------------------
 
-bot.api.setMyCommands([
-  { command: "start", description: "Bat dau / Start" },
-  { command: "getproxy", description: "Lay proxy / Get proxy" },
-  { command: "myproxies", description: "Proxy cua toi / My proxies" },
-  { command: "checkproxy", description: "Kiem tra proxy / Check proxy health" },
-  { command: "status", description: "Trang thai / Status" },
-  { command: "history", description: "Lich su / Request history" },
-  { command: "revoke", description: "Tra proxy / Return proxy" },
-  { command: "cancel", description: "Huy yeu cau / Cancel request" },
-  { command: "support", description: "Ho tro / Support" },
-  { command: "language", description: "Doi ngon ngu / Language" },
-  { command: "help", description: "Huong dan / Help" },
-  { command: "requests", description: "Yeu cau dang cho (Admin) / Pending requests (Admin)" },
-]).catch(console.error);
+// Default command list (English) – shown when Telegram language is not Vietnamese
+bot.api
+  .setMyCommands(
+    BOT_COMMANDS.map((c) => ({ command: c.command, description: c.description_en }))
+  )
+  .catch((err) => captureError(err, { source: "bot.setMyCommands(default)" }));
+
+// Vietnamese-specific command list
+bot.api
+  .setMyCommands(
+    BOT_COMMANDS.map((c) => ({ command: c.command, description: c.description_vi })),
+    { language_code: "vi" }
+  )
+  .catch((err) => captureError(err, { source: "bot.setMyCommands(vi)" }));
 
 // ---------------------------------------------------------------------------
 // Callback query handler
@@ -156,8 +160,10 @@ bot.on("message:text", async (ctx) => {
 // ---------------------------------------------------------------------------
 
 bot.catch((err) => {
-  console.error("Bot error:", err.message);
-  console.error("Context:", err.ctx?.update);
+  captureError(err, {
+    source: "bot.handler",
+    extra: { update: err.ctx?.update },
+  });
 });
 
 export { bot };

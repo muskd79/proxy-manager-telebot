@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { useI18n } from "@/lib/i18n";
 import { UserTable } from "@/components/users/user-table";
 import { Pagination } from "@/components/shared/pagination";
 import { useUsers } from "@/hooks/use-users";
@@ -38,6 +39,7 @@ import type { TeleUserStatus } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 
 export default function UsersPage() {
+  const { t } = useI18n();
   const { canWrite } = useRole();
   const {
     users,
@@ -147,10 +149,10 @@ export default function UsersPage() {
       a.download = `users-export-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("Users exported successfully");
+      toast.success(t("users.exportSuccess"));
     } catch (err) {
       console.error("Failed to export users:", err);
-      toast.error("Failed to export users");
+      toast.error(t("users.exportFailed"));
     }
   };
 
@@ -163,15 +165,15 @@ export default function UsersPage() {
             <Users className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">Telegram Users</h1>
+            <h1 className="text-2xl font-bold">{t("users.telegramUsers")}</h1>
             <p className="text-sm text-muted-foreground">
-              Manage and monitor Telegram bot users
+              {t("users.subtitle")}
             </p>
           </div>
         </div>
         <Button variant="outline" onClick={handleExport}>
           <Download className="mr-2 h-4 w-4" />
-          Export
+          {t("common.export")}
         </Button>
       </div>
 
@@ -180,7 +182,7 @@ export default function UsersPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by username, name, or Telegram ID..."
+            placeholder={t("users.searchPlaceholder")}
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -196,21 +198,21 @@ export default function UsersPage() {
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="blocked">Blocked</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="banned">Banned</SelectItem>
+            <SelectItem value="all">{t("users.allStatus")}</SelectItem>
+            <SelectItem value="active">{t("users.active")}</SelectItem>
+            <SelectItem value="blocked">{t("users.blocked")}</SelectItem>
+            <SelectItem value="pending">{t("users.pending")}</SelectItem>
+            <SelectItem value="banned">{t("users.banned")}</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={handleSearch}>Search</Button>
+        <Button onClick={handleSearch}>{t("common.search")}</Button>
       </div>
 
       {/* Bulk Actions */}
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
           <span className="text-sm font-medium">
-            {selectedIds.length} user(s) selected
+            {t("users.usersSelected").replace("{count}", String(selectedIds.length))}
           </span>
           {canWrite && (
             <div className="ml-auto flex gap-2">
@@ -220,7 +222,7 @@ export default function UsersPage() {
                 onClick={() => setBulkAction("block")}
               >
                 <Ban className="mr-1 h-3.5 w-3.5" />
-                Block
+                {t("users.blockUser")}
               </Button>
               <Button
                 variant="outline"
@@ -228,7 +230,7 @@ export default function UsersPage() {
                 onClick={() => setBulkAction("unblock")}
               >
                 <CheckCircle className="mr-1 h-3.5 w-3.5" />
-                Unblock
+                {t("users.unblockUser")}
               </Button>
               <Button
                 variant="destructive"
@@ -236,7 +238,7 @@ export default function UsersPage() {
                 onClick={() => setBulkAction("delete")}
               >
                 <Trash2 className="mr-1 h-3.5 w-3.5" />
-                Delete
+                {t("common.delete")}
               </Button>
             </div>
           )}
@@ -280,18 +282,18 @@ export default function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {bulkAction === "block"
-                ? "Block Users"
+                ? t("users.blockUsers")
                 : bulkAction === "unblock"
-                  ? "Unblock Users"
-                  : "Delete Users"}
+                  ? t("users.unblockUsers")
+                  : t("users.deleteUsers")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to {bulkAction} {selectedIds.length} user(s)?
-              {bulkAction === "delete" && " This will soft-delete the users."}
+              {t("users.bulkConfirm").replace("{action}", bulkAction ?? "").replace("{count}", String(selectedIds.length))}
+              {bulkAction === "delete" && ` ${t("users.softDeleteNote")}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleBulkAction}
               className={
@@ -300,7 +302,7 @@ export default function UsersPage() {
                   : ""
               }
             >
-              Confirm
+              {t("common.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

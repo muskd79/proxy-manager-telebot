@@ -48,6 +48,7 @@ interface DataTableProps<T> {
   onSelectionChange?: (selected: Set<string>) => void;
   getRowId?: (row: T) => string;
   emptyMessage?: string;
+  ariaLabel?: string;
 }
 
 export function DataTable<T>({
@@ -66,6 +67,7 @@ export function DataTable<T>({
   onSelectionChange,
   getRowId = (row: T) => (row as Record<string, unknown>).id as string,
   emptyMessage = "No data found",
+  ariaLabel = "Data table",
 }: DataTableProps<T>) {
   const handleSort = (columnId: string) => {
     if (!onSortChange) return;
@@ -164,7 +166,11 @@ export function DataTable<T>({
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto rounded-lg border">
-        <Table>
+        <Table
+          aria-label={ariaLabel}
+          aria-rowcount={data.length}
+          aria-colcount={columns.length + (selectable ? 1 : 0)}
+        >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {selectable && (
@@ -172,6 +178,7 @@ export function DataTable<T>({
                   <Checkbox
                     checked={selectedRows.size === data.length && data.length > 0}
                     onCheckedChange={handleSelectAll}
+                    aria-label="Select all rows"
                   />
                 </TableHead>
               )}
@@ -183,6 +190,15 @@ export function DataTable<T>({
                     col.className
                   )}
                   onClick={col.sortable ? () => handleSort(col.id) : undefined}
+                  aria-sort={
+                    col.sortable && sort?.column === col.id
+                      ? sort.direction === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : col.sortable
+                        ? "none"
+                        : undefined
+                  }
                 >
                   <div className="flex items-center">
                     {col.header}
@@ -195,17 +211,21 @@ export function DataTable<T>({
           <TableBody>
             {data.map((row) => {
               const rowId = getRowId(row);
+              const isSelected = selectedRows.has(rowId);
               return (
                 <TableRow
                   key={rowId}
-                  data-state={selectedRows.has(rowId) ? "selected" : undefined}
+                  data-state={isSelected ? "selected" : undefined}
                   className="data-[state=selected]:bg-accent/50"
+                  aria-selected={selectable ? isSelected : undefined}
+                  tabIndex={0}
                 >
                   {selectable && (
                     <TableCell>
                       <Checkbox
-                        checked={selectedRows.has(rowId)}
+                        checked={isSelected}
                         onCheckedChange={() => handleSelectRow(rowId)}
+                        aria-label={`Select row ${rowId}`}
                       />
                     </TableCell>
                   )}

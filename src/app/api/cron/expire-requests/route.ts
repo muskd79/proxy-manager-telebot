@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { verifyCronSecret } from "@/lib/auth";
+import { captureError } from "@/lib/error-tracking";
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
@@ -42,7 +43,9 @@ export async function GET(request: NextRequest) {
         ? `[i] Yeu cau proxy ${type} da het han sau 7 ngay khong duoc duyet.\nGui /getproxy de yeu cau moi.`
         : `[i] Your ${type} proxy request expired after 7 days without approval.\nUse /getproxy to request again.`;
 
-    await sendTelegramMessage(user.telegram_id, text).catch(console.error);
+    await sendTelegramMessage(user.telegram_id, text).catch((err) =>
+      captureError(err, { source: "cron.expire-requests", extra: { requestId: req.id, telegramId: user.telegram_id } })
+    );
     notified++;
   }
 
