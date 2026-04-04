@@ -155,6 +155,36 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
     username: string | null;
     first_name: string | null;
   } | null;
+
+  // Check user rate limits before approving
+  const requestQuantity = (request.quantity as number) || 1;
+  if (requestQuantity > 0) {
+    const { data: rateLimitUser } = await supabaseAdmin
+      .from("tele_users")
+      .select("rate_limit_hourly, rate_limit_daily, rate_limit_total, proxies_used_hourly, proxies_used_daily, proxies_used_total")
+      .eq("id", request.tele_user_id)
+      .single();
+
+    if (rateLimitUser) {
+      const remainingHourly = rateLimitUser.rate_limit_hourly - rateLimitUser.proxies_used_hourly;
+      const remainingDaily = rateLimitUser.rate_limit_daily - rateLimitUser.proxies_used_daily;
+      const remainingTotal = rateLimitUser.rate_limit_total - rateLimitUser.proxies_used_total;
+      const maxAllowed = Math.min(remainingHourly, remainingDaily, remainingTotal);
+
+      if (maxAllowed <= 0) {
+        await ctx.answerCallbackQuery("User has reached their rate limit");
+        await ctx.editMessageText(`[Rate Limit] User has no remaining quota. Cannot approve.`);
+        return;
+      }
+
+      if (requestQuantity > maxAllowed) {
+        await ctx.answerCallbackQuery("Rate limit exceeded");
+        await ctx.editMessageText(`[Rate Limit] User can only receive ${maxAllowed} more proxies. Requested: ${requestQuantity}. Reduce quantity or adjust limits.`);
+        return;
+      }
+    }
+  }
+
   const batchId = crypto.randomUUID();
 
   // Bulk assign

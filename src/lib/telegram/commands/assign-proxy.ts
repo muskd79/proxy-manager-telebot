@@ -1,14 +1,17 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
-import { logChatMessage, logActivity, loadGlobalCaps } from "../utils";
-import { checkAndIncrementUsage } from "@/lib/rate-limiter";
+import {
+  checkRateLimit,
+  logChatMessage,
+  logActivity,
+  loadGlobalCaps,
+} from "../utils";
 import {
   ChatDirection,
   MessageType,
   ActorType,
   ApprovalMode,
-  ProxyStatus,
   RequestStatus,
 } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
@@ -21,7 +24,10 @@ interface AssignResult {
 
 /**
  * Auto-assign an available proxy of the given type to a user.
- * Creates a request record, updates the proxy status, and increments usage counters.
+ * Uses bulk_assign_proxies RPC (FOR UPDATE SKIP LOCKED) to prevent
+ * race conditions where two concurrent requests grab the same proxy.
+ * The RPC atomically: locks a proxy, assigns it, creates the request
+ * record, and increments usage counters.
  */
 export async function autoAssignProxy(
   user: Record<string, unknown>,
@@ -30,12 +36,24 @@ export async function autoAssignProxy(
 ): Promise<AssignResult> {
   const userId = user.id as string;
 
-  // Atomic rate limit check + increment (uses DB row lock to prevent races)
+  // Read-only rate limit pre-check. The actual counter increment happens
+  // inside bulk_assign_proxies RPC atomically with the proxy assignment,
+  // so we avoid double-incrementing. This check uses the fresh user record
+  // to gate obvious over-limit requests.
   const globalCaps = await loadGlobalCaps();
-  const rateLimitResult = await checkAndIncrementUsage(
-    userId,
-    globalCaps.global_max_total_requests
-  );
+  const { data: freshUser } = await supabaseAdmin
+    .from("tele_users")
+    .select(
+      "rate_limit_hourly, rate_limit_daily, rate_limit_total, proxies_used_hourly, proxies_used_daily, proxies_used_total, hourly_reset_at, daily_reset_at"
+    )
+    .eq("id", userId)
+    .single();
+
+  if (!freshUser) {
+    return { success: false, text: "User not found" };
+  }
+
+  const rateLimitResult = checkRateLimit(freshUser, globalCaps);
 
   if (!rateLimitResult.allowed) {
     const text = t("rateLimitExceeded", lang);
@@ -49,17 +67,23 @@ export async function autoAssignProxy(
     return { success: false, text };
   }
 
-  // Find available proxy of selected type
-  const { data: proxy } = await supabaseAdmin
-    .from("proxies")
-    .select("*")
-    .eq("type", proxyType)
-    .eq("status", ProxyStatus.Available)
-    .eq("is_deleted", false)
-    .limit(1)
-    .single();
+  // Atomically lock and assign one proxy using FOR UPDATE SKIP LOCKED.
+  // This prevents race conditions where two concurrent requests could
+  // SELECT the same available proxy and both try to assign it.
+  const batchId = crypto.randomUUID();
+  const { data: result, error: rpcError } = await supabaseAdmin.rpc(
+    "bulk_assign_proxies",
+    {
+      p_user_id: userId,
+      p_type: proxyType,
+      p_quantity: 1,
+      p_admin_id: null,
+      p_batch_id: batchId,
+    }
+  );
 
-  if (!proxy) {
+  if (rpcError) {
+    console.error("bulk_assign_proxies RPC error:", rpcError.message);
     const text = t("noProxyAvailable", lang);
     await logChatMessage(
       userId,
@@ -71,38 +95,41 @@ export async function autoAssignProxy(
     return { success: false, text };
   }
 
-  // Assign proxy
+  const rpcResult = result as {
+    success: boolean;
+    assigned: number;
+    requested: number;
+    proxies: Array<{
+      id: string;
+      host: string;
+      port: number;
+      type: string;
+      username: string | null;
+      password: string | null;
+    }>;
+    batch_id: string | null;
+  };
+
+  if (!rpcResult.success || rpcResult.assigned === 0) {
+    const text = t("noProxyAvailable", lang);
+    await logChatMessage(
+      userId,
+      null,
+      ChatDirection.Outgoing,
+      text,
+      MessageType.Text
+    );
+    return { success: false, text };
+  }
+
+  const proxy = rpcResult.proxies[0];
+
+  // Note: The RPC already created the proxy_request record, assigned the
+  // proxy, and incremented usage counters — no need to do it manually.
+
   const expiresAt = new Date(
     Date.now() + 30 * 24 * 60 * 60 * 1000
   ).toISOString();
-  await supabaseAdmin
-    .from("proxies")
-    .update({
-      status: ProxyStatus.Assigned,
-      assigned_to: userId,
-      assigned_at: new Date().toISOString(),
-      expires_at: expiresAt,
-    })
-    .eq("id", proxy.id);
-
-  // Create request record
-  await supabaseAdmin.from("proxy_requests").insert({
-    tele_user_id: userId,
-    proxy_id: proxy.id,
-    proxy_type: proxyType as "http" | "https" | "socks5",
-    status: RequestStatus.AutoApproved,
-    approval_mode: ApprovalMode.Auto,
-    requested_at: new Date().toISOString(),
-    processed_at: new Date().toISOString(),
-    expires_at: expiresAt,
-    is_deleted: false,
-    deleted_at: null,
-    country: null,
-    approved_by: null,
-    rejected_reason: null,
-  });
-
-  // Usage counters already incremented atomically by checkAndIncrementUsage()
 
   const text = fillTemplate(t("proxyAssigned", lang), {
     host: proxy.host,

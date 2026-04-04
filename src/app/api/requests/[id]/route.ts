@@ -102,6 +102,36 @@ export async function PUT(
     if (status === "approved") {
       const requestQuantity = (currentRequest.quantity as number) || 1;
 
+      // Check user rate limits before approving (both bulk and single paths)
+      if (requestQuantity > 0) {
+        const { data: teleUser } = await supabase
+          .from("tele_users")
+          .select("rate_limit_hourly, rate_limit_daily, rate_limit_total, proxies_used_hourly, proxies_used_daily, proxies_used_total, max_proxies")
+          .eq("id", currentRequest.tele_user_id)
+          .single();
+
+        if (teleUser) {
+          const remainingHourly = teleUser.rate_limit_hourly - teleUser.proxies_used_hourly;
+          const remainingDaily = teleUser.rate_limit_daily - teleUser.proxies_used_daily;
+          const remainingTotal = teleUser.rate_limit_total - teleUser.proxies_used_total;
+          const maxAllowed = Math.min(remainingHourly, remainingDaily, remainingTotal);
+
+          if (maxAllowed <= 0) {
+            return NextResponse.json(
+              { success: false, error: "User has reached their rate limit. Cannot approve." },
+              { status: 400 }
+            );
+          }
+
+          if (requestQuantity > maxAllowed) {
+            return NextResponse.json(
+              { success: false, error: `User can only receive ${maxAllowed} more proxies (rate limit). Requested: ${requestQuantity}` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+
       // --- Bulk approval path (quantity > 1) ---
       if (requestQuantity > 1) {
         const batchId = crypto.randomUUID();

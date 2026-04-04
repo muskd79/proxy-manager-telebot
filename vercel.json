@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/expire-proxies",
-      "schedule": "0 * * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/health-check",

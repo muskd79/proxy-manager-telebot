@@ -12,11 +12,9 @@ import { proxyTypeKeyboard, quantityKeyboard } from "../keyboard";
 import {
   ChatDirection,
   MessageType,
-  ApprovalMode,
   ProxyStatus,
   TeleUserStatus,
 } from "@/types/database";
-import { autoAssignProxy, createManualRequest } from "./assign-proxy";
 
 export async function handleGetProxy(ctx: Context) {
   const user = await getOrCreateUser(ctx);
@@ -49,27 +47,11 @@ export async function handleGetProxy(ctx: Context) {
     return;
   }
 
-  // Check rate limit (with global caps)
+  // Quick read-only rate limit preview (no DB writes, no race condition).
+  // This is just for UX feedback — the real counter increment happens
+  // atomically inside bulk_assign_proxies RPC when a proxy is assigned.
   const globalCaps = await loadGlobalCaps();
-  const { allowed, resetHourly, resetDaily } = checkRateLimit(user, globalCaps);
-
-  // Reset counters if needed
-  if (resetHourly || resetDaily) {
-    const updates: Record<string, unknown> = {};
-    if (resetHourly) {
-      updates.proxies_used_hourly = 0;
-      updates.hourly_reset_at = new Date(
-        Date.now() + 60 * 60 * 1000
-      ).toISOString();
-    }
-    if (resetDaily) {
-      updates.proxies_used_daily = 0;
-      updates.daily_reset_at = new Date(
-        Date.now() + 24 * 60 * 60 * 1000
-      ).toISOString();
-    }
-    await supabaseAdmin.from("tele_users").update(updates).eq("id", user.id);
-  }
+  const { allowed } = checkRateLimit(user, globalCaps);
 
   if (!allowed) {
     const text = t("rateLimitExceeded", lang);
