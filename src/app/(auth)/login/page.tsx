@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Globe, Loader2 } from "lucide-react";
@@ -38,6 +39,9 @@ export default function LoginPage() {
         toast.error(error.message);
         return;
       }
+
+      // Track login (fire-and-forget, don't block navigation)
+      fetch("/api/auth/track-login", { method: "POST" }).catch(() => {});
 
       toast.success("Login successful");
       router.push("/dashboard");
@@ -83,7 +87,15 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link
+                href="/forgot-password"
+                className="text-sm text-muted-foreground hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

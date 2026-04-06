@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
@@ -159,6 +160,30 @@ export async function PUT(request: NextRequest) {
         .eq("id", adminId);
 
       if (error) throw error;
+
+      // Revoke all sessions when deactivating an admin
+      if (!is_active) {
+        try {
+          const { data: adminRecord } = await supabase
+            .from("admins")
+            .select("email")
+            .eq("id", adminId)
+            .single();
+
+          if (adminRecord?.email) {
+            const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+            const authUser = users?.find((u: { email?: string }) => u.email === adminRecord.email);
+
+            if (authUser) {
+              await supabaseAdmin.auth.admin.signOut(authUser.id, "global");
+            }
+          }
+        } catch (sessionErr) {
+          // Log but don't fail the deactivation
+          console.error("Failed to revoke sessions:", sessionErr);
+        }
+      }
+
       return NextResponse.json({ success: true });
     }
 
@@ -238,7 +263,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Create admin record (auth user will be created on first login)
+      // Create Supabase auth user and send invite email
+      const { error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "https://proxy-manager-telebot.vercel.app"}/login`,
+      });
+
+      if (authError) {
+        // If user already exists in auth but not in admins table, proceed to create admin record
+        if (!authError.message.includes("already been registered")) {
+          return NextResponse.json(
+            { success: false, error: `Failed to invite: ${authError.message}` },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Create admin record
       const { error } = await supabase.from("admins").insert({
         email,
         role: role || "admin",

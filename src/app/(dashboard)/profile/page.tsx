@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, Save, User } from "lucide-react";
+import { RefreshCw, Save, User, Lock, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,9 @@ interface ProfileData {
   role: string;
   is_active: boolean;
   telegram_id?: number | null;
+  last_login_at?: string | null;
+  last_login_ip?: string | null;
+  login_count?: number;
 }
 
 export default function ProfilePage() {
@@ -24,6 +28,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [fullName, setFullName] = useState("");
   const [telegramId, setTelegramId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
@@ -80,6 +88,42 @@ export default function ProfilePage() {
       toast.error("Failed to update profile");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match");
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success("Password changed successfully");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch {
+      toast.error("Failed to change password");
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -144,6 +188,13 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+          {profile.last_login_at && (
+            <p className="text-sm text-muted-foreground">
+              Last login: {new Date(profile.last_login_at).toLocaleString()}
+              {profile.last_login_ip && ` from ${profile.last_login_ip}`}
+              {profile.login_count != null && profile.login_count > 0 && ` (${profile.login_count} total logins)`}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -179,6 +230,58 @@ export default function ProfilePage() {
               @userinfobot on Telegram to find your ID.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="size-5" />
+            Change Password
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New Password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                setPasswordError("");
+              }}
+              placeholder="Min 8 characters"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm New Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setPasswordError("");
+              }}
+              placeholder="Confirm your new password"
+            />
+          </div>
+          {passwordError && (
+            <p className="text-sm text-destructive">{passwordError}</p>
+          )}
+          <Button
+            onClick={handleChangePassword}
+            disabled={isChangingPassword}
+          >
+            {isChangingPassword ? (
+              <Loader2 className="size-4 mr-1.5 animate-spin" />
+            ) : (
+              <Lock className="size-4 mr-1.5" />
+            )}
+            Change Password
+          </Button>
         </CardContent>
       </Card>
     </div>

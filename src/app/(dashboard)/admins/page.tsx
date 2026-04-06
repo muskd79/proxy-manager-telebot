@@ -44,6 +44,7 @@ interface AdminData {
   role: string;
   is_active: boolean;
   telegram_id: number | null;
+  last_login_at: string | null;
   created_at: string;
 }
 
@@ -273,6 +274,7 @@ export default function AdminsPage() {
                 <TableHead>Telegram ID</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Last Login</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -281,7 +283,7 @@ export default function AdminsPage() {
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -291,7 +293,7 @@ export default function AdminsPage() {
               ) : admins.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No admins found
@@ -320,6 +322,11 @@ export default function AdminsPage() {
                       >
                         {admin.is_active ? "Active" : "Inactive"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {admin.last_login_at
+                        ? format(new Date(admin.last_login_at), "yyyy-MM-dd HH:mm")
+                        : "Never"}
                     </TableCell>
                     <TableCell>
                       {format(new Date(admin.created_at), "yyyy-MM-dd")}

@@ -7,9 +7,10 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Allow unauthenticated access to login page
-  if (pathname === "/login") {
-    if (user) {
+  // Allow unauthenticated access to auth pages
+  const publicAuthPages = ["/login", "/forgot-password", "/reset-password"];
+  if (publicAuthPages.includes(pathname)) {
+    if (user && pathname === "/login") {
       // Authenticated users visiting /login get redirected to /dashboard
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";

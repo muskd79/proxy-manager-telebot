@@ -81,6 +81,9 @@ export interface Admin {
   is_active: boolean;
   language: string;
   telegram_id: number | null;
+  last_login_at: string | null;
+  last_login_ip: string | null;
+  login_count: number;
   created_at: string;
   updated_at: string;
 }
