@@ -123,6 +123,7 @@ vi.mock("@/lib/proxy-checker", () => ({
 
 vi.mock("@/lib/constants", () => ({
   HEALTH_CHECK_CONCURRENCY: 50,
+  HEALTH_CHECK_CRON_BATCH_SIZE: 2000,
   TRASH_AUTO_CLEAN_DAYS: 30,
 }));
 

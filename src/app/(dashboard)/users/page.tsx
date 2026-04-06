@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Users,
   Search,
@@ -56,13 +56,17 @@ export default function UsersPage() {
     deleteUser,
   } = useUsers();
 
-  // Realtime sync: re-fetch when tele_users table changes
+  // Realtime sync: re-fetch when tele_users table changes (debounced to reduce load)
+  const usersDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("users-changes")
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => {
-        fetchUsers();
+        clearTimeout(usersDebounceRef.current);
+        usersDebounceRef.current = setTimeout(() => {
+          fetchUsers();
+        }, 2000);
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
@@ -71,6 +75,7 @@ export default function UsersPage() {
       });
 
     return () => {
+      clearTimeout(usersDebounceRef.current);
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };

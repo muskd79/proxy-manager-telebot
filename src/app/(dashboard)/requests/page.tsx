@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   FileText,
   Search,
@@ -103,17 +103,24 @@ export default function RequestsPage() {
     fetchRequests();
   }, [fetchRequests]);
 
-  // Realtime sync: re-fetch when proxy_requests table changes
+  // Realtime sync: re-fetch when proxy_requests table changes (debounced to reduce load)
+  const requestsDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("requests-changes")
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
-        fetchRequests();
+        clearTimeout(requestsDebounceRef.current);
+        requestsDebounceRef.current = setTimeout(() => {
+          fetchRequests();
+        }, 2000);
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(requestsDebounceRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [fetchRequests]);
 
   const handleTabChange = (tab: string) => {

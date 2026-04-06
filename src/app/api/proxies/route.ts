@@ -57,14 +57,26 @@ export async function GET(request: NextRequest) {
 
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const cursorDate = searchParams.get("cursor"); // ISO date string for cursor-based pagination
 
-    query = query
-      .order(filters.sortBy ?? "created_at", {
-        ascending: filters.sortOrder === "asc",
-      })
-      .range(from, to);
+    query = query.order(filters.sortBy ?? "created_at", {
+      ascending: filters.sortOrder === "asc",
+    });
+
+    if (cursorDate) {
+      // Cursor-based pagination: O(1) performance for large datasets
+      if (filters.sortOrder === "asc") {
+        query = query.gt("created_at", cursorDate);
+      } else {
+        query = query.lt("created_at", cursorDate);
+      }
+      query = query.limit(pageSize);
+    } else {
+      // Offset-based pagination (backward compatible)
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+    }
 
     const { data, error, count } = await query;
 
@@ -79,12 +91,19 @@ export async function GET(request: NextRequest) {
       }) as Proxy[];
     }
 
-    const response: PaginatedResponse<Proxy> = {
+    // Build next cursor from last item for cursor-based pagination
+    const nextCursor =
+      responseData.length === pageSize
+        ? responseData[responseData.length - 1]?.created_at ?? null
+        : null;
+
+    const response: PaginatedResponse<Proxy> & { nextCursor?: string | null } = {
       data: responseData,
       total: count ?? 0,
-      page,
+      page: cursorDate ? 0 : page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: cursorDate ? 0 : Math.ceil((count ?? 0) / pageSize),
+      ...(cursorDate !== null && cursorDate !== undefined ? { nextCursor } : {}),
     };
 
     return NextResponse.json({ success: true, ...response });

@@ -4,6 +4,7 @@ import "@/lib/telegram/handlers"; // register all handlers
 import { bot } from "@/lib/telegram/handlers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { captureError } from "@/lib/error-tracking";
+import { acquireSlot, releaseSlot } from "@/lib/telegram/webhook-queue";
 
 // === Layer 1: In-memory dedup (fast, covers warm instances) ===
 const processedUpdates = new Set<number>();
@@ -129,24 +130,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Process the update
-    const handler = webhookCallback(bot, "std/http");
-    const response = await handler(req);
-
-    // Record in DB after successful processing
-    if (updateId) {
-      // Fire-and-forget: don't block the response
-      recordProcessedUpdate(updateId);
+    // Acquire a slot from the connection pool queue (max 50 concurrent)
+    // This prevents connection pool exhaustion under high load
+    try {
+      await acquireSlot();
+    } catch {
+      // Queue timeout - return ok to Telegram so it doesn't retry
+      return NextResponse.json({ ok: true });
     }
 
-    // Periodic cleanup of old dedup entries
-    dedupCleanupCounter++;
-    if (dedupCleanupCounter >= DEDUP_CLEANUP_INTERVAL) {
-      dedupCleanupCounter = 0;
-      cleanupOldDedupEntries();
-    }
+    try {
+      // Process the update
+      const handler = webhookCallback(bot, "std/http");
+      const response = await handler(req);
 
-    return response;
+      // Record in DB after successful processing
+      if (updateId) {
+        // Fire-and-forget: don't block the response
+        recordProcessedUpdate(updateId);
+      }
+
+      // Periodic cleanup of old dedup entries
+      dedupCleanupCounter++;
+      if (dedupCleanupCounter >= DEDUP_CLEANUP_INTERVAL) {
+        dedupCleanupCounter = 0;
+        cleanupOldDedupEntries();
+      }
+
+      return response;
+    } finally {
+      releaseSlot();
+    }
   } catch (error) {
     captureError(error, { source: "webhook.process", extra: { method: "POST" } });
     return NextResponse.json({ ok: true });

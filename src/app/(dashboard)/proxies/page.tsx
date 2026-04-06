@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
@@ -153,13 +153,18 @@ export default function ProxiesPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [proxies, selectedIds]);
 
-  // Realtime sync: re-fetch when proxies table changes
+  // Realtime sync: re-fetch when proxies table changes (debounced to reduce load)
+  const proxiesDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("proxies-changes")
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => {
-        fetchProxies();
+        // Debounce: only re-fetch after 2s of no changes
+        clearTimeout(proxiesDebounceRef.current);
+        proxiesDebounceRef.current = setTimeout(() => {
+          fetchProxies();
+        }, 2000);
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR') {
@@ -168,6 +173,7 @@ export default function ProxiesPage() {
       });
 
     return () => {
+      clearTimeout(proxiesDebounceRef.current);
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };

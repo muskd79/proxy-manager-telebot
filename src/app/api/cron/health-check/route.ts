@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
-import { HEALTH_CHECK_CONCURRENCY } from "@/lib/constants";
+import { HEALTH_CHECK_CONCURRENCY, HEALTH_CHECK_CRON_BATCH_SIZE } from "@/lib/constants";
 import { verifyCronSecret } from "@/lib/auth";
-
-const BATCH_SIZE = 500;
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
-  // Fetch 500 proxies ordered by least recently checked
+  // Fetch proxies ordered by least recently checked
   const { data: proxies, error } = await supabaseAdmin
     .from("proxies")
     .select("id, host, port, type")
     .eq("is_deleted", false)
     .order("last_checked_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_SIZE);
+    .limit(HEALTH_CHECK_CRON_BATCH_SIZE);
 
   if (error || !proxies || proxies.length === 0) {
     return NextResponse.json({ success: true, data: { checked: 0, alive: 0, dead: 0 } });

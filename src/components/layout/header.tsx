@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -47,20 +47,27 @@ export function Header({ admin }: { admin: Admin }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Realtime sync: instant notification updates on proxy_requests changes
+  // Realtime sync: notification updates on proxy_requests changes (debounced to reduce load)
+  const headerDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("pending-requests")
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
-        fetch("/api/requests?status=pending&pageSize=1")
-          .then(r => r.json())
-          .then(d => setPendingCount(d?.data?.total || 0))
-          .catch(() => {});
+        clearTimeout(headerDebounceRef.current);
+        headerDebounceRef.current = setTimeout(() => {
+          fetch("/api/requests?status=pending&pageSize=1")
+            .then(r => r.json())
+            .then(d => setPendingCount(d?.data?.total || 0))
+            .catch(() => {});
+        }, 2000);
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(headerDebounceRef.current);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleLogout = async () => {

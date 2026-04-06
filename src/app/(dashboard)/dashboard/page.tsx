@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ProxyChart } from "@/components/dashboard/proxy-chart";
 import { RecentRequests } from "@/components/dashboard/recent-requests";
@@ -40,17 +40,27 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  // Realtime sync: instant dashboard updates on data changes
+  // Realtime sync: dashboard updates on data changes (debounced to reduce load)
+  const dashDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
+    const debouncedFetch = () => {
+      clearTimeout(dashDebounceRef.current);
+      dashDebounceRef.current = setTimeout(() => {
+        fetchStats();
+      }, 2000);
+    };
     const channel = supabase
       .channel("dashboard-changes")
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => fetchStats())
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => fetchStats())
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => fetchStats())
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, debouncedFetch)
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, debouncedFetch)
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, debouncedFetch)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(dashDebounceRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [fetchStats]);
 
   return (

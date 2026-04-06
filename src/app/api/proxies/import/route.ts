@@ -6,6 +6,7 @@ import { requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
+import { captureError } from "@/lib/error-tracking";
 
 interface ImportProxyRow {
   host: string;
@@ -35,7 +36,10 @@ export async function POST(request: NextRequest) {
 
     const { proxies, type, country, tags, notes, isp } = parsed.data;
 
-    const result: ImportProxyResult = {
+    const importId = crypto.randomUUID();
+
+    const result: ImportProxyResult & { importId: string } = {
+      importId,
       total: proxies.length,
       imported: 0,
       skipped: 0,
@@ -85,48 +89,28 @@ export async function POST(request: NextRequest) {
     }
 
     if (validProxies.length > 0) {
-      // Process in batches with fallback to one-by-one on failure
+      // Process in batches using upsert to handle duplicates gracefully
+      // This avoids the insert -> fail -> one-by-one fallback which is 100x slower
       for (let i = 0; i < validProxies.length; i += IMPORT_BATCH_SIZE) {
         const batch = validProxies.slice(i, i + IMPORT_BATCH_SIZE);
-        const { error } = await supabase
+        const { error, count } = await supabase
           .from("proxies")
-          .insert(batch);
+          .upsert(batch, { onConflict: "host,port", ignoreDuplicates: true, count: "exact" });
 
-        if (!error) {
-          result.imported += batch.length;
-        } else {
-          // Batch failed – try one by one to identify specific failures
-          for (let j = 0; j < batch.length; j++) {
-            const item = batch[j];
-            const { error: singleError } = await supabase
-              .from("proxies")
-              .insert(item);
-
-            if (singleError) {
-              const lineNum = proxies[i + j]?.line ?? i + j + 1;
-              const rawStr = `${item.host}:${item.port}`;
-              if (
-                singleError.message.includes("duplicate") ||
-                singleError.message.includes("unique")
-              ) {
-                result.skipped++;
-                result.errors.push({
-                  line: lineNum,
-                  raw: rawStr,
-                  reason: "Duplicate proxy",
-                });
-              } else {
-                result.failed++;
-                result.errors.push({
-                  line: lineNum,
-                  raw: rawStr,
-                  reason: singleError.message,
-                });
-              }
-            } else {
-              result.imported++;
-            }
+        if (error) {
+          result.failed += batch.length;
+          // Only store first 50 errors to avoid bloating response
+          if (result.errors.length < 50) {
+            result.errors.push({
+              line: i + 1,
+              raw: `batch ${Math.floor(i / IMPORT_BATCH_SIZE) + 1}`,
+              reason: error.message,
+            });
           }
+        } else {
+          const inserted = count ?? batch.length;
+          result.imported += inserted;
+          result.skipped += batch.length - inserted;
         }
       }
     }
@@ -137,6 +121,7 @@ export async function POST(request: NextRequest) {
       action: "proxy.import",
       resourceType: "proxy",
       details: {
+        importId,
         total: result.total,
         imported: result.imported,
         failed: result.failed,
@@ -144,11 +129,11 @@ export async function POST(request: NextRequest) {
       },
       ipAddress: request.headers.get("x-forwarded-for") || undefined,
       userAgent: request.headers.get("user-agent") || undefined,
-    }).catch(console.error);
+    }).catch((err) => captureError(err, { source: "api.proxies.import.log", extra: { adminId: admin.id } }));
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    console.error("Import error:", error);
+    captureError(error, { source: "api.proxies.import", extra: { adminId: admin?.id } });
     return NextResponse.json(
       { success: false, error: "Failed to import proxies" },
       { status: 500 }
