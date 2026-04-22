@@ -800,7 +800,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "http",
           assigned_to: "user1",
@@ -837,7 +837,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "socks5",
           assigned_to: "user1",
@@ -868,7 +868,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "http",
           assigned_to: null,
@@ -894,7 +894,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "http",
           assigned_to: "user1",
@@ -925,7 +925,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "http",
           assigned_to: "user1",
@@ -958,7 +958,7 @@ describe("GET /api/cron/expiry-warning", () => {
       data: [
         {
           id: "px1",
-          host: "10.0.0.1",
+          host: "203.0.113.2",
           port: 3128,
           type: "http",
           assigned_to: "user1",

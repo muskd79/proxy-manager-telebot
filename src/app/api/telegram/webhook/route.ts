@@ -133,16 +133,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true }); // Already processed
     }
 
-    // Mark in memory before processing
-    if (updateId) {
-      processedUpdates.add(updateId);
-      // Keep set bounded
-      if (processedUpdates.size > MAX_DEDUP_SIZE) {
-        const first = processedUpdates.values().next().value;
-        if (first !== undefined) processedUpdates.delete(first);
-      }
-    }
-
     // Acquire a slot from the connection pool queue (max 50 concurrent)
     // This prevents connection pool exhaustion under high load
     try {
@@ -153,13 +143,21 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      // Process the update
+      // Process the update FIRST, then mark as processed. If processing
+      // throws, we do NOT add the updateId to the dedup cache — Telegram
+      // will retry and we get a second chance. This prevents silent
+      // message loss on transient errors (DB hiccup, cold-start timeout).
       const handler = webhookCallback(bot, "std/http");
       const response = await handler(req);
 
-      // Record in DB after successful processing
+      // Only after successful processing: mark the updateId as seen.
       if (updateId) {
-        // Fire-and-forget: don't block the response
+        processedUpdates.add(updateId);
+        if (processedUpdates.size > MAX_DEDUP_SIZE) {
+          const first = processedUpdates.values().next().value;
+          if (first !== undefined) processedUpdates.delete(first);
+        }
+        // Fire-and-forget DB record: don't block the response
         recordProcessedUpdate(updateId);
       }
 

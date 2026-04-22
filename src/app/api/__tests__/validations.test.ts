@@ -25,7 +25,8 @@ import {
 
 describe("CreateProxySchema", () => {
   const validProxy = {
-    host: "192.168.1.1",
+    // TEST-NET-3 — public, reserved for docs, passes SSRF refinement.
+    host: "203.0.113.1",
     port: 8080,
     type: "http" as const,
   };

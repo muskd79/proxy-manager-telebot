@@ -1,9 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { Proxy, ProxyUpdate } from "@/types/database";
+import { ProxyStatus } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { UpdateProxySchema } from "@/lib/validations";
+import { proxyMachine } from "@/lib/state-machine/proxy";
 
 export async function GET(
   request: NextRequest,
@@ -89,6 +91,29 @@ export async function PUT(
       }
     }
     if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
+
+    // Guard proxy status transitions against the lifecycle state machine.
+    // Without this, admins can flip `banned -> available` or `expired -> assigned`
+    // from the web UI, skipping the maintenance check step defined in proxyMachine.
+    if (status !== undefined) {
+      const { data: currentProxy } = await supabase
+        .from("proxies")
+        .select("status")
+        .eq("id", id)
+        .single();
+      const currentStatus = currentProxy?.status as ProxyStatus | undefined;
+      if (currentStatus && status !== currentStatus) {
+        if (!proxyMachine.canTransition(currentStatus, status as ProxyStatus)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Invalid proxy transition: ${currentStatus} -> ${status}`,
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
 
     if (host !== undefined) updateData.host = host;
     if (port !== undefined) updateData.port = port;

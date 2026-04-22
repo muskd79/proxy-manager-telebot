@@ -1,7 +1,8 @@
 export function createProxy(overrides: Partial<any> = {}) {
   return {
     id: crypto.randomUUID(),
-    host: `192.168.1.${Math.floor(Math.random() * 255)}`,
+    // TEST-NET-3 (RFC 5737) — reserved for documentation/examples; passes SSRF guard.
+    host: `203.0.113.${Math.floor(Math.random() * 255)}`,
     port: 8080,
     type: "http",
     status: "available",

@@ -258,51 +258,88 @@ export async function PUT(
       }
 
       // --- Single approval path (quantity = 1) ---
-      let assignProxyId = proxy_id;
+      // Auto-assign retry loop: if the pre-SELECT found a proxy but a
+      // concurrent request grabbed it first (safe_assign_proxy returns
+      // 'no longer available'), re-select and retry. This closes the TOCTOU
+      // window between pre-SELECT and the atomic RPC where both sides see
+      // the same candidate ID but only one can win.
+      const MAX_AUTO_ASSIGN_ATTEMPTS = 3;
 
-      // Auto-assign: find an available proxy matching request criteria
-      if (auto_assign && !assignProxyId) {
-        let proxyQuery = supabase
+      // Helper: pick next candidate proxy matching the request.
+      const pickNextProxy = async (): Promise<string | null> => {
+        let q = supabase
           .from("proxies")
           .select("id")
           .eq("status", "available")
           .eq("is_deleted", false);
+        if (currentRequest.proxy_type) q = q.eq("type", currentRequest.proxy_type);
+        if (currentRequest.country) q = q.eq("country", currentRequest.country);
+        const { data } = await q.limit(1).maybeSingle();
+        return data?.id ?? null;
+      };
 
-        if (currentRequest.proxy_type) {
-          proxyQuery = proxyQuery.eq("type", currentRequest.proxy_type);
-        }
-        if (currentRequest.country) {
-          proxyQuery = proxyQuery.eq("country", currentRequest.country);
+      interface SafeAssignResult {
+        success: boolean;
+        error?: string;
+        tele_user_id?: string;
+        proxy?: {
+          host: string;
+          port: number;
+          username: string | null;
+          password: string | null;
+          type: string;
+        };
+      }
+
+      let assignProxyId: string | null = proxy_id ?? null;
+      let rpcResult: SafeAssignResult | null = null;
+      let rpcErrorMessage: string | null = null;
+
+      for (let attempt = 0; attempt < MAX_AUTO_ASSIGN_ATTEMPTS; attempt++) {
+        // Pick a candidate on the first attempt for auto-assign, or when a
+        // previous attempt lost the race; skip if the admin picked a specific proxy_id.
+        if (auto_assign && !assignProxyId) {
+          assignProxyId = await pickNextProxy();
+          if (!assignProxyId) {
+            return NextResponse.json(
+              { success: false, error: "No matching proxy available for auto-assign" } satisfies ApiResponse<never>,
+              { status: 400 }
+            );
+          }
         }
 
-        const { data: availableProxy } = await proxyQuery.limit(1).single();
-        if (availableProxy) {
-          assignProxyId = availableProxy.id;
-        } else {
+        if (!assignProxyId) {
           return NextResponse.json(
-            { success: false, error: "No matching proxy available for auto-assign" } satisfies ApiResponse<never>,
+            { success: false, error: "proxy_id is required for approval" } satisfies ApiResponse<never>,
             { status: 400 }
           );
         }
+
+        const rpcCall = await supabase.rpc("safe_assign_proxy", {
+          p_request_id: id,
+          p_proxy_id: assignProxyId,
+          p_admin_id: admin.id,
+        });
+        rpcResult = rpcCall.data as SafeAssignResult | null;
+        rpcErrorMessage = rpcCall.error?.message ?? null;
+
+        if (!rpcErrorMessage && rpcResult?.success) break;
+
+        // Retry only when auto_assign is on AND the RPC reported a race loss
+        // (proxy no longer available). Admin-picked proxy_id: don't retry.
+        const lostRace =
+          rpcResult?.error && /no longer available|not available/i.test(rpcResult.error);
+        if (!auto_assign || !lostRace) break;
+        assignProxyId = null; // force next pickNextProxy()
       }
 
-      if (!assignProxyId) {
+      if (rpcErrorMessage || !rpcResult?.success) {
+        // Internal log keeps the raw error; client sees a generic message.
+        if (rpcErrorMessage) {
+          console.error("safe_assign_proxy error:", rpcErrorMessage);
+        }
         return NextResponse.json(
-          { success: false, error: "proxy_id is required for approval" } satisfies ApiResponse<never>,
-          { status: 400 }
-        );
-      }
-
-      // Atomic proxy assignment via RPC (prevents race conditions)
-      const { data: rpcResult, error: rpcError } = await supabase.rpc("safe_assign_proxy", {
-        p_request_id: id,
-        p_proxy_id: assignProxyId,
-        p_admin_id: admin.id,
-      });
-
-      if (rpcError || !rpcResult?.success) {
-        return NextResponse.json(
-          { success: false, error: rpcResult?.error || rpcError?.message || "Failed to assign proxy" } satisfies ApiResponse<never>,
+          { success: false, error: rpcResult?.error || "Failed to assign proxy" } satisfies ApiResponse<never>,
           { status: 409 }
         );
       }

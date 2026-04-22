@@ -82,7 +82,7 @@ function createMockRequest(options: {
 
 const sampleProxy = {
   id: "proxy-uuid-1",
-  host: "192.168.1.1",
+  host: "203.0.113.1",
   port: 8080,
   type: "http",
   username: "user",
@@ -231,7 +231,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 3128, type: "http" },
+      body: { host: "203.0.113.2", port: 3128, type: "http" },
     });
     const res = await POST(req);
     const body = await res.json();
@@ -248,7 +248,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 3128, type: "http" },
+      body: { host: "203.0.113.2", port: 3128, type: "http" },
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
@@ -262,7 +262,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 3128, type: "http" },
+      body: { host: "203.0.113.2", port: 3128, type: "http" },
     });
     const res = await POST(req);
     expect(res.status).toBe(403);
@@ -288,7 +288,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 70000, type: "http" },
+      body: { host: "203.0.113.2", port: 70000, type: "http" },
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -299,7 +299,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 8080, type: "ftp" },
+      body: { host: "203.0.113.2", port: 8080, type: "ftp" },
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -311,7 +311,7 @@ describe("POST /api/proxies", () => {
     const req = createMockRequest({
       method: "POST",
       body: {
-        host: "10.0.0.1",
+        host: "203.0.113.2",
         port: 8080,
         type: "socks5",
         username: "proxyuser",
@@ -335,7 +335,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "10.0.0.1", port: 3128, type: "http" },
+      body: { host: "203.0.113.2", port: 3128, type: "http" },
     });
     const res = await POST(req);
     expect(res.status).toBe(500);

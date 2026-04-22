@@ -77,7 +77,7 @@ describe("handleRevoke", () => {
 
     const proxy = createProxy({
       id: "proxy-1",
-      host: "10.0.0.1",
+      host: "203.0.113.2",
       port: 3128,
       type: "http",
       assigned_to: user.id,
@@ -107,7 +107,7 @@ describe("handleRevoke", () => {
     expect(ctx.reply).toHaveBeenCalled();
     const replyText = ctx._replies[0];
     expect(replyText).toContain("Successfully returned proxy");
-    expect(replyText).toContain("10.0.0.1:3128");
+    expect(replyText).toContain("203.0.113.2:3128");
   });
 
   it("shows selection keyboard when user has multiple proxies", async () => {
@@ -119,7 +119,7 @@ describe("handleRevoke", () => {
 
     const proxy1 = createProxy({
       id: "p1",
-      host: "10.0.0.1",
+      host: "203.0.113.2",
       port: 8080,
       type: "http",
       assigned_to: user.id,
@@ -127,7 +127,7 @@ describe("handleRevoke", () => {
     });
     const proxy2 = createProxy({
       id: "p2",
-      host: "10.0.0.2",
+      host: "203.0.113.3",
       port: 1080,
       type: "socks5",
       assigned_to: user.id,
@@ -176,7 +176,7 @@ describe("handleRevokeSelection", () => {
 
     const proxy = createProxy({
       id: "proxy-1",
-      host: "10.0.0.1",
+      host: "203.0.113.2",
       port: 3128,
       assigned_to: user.id,
       status: "assigned",
@@ -208,7 +208,7 @@ describe("handleRevokeSelection", () => {
     expect(ctx.editMessageText).toHaveBeenCalled();
     const editText = ctx._edits[0];
     expect(editText).toContain("Successfully returned proxy");
-    expect(editText).toContain("10.0.0.1:3128");
+    expect(editText).toContain("203.0.113.2:3128");
   });
 
   it("answers callback with error when proxy is invalid", async () => {
@@ -249,8 +249,8 @@ describe("handleRevokeSelection", () => {
     });
 
     const proxies = [
-      createProxy({ id: "p1", host: "10.0.0.1", port: 8080, assigned_to: user.id, status: "assigned" }),
-      createProxy({ id: "p2", host: "10.0.0.2", port: 1080, assigned_to: user.id, status: "assigned" }),
+      createProxy({ id: "p1", host: "203.0.113.2", port: 8080, assigned_to: user.id, status: "assigned" }),
+      createProxy({ id: "p2", host: "203.0.113.3", port: 1080, assigned_to: user.id, status: "assigned" }),
     ];
 
     const usersMock = createChainableMock({ data: user, error: null });

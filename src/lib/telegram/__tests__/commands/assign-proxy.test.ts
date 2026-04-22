@@ -224,7 +224,7 @@ describe("autoAssignProxy", () => {
         proxies: [
           {
             id: "p2",
-            host: "10.0.0.1",
+            host: "203.0.113.2",
             port: 1080,
             type: "socks5",
             username: "proxyuser",
@@ -244,7 +244,7 @@ describe("autoAssignProxy", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.text).toContain("10.0.0.1");
+    expect(result.text).toContain("203.0.113.2");
     expect(result.text).toContain("1080");
     expect(result.text).toContain("proxyuser");
     expect(result.text).toContain("proxypass");

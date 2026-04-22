@@ -1,9 +1,21 @@
 import { z } from "zod";
+import { validatePublicHostLiteral } from "@/lib/security/public-ip";
+
+/** Zod refinement that rejects obvious private/loopback IP literals at parse time. */
+const publicHostLiteral = (s: string) => {
+  const reason = validatePublicHostLiteral(s);
+  return reason === null;
+};
+const publicHostMessage = "Host resolves to a private or reserved address (SSRF guard)";
 
 // ─── Proxy schemas ───────────────────────────────────────────────
 
 export const CreateProxySchema = z.object({
-  host: z.string().min(1, "Host is required").max(255),
+  host: z
+    .string()
+    .min(1, "Host is required")
+    .max(255)
+    .refine(publicHostLiteral, publicHostMessage),
   port: z.coerce.number().int().min(1).max(65535, "Port must be 1-65535"),
   type: z.enum(["http", "https", "socks5"]),
   username: z.string().max(255).nullable().optional(),
@@ -17,7 +29,7 @@ export const CreateProxySchema = z.object({
 });
 
 export const UpdateProxySchema = z.object({
-  host: z.string().min(1).max(255).optional(),
+  host: z.string().min(1).max(255).refine(publicHostLiteral, publicHostMessage).optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
   type: z.enum(["http", "https", "socks5"]).optional(),
   username: z.string().max(255).nullable().optional(),
@@ -37,7 +49,7 @@ export const UpdateProxySchema = z.object({
 // ─── Import proxy schemas ────────────────────────────────────────
 
 const ImportProxyRowSchema = z.object({
-  host: z.string().min(1).max(255),
+  host: z.string().min(1).max(255).refine(publicHostLiteral, publicHostMessage),
   port: z.coerce.number().int().min(1).max(65535),
   type: z.enum(["http", "https", "socks5"]).optional(),
   username: z.string().max(255).optional(),
