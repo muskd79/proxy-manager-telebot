@@ -34,6 +34,7 @@ import {
   shouldDlq,
   MAX_ATTEMPTS_BEFORE_DLQ,
 } from "./backoff";
+import { rateLimitTake } from "../rate-limit/client";
 
 interface PendingOrderRow {
   id: string;
@@ -195,6 +196,26 @@ async function processClaimed(
       false,
     );
     result.failed += 1;
+    return;
+  }
+
+  // Rate-limit check via the CF Worker token bucket. Fail-open on Worker
+  // outage (see rate-limit/client.ts); vendor-side 429 handling below is
+  // the real safety net.
+  const rl = await rateLimitTake({
+    vendorSlug: vendor.slug,
+    scope: "default",
+    cost: 1,
+  });
+  if (!rl.allowed) {
+    await rescheduleRetry(
+      deps,
+      row,
+      rl.retryAfterMs,
+      "rate_limited",
+      `CF token bucket empty for vendor=${vendor.slug}`,
+    );
+    result.skippedRateLimited += 1;
     return;
   }
 

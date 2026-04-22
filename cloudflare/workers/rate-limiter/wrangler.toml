@@ -1,0 +1,35 @@
+name = "proxy-manager-rate-limiter"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Durable Object: token-bucket state, one instance per (vendor_slug, scope) key.
+[[durable_objects.bindings]]
+name = "TOKEN_BUCKET"
+class_name = "TokenBucketDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["TokenBucketDO"]
+
+# KV namespace: nonce store (replay defense).
+# Run: npx wrangler kv:namespace create nonce_store
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "NONCE_STORE"
+id = "REPLACE_WITH_KV_ID_AFTER_CREATE"
+
+# Analytics Engine: per-take telemetry for Grafana.
+[[analytics_engine_datasets]]
+binding = "RATE_LIMITER_ANALYTICS"
+dataset = "rate_limiter_take_events"
+
+# Env vars (non-secret). Secrets are set via `wrangler secret put`:
+#   - RL_SHARED_SECRET_PRIMARY     HMAC secret (32 bytes hex)
+#   - RL_SHARED_SECRET_SECONDARY   HMAC secret for rotation
+#   - RL_ADMIN_SECRET              Separate HMAC secret for /reset
+[vars]
+CLOCK_SKEW_PAST_SEC = "10"
+CLOCK_SKEW_FUTURE_SEC = "5"
+NONCE_TTL_SEC = "15"
