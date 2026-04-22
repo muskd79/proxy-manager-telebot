@@ -3,9 +3,11 @@ import { getAdapter, listAdapterKeys, VENDOR_REGISTRY } from "../registry";
 import { NotSupportedError } from "../errors";
 
 describe("vendor registry", () => {
-  it("registers the 3 launch-ready adapters", () => {
+  it("registers the 3 launch-ready adapters (Wave 20B: iproyal removed, evomi added)", () => {
     const keys = listAdapterKeys();
-    expect(keys).toEqual(expect.arrayContaining(["webshare", "smartproxy", "iproyal"]));
+    expect(keys).toEqual(expect.arrayContaining(["webshare", "smartproxy", "evomi"]));
+    // iproyal was removed in Wave 20B because its ToS prohibits resale.
+    expect(keys).not.toContain("iproyal");
   });
 
   it("returns the same adapter instance on repeat lookup (stable reference)", () => {

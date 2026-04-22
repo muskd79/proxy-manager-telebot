@@ -8,17 +8,21 @@
  *
  * Keeping this as a static map (not a dynamic lookup) so a typo in
  * `adapter_key` fails fast at boot, not at purchase time.
+ *
+ * Registry history:
+ *   - Wave 19: webshare, smartproxy, iproyal
+ *   - Wave 20B: iproyal removed (ToS prohibits resale); evomi added
  */
 
 import type { VendorAdapter } from "./types";
 import { WebshareAdapter } from "./adapters/webshare";
 import { SmartproxyAdapter } from "./adapters/smartproxy";
-import { IProyalAdapter } from "./adapters/iproyal";
+import { EvomiAdapter } from "./adapters/evomi";
 
 export const VENDOR_REGISTRY: Readonly<Record<string, VendorAdapter>> = Object.freeze({
   webshare: new WebshareAdapter(),
   smartproxy: new SmartproxyAdapter(),
-  iproyal: new IProyalAdapter(),
+  evomi: new EvomiAdapter(),
 });
 
 export function getAdapter(adapterKey: string): VendorAdapter {
