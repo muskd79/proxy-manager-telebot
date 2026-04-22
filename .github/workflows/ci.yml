@@ -70,8 +70,11 @@ jobs:
       - name: Detect new migration files
         id: detect
         run: |
-          # Find migration files changed in this push
-          CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'supabase/migrations/*.sql' 2>/dev/null || echo "")
+          # Find migration files ADDED or MODIFIED in this push.
+          # --diff-filter=AM excludes Deleted/Renamed/Copied files so a
+          # commit that removes a bad migration doesn't trigger a failed
+          # "apply deleted file" attempt (Wave 20A fix 2026-04-22).
+          CHANGED=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- 'supabase/migrations/*.sql' 2>/dev/null || echo "")
           if [ -z "$CHANGED" ]; then
             echo "No new migrations detected"
             echo "has_migrations=false" >> $GITHUB_OUTPUT
