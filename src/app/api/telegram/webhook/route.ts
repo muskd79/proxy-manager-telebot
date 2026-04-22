@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { webhookCallback } from "@/lib/telegram/bot";
 import "@/lib/telegram/handlers"; // register all handlers
 import { bot } from "@/lib/telegram/handlers";
@@ -7,6 +8,15 @@ import { captureError } from "@/lib/error-tracking";
 import { acquireSlot, releaseSlot } from "@/lib/telegram/webhook-queue";
 import { isTelegramIp } from "@/lib/telegram/ip-whitelist";
 import { getClientIp } from "@/lib/ip";
+
+/** Constant-time string comparison to avoid leaking secret bytes via timing. */
+function safeCompare(a: string | null | undefined, b: string): boolean {
+  if (!a) return false;
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 // === Layer 1: In-memory dedup (fast, covers warm instances) ===
 const processedUpdates = new Set<number>();
@@ -84,7 +94,8 @@ export async function POST(req: NextRequest) {
   }
 
   const headerSecret = req.headers.get("x-telegram-bot-api-secret-token");
-  if (headerSecret !== webhookSecret) {
+  // Timing-safe: plain `!==` leaks the secret byte-by-byte via response latency.
+  if (!safeCompare(headerSecret, webhookSecret)) {
     return NextResponse.json({ ok: false }, { status: 403 });
   }
 

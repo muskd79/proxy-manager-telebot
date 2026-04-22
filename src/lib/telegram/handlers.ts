@@ -27,6 +27,8 @@ import {
   handleAdminRejectCallback,
   handleAdminApproveUser,
   handleAdminBlockUser,
+  handleAupAcceptCallback,
+  handleAupDeclineCallback,
 } from "./commands";
 import {
   handleQuantitySelection,
@@ -78,6 +80,16 @@ bot.api
 
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
+
+  if (data === "aup_accept") {
+    await handleAupAcceptCallback(ctx);
+    return;
+  }
+
+  if (data === "aup_decline") {
+    await handleAupDeclineCallback(ctx);
+    return;
+  }
 
   if (data.startsWith("proxy_type:")) {
     const proxyType = data.replace("proxy_type:", "");

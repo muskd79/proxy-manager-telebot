@@ -38,21 +38,23 @@ describe("checkApiRateLimit", () => {
     expect(result.remaining).toBe(0);
   });
 
-  it("fails open on DB error", async () => {
+  it("fails CLOSED on DB error (Wave 18B: was fail-open, caused DoS amplification)", async () => {
     mockRpc.mockResolvedValueOnce({
       data: null,
       error: { message: "DB connection failed" },
     });
 
     const result = await checkApiRateLimit("test-ip");
-    expect(result.allowed).toBe(true); // fail-open
-    expect(result.remaining).toBe(100);
+    expect(result.allowed).toBe(false); // fail-CLOSED
+    expect(result.remaining).toBe(0);
+    expect(result.checkFailed).toBe(true);
   });
 
-  it("fails open on unexpected exception", async () => {
+  it("fails CLOSED on unexpected exception (Wave 18B)", async () => {
     mockRpc.mockRejectedValueOnce(new Error("Network error"));
 
     const result = await checkApiRateLimit("test-ip");
-    expect(result.allowed).toBe(true); // fail-open
+    expect(result.allowed).toBe(false); // fail-CLOSED
+    expect(result.checkFailed).toBe(true);
   });
 });

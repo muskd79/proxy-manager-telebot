@@ -16,6 +16,10 @@ export function createTeleUser(overrides: Partial<any> = {}) {
     hourly_reset_at: null,
     daily_reset_at: null,
     language: "en",
+    // Default fixture assumes AUP already accepted (most tests don't exercise the
+    // AUP gate). Tests that need the gate can override with `aup_accepted_at: null`.
+    aup_accepted_at: new Date().toISOString(),
+    aup_version: "v1.0",
     is_deleted: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

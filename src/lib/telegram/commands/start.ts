@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
+import { AUP_VERSION, sendAupPrompt } from "./aup";
 
 export async function handleStart(ctx: Context) {
   const user = await getOrCreateUser(ctx);
@@ -19,6 +20,16 @@ export async function handleStart(ctx: Context) {
     "/start",
     MessageType.Command
   );
+
+  // AUP gate: required by every proxy vendor's reseller ToS. User must
+  // explicitly accept before we distribute any proxy. Re-prompt if the
+  // stored acceptance is for an older AUP version than the current one.
+  const aupAcceptedAt = (user as unknown as { aup_accepted_at: string | null }).aup_accepted_at;
+  const aupVersion = (user as unknown as { aup_version: string | null }).aup_version;
+  if (!aupAcceptedAt || aupVersion !== AUP_VERSION) {
+    await sendAupPrompt(ctx, lang, user.id);
+    return;
+  }
 
   // If user is new or pending, show limited message
   if (isNew || user.status === "pending") {
@@ -63,20 +74,9 @@ export async function handleStart(ctx: Context) {
       MessageType.Text
     );
 
-    // Notify admins about new user registration
-    if (isNew) {
-      const { notifyAllAdmins } = await import("../notify-admins");
-      const { InlineKeyboard } = await import("grammy");
-
-      const username = user.username ? `@${user.username}` : user.first_name || "Unknown";
-      const notifyText = `[New User] ${username} (ID: ${user.telegram_id}) registered.\n\nApprove or block?`;
-
-      const keyboard = new InlineKeyboard()
-        .text("Approve", `admin_approve_user:${user.id}`)
-        .text("Block", `admin_block_user:${user.id}`);
-
-      notifyAllAdmins(notifyText, { inlineKeyboard: keyboard }).catch(console.error);
-    }
+    // Admin notification is now triggered by the AUP accept callback, not
+    // here, so admins don't approve users who later decline. Old behavior
+    // would admin-notify on first /start regardless of AUP status.
     return;
   }
 

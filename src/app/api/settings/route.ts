@@ -5,6 +5,17 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { SettingsPutSchema, SettingsPostSchema } from "@/lib/validations";
 
+/**
+ * Setting keys that are secrets and must NEVER be stored in the settings
+ * table (they are readable by every viewer-role admin via RLS). These keys
+ * are served exclusively from environment variables. The API filters them
+ * out of GET responses and rejects them in PUT updates.
+ */
+const SECRET_SETTING_KEYS = new Set<string>([
+  "telegram_bot_token",
+  "telegram_webhook_secret",
+]);
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { admin, error: authError } = await requireSuperAdmin(supabase);
@@ -25,14 +36,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data });
     }
 
-    // List all settings
+    // List all settings. Exclude secret keys — they live in env vars only.
     const { data, error } = await supabase
       .from("settings")
       .select("*")
       .order("key", { ascending: true });
 
     if (error) throw error;
-    return NextResponse.json({ success: true, data });
+    const filtered = (data ?? []).filter(
+      (row: { key: string }) => !SECRET_SETTING_KEYS.has(row.key),
+    );
+    return NextResponse.json({ success: true, data: filtered });
   } catch (error) {
     console.error("Settings fetch error:", error);
     return NextResponse.json(
@@ -61,6 +75,22 @@ export async function PUT(request: NextRequest) {
 
     if (action === "update_settings") {
       const { settings, applyToExisting } = parsed.data;
+
+      // Reject any attempt to write secret keys to the DB. Admins must
+      // configure these via Vercel env vars; persisting them in a
+      // viewer-readable table is the exact vector we're closing.
+      const attemptedSecrets = Object.keys(settings).filter((k) =>
+        SECRET_SETTING_KEYS.has(k),
+      );
+      if (attemptedSecrets.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Refusing to store secret keys in settings: ${attemptedSecrets.join(", ")}. Configure via environment variables instead.`,
+          },
+          { status: 400 },
+        );
+      }
 
       // Upsert each setting
       for (const [key, value] of Object.entries(settings)) {

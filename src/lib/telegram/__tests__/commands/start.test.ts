@@ -112,26 +112,28 @@ describe("handleStart", () => {
     expect(replyText).toContain("registered successfully");
   });
 
-  it("notifies admins when a new user registers", async () => {
+  it("does NOT notify admins on /start before AUP acceptance (Wave 18B gate)", async () => {
+    // Wave 18B moved admin notification out of handleStart and into the AUP
+    // accept callback, so admins are not asked to approve users who haven't
+    // accepted the terms (and may later decline).
     const user = createTeleUser({
       telegram_id: 789,
       username: "fresh",
       first_name: "Fresh",
-      status: "active",
+      status: "pending",
       language: "en",
+      aup_accepted_at: null, // not accepted yet -> AUP prompt, no admin notify
+      aup_version: null,
       created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z", // new user
+      updated_at: "2026-01-01T00:00:00Z",
     });
 
     const usersMock = createChainableMock({ data: user, error: null });
     mockFromMap.set("tele_users", usersMock);
-
     const proxiesMock = createChainableMock({ data: null, error: null, count: 0 });
     mockFromMap.set("proxies", proxiesMock);
-
     const settingsMock = createChainableMock({ data: [], error: null });
     mockFromMap.set("settings", settingsMock);
-
     const chatMock = createChainableMock({ data: null, error: null });
     mockFromMap.set("chat_messages", chatMock);
 
@@ -139,14 +141,14 @@ describe("handleStart", () => {
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
-    // Wait for async notify call
-    await vi.waitFor(() => {
-      expect(mockNotifyAllAdmins).toHaveBeenCalled();
-    });
+    // Reply should be the AUP prompt, not the pending-registration message.
+    expect(ctx.reply).toHaveBeenCalled();
+    const replyText = ctx._replies[0];
+    expect(replyText).toMatch(/terms of use|proxy service/i);
 
-    const notifyText = mockNotifyAllAdmins.mock.calls[0][0];
-    expect(notifyText).toContain("New User");
-    expect(notifyText).toContain("@fresh");
+    // Admins are NOT notified yet — they only hear about the user after
+    // AUP acceptance (that is exercised by handleAupAcceptCallback tests).
+    expect(mockNotifyAllAdmins).not.toHaveBeenCalled();
   });
 
   it("does not notify admins for returning users", async () => {

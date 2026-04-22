@@ -148,10 +148,24 @@ export async function checkAndIncrementUsage(
 const API_RATE_LIMIT = API_RATE_LIMIT_PER_MINUTE;
 const API_RATE_WINDOW_SECONDS = Math.ceil(API_RATE_LIMIT_WINDOW_MS / 1000);
 
+/**
+ * API rate limiter.
+ *
+ * Fail policy: FAIL-CLOSED. If the DB is unreachable (connection pool
+ * exhaustion during a DoS is exactly when this matters), return `allowed=false`
+ * so the attacker cannot amplify damage by spamming unlimited vendor API calls
+ * on our dime. Legitimate users see brief 429s during incidents — preferable
+ * to a runaway bill.
+ *
+ * `fail-open` was the previous behaviour and is the wrong default for a
+ * billed-side-effect reseller platform.
+ */
 export async function checkApiRateLimit(ip: string): Promise<{
   allowed: boolean;
   remaining: number;
   resetAt: number;
+  /** True when the check itself failed (not a legitimate rate-limit hit). */
+  checkFailed?: boolean;
 }> {
   try {
     const { data, error } = await supabaseAdmin.rpc("check_api_rate_limit", {
@@ -161,9 +175,13 @@ export async function checkApiRateLimit(ip: string): Promise<{
     });
 
     if (error) {
-      // On DB error, allow request (fail-open to avoid blocking all traffic)
       console.error("Rate limit check error:", error.message);
-      return { allowed: true, remaining: API_RATE_LIMIT, resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS };
+      return {
+        allowed: false,
+        remaining: 0,
+        resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS,
+        checkFailed: true,
+      };
     }
 
     const result = data as { allowed: boolean; remaining: number };
@@ -172,8 +190,16 @@ export async function checkApiRateLimit(ip: string): Promise<{
       remaining: result.remaining,
       resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS,
     };
-  } catch {
-    // Fail-open on unexpected errors
-    return { allowed: true, remaining: API_RATE_LIMIT, resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS };
+  } catch (err) {
+    console.error(
+      "Rate limit unexpected error:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + API_RATE_LIMIT_WINDOW_MS,
+      checkFailed: true,
+    };
   }
 }

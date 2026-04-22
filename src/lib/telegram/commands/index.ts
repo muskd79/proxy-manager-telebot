@@ -10,6 +10,12 @@ export { handleCheckProxy } from "./check-proxy";
 export { handleHistory } from "./history";
 export { handleSupport } from "./support";
 export {
+  AUP_VERSION,
+  sendAupPrompt,
+  handleAupAcceptCallback,
+  handleAupDeclineCallback,
+} from "./aup";
+export {
   handleAdminRequests,
   handleAdminApproveCallback,
   handleAdminRejectCallback,
