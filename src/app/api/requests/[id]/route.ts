@@ -10,6 +10,8 @@ import { formatProxiesAsText, formatProxiesAsBuffer } from "@/lib/telegram/forma
 import type { SupportedLanguage } from "@/types/telegram";
 import { UpdateRequestSchema } from "@/lib/validations";
 import { notifyOtherAdmins } from "@/lib/telegram/notify-admins";
+import { requestMachine } from "@/lib/state-machine/request";
+import { RequestStatus } from "@/types/database";
 
 export async function GET(
   _request: NextRequest,
@@ -86,6 +88,23 @@ export async function PUT(
         { success: false, error: "Request not found" } satisfies ApiResponse<never>,
         { status: 404 }
       );
+    }
+
+    // Block invalid lifecycle hops (e.g. flipping an already-approved request
+    // to "rejected" would re-fire side effects and corrupt audit history).
+    // Pure trash restore with no status change is allowed unconditionally.
+    if (status && status !== currentRequest.status) {
+      const fromStatus = currentRequest.status as RequestStatus;
+      const toStatus = status as RequestStatus;
+      if (!requestMachine.canTransition(fromStatus, toStatus)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid transition: ${fromStatus} -> ${toStatus}`,
+          } satisfies ApiResponse<never>,
+          { status: 409 }
+        );
+      }
     }
 
     const updateData: Record<string, unknown> = {};

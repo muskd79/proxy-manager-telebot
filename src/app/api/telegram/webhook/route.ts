@@ -5,6 +5,8 @@ import { bot } from "@/lib/telegram/handlers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { captureError } from "@/lib/error-tracking";
 import { acquireSlot, releaseSlot } from "@/lib/telegram/webhook-queue";
+import { isTelegramIp } from "@/lib/telegram/ip-whitelist";
+import { getClientIp } from "@/lib/ip";
 
 // === Layer 1: In-memory dedup (fast, covers warm instances) ===
 const processedUpdates = new Set<number>();
@@ -83,6 +85,17 @@ export async function POST(req: NextRequest) {
 
   const headerSecret = req.headers.get("x-telegram-bot-api-secret-token");
   if (headerSecret !== webhookSecret) {
+    return NextResponse.json({ ok: false }, { status: 403 });
+  }
+
+  // Defense-in-depth: reject traffic from IPs outside Telegram's CIDR ranges.
+  // Set SKIP_TELEGRAM_IP_CHECK=true to bypass if Telegram publishes new ranges.
+  const clientIp = getClientIp(req);
+  if (!isTelegramIp(clientIp)) {
+    captureError(new Error("Non-Telegram IP hit webhook"), {
+      source: "webhook.ip",
+      extra: { ip: clientIp },
+    });
     return NextResponse.json({ ok: false }, { status: 403 });
   }
 

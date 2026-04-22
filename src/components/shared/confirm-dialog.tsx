@@ -12,42 +12,84 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-interface ConfirmDialogProps {
-  trigger: React.ReactNode;
+interface BaseProps {
   title: string;
   description: string;
   confirmText?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
+  loading?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
 }
 
+// Uncontrolled: trigger element opens the dialog.
+interface TriggerProps extends BaseProps {
+  trigger: React.ReactNode;
+  open?: never;
+  onOpenChange?: never;
+}
+
+// Controlled: parent owns `open`; no trigger needed.
+interface ControlledProps extends BaseProps {
+  trigger?: never;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+type ConfirmDialogProps = TriggerProps | ControlledProps;
+
+/**
+ * Confirm dialog with controlled or uncontrolled open state.
+ *
+ * When `loading` is true we disable the cancel button and mark the action as
+ * pending; the dialog is also pinned open so the user cannot dismiss it by
+ * pressing Escape or clicking the backdrop while work is in-flight.
+ */
 export function ConfirmDialog({
   trigger,
+  open,
+  onOpenChange,
   title,
   description,
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "default",
+  loading = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // While loading, swallow close requests so the destructive action cannot
+  // be cancelled half-way through.
+  const handleOpenChange = (next: boolean) => {
+    if (loading && !next) return;
+    onOpenChange?.(next);
+  };
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger render={trigger as React.ReactElement} />
+    <AlertDialog
+      {...(open !== undefined
+        ? { open, onOpenChange: handleOpenChange }
+        : {})}
+    >
+      {trigger !== undefined && (
+        <AlertDialogTrigger render={trigger as React.ReactElement} />
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>{cancelText}</AlertDialogCancel>
+          <AlertDialogCancel onClick={onCancel} disabled={loading}>
+            {cancelText}
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={loading}
             variant={variant === "destructive" ? "destructive" : "default"}
           >
-            {confirmText}
+            {loading ? "..." : confirmText}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
