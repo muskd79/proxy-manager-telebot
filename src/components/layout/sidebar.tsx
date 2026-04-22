@@ -65,7 +65,8 @@ function NavContent({
     { title: t("sidebar.botSimulator"), href: "/bot-simulator", icon: Terminal },
     { title: t("sidebar.history"), href: "/history", icon: History },
     { title: t("sidebar.logs"), href: "/logs", icon: ScrollText },
-    { title: t("sidebar.trash"), href: "/trash", icon: Trash2, section: t("sidebar.system") },
+    { title: "Vendors", href: "/vendors", icon: Globe, section: t("sidebar.system"), minRole: "admin" },
+    { title: t("sidebar.trash"), href: "/trash", icon: Trash2 },
     { title: t("sidebar.admins"), href: "/admins", icon: Shield, minRole: "super_admin" },
     { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin" },
   ];
