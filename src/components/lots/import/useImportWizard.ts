@@ -4,6 +4,7 @@ import { useReducer, useCallback } from "react";
 import { uuidv7 } from "@/lib/uuid7";
 import type { ProxyImportRow } from "@/lib/lots/import-payload";
 import { parseProxyCsv, type ParsedProxyRow } from "@/lib/csv";
+import { countryFromIp } from "@/lib/geoip/country-from-ip";
 
 /**
  * State machine for the 3-step lot-import wizard.
@@ -141,18 +142,23 @@ export function useImportWizard() {
         return;
       }
 
-      const proxies: ProxyImportRow[] = validRows.map((r) => ({
-        host: r.host,
-        port: r.port,
-        type: "http",
-        username: r.username ?? null,
-        password: r.password ?? null,
-        country: null,
-        isp: null,
-        tags: null,
-        notes: null,
-        expires_at: null,
-      }));
+      const proxies: ProxyImportRow[] = validRows.map((r) => {
+        const country = countryFromIp(r.host); // Wave 21D — best-effort hint
+        return {
+          host: r.host,
+          port: r.port,
+          type: "http",
+          username: r.username ?? null,
+          password: r.password ?? null,
+          // Vendor-supplied label OR our GeoIP hint. Real GeoIP fill happens
+          // server-side in a follow-up cron when we ping each proxy.
+          country: country,
+          isp: null,
+          tags: null,
+          notes: null,
+          expires_at: null,
+        };
+      });
 
       const m = state.metadata;
       const lot = {
