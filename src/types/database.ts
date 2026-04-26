@@ -137,6 +137,47 @@ export interface Proxy {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+
+  // ─── Wave 21A — manual inventory management ───
+  /** When admin paid for this proxy (distinct from created_at = DB insert). */
+  purchase_date: string;
+  /** Free-text vendor name (e.g. "Proxy-Seller"); NOT FK to vendors table. */
+  vendor_label: string | null;
+  /** Per-proxy cost paid. */
+  cost_usd: number | null;
+  /** FK to purchase_lots — groups proxies bought together. */
+  purchase_lot_id: string | null;
+  /** ISO 3166-1 alpha-2 from GeoIP at import time (vs `country` = vendor label). */
+  geo_country_iso: string | null;
+  /** How many times this proxy has been distributed (fair-rotation tie-breaker). */
+  distribute_count: number;
+  /** Last distribution time (fair-rotation tie-breaker). */
+  last_distributed_at: string | null;
+}
+
+/**
+ * One purchase batch — typically one CSV upload from a vendor portal.
+ * Aggregates cost for spend-by-vendor reporting and groups proxies for
+ * bulk-renew operations.
+ */
+export interface PurchaseLot {
+  id: string;
+  vendor_label: string;
+  purchase_date: string;
+  expiry_date: string | null;
+  total_cost_usd: number | null;
+  currency: string;
+  source_file_name: string | null;
+  batch_reference: string | null;
+  notes: string | null;
+  proxy_count: number;
+  parent_lot_id: string | null;
+  last_alert_24h_at: string | null;
+  last_alert_7d_at: string | null;
+  last_alert_30d_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProxyRequest {
@@ -216,13 +257,36 @@ export type TeleUserUpdate = Partial<Omit<TeleUser, "id" | "created_at">> & {
   updated_at?: string;
 };
 
-export type ProxyInsert = Omit<Proxy, "id" | "created_at" | "updated_at"> & {
+export type ProxyInsert = Omit<
+  Proxy,
+  "id" | "created_at" | "updated_at" | "purchase_date" | "distribute_count"
+> & {
   id?: string;
   created_at?: string;
   updated_at?: string;
+  // DB has NOT NULL — but defaults to now() in app code, so optional at TS layer.
+  purchase_date?: string;
+  // DB has DEFAULT 0 — optional at TS layer.
+  distribute_count?: number;
 };
 
 export type ProxyUpdate = Partial<Omit<Proxy, "id" | "created_at">> & {
+  updated_at?: string;
+};
+
+// ─── Wave 21A — purchase_lots Insert/Update ───
+export type PurchaseLotInsert = Omit<
+  PurchaseLot,
+  "id" | "created_at" | "updated_at" | "proxy_count"
+> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+  proxy_count?: number;
+  currency?: string;
+};
+
+export type PurchaseLotUpdate = Partial<Omit<PurchaseLot, "id" | "created_at">> & {
   updated_at?: string;
 };
 
