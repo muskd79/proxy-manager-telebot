@@ -29,9 +29,31 @@ export async function GET(request: NextRequest) {
       isDeleted: searchParams.get("isDeleted") === "true",
     };
 
+    // Wave 21C perf at 10k+ scale:
+    // count: "exact" forces a full COUNT(*) on every list call. With
+    // 10k+ rows + dynamic filters, that's the dominant query cost. Use
+    // "estimated" when ANY filter is applied (the user is drilling down,
+    // total count is approximate anyway), and "exact" only on the
+    // unfiltered top-of-funnel "list everything" query where the badge
+    // is meaningful. Cursor-paginated requests skip count entirely.
+    const cursorDate = searchParams.get("cursor");
+    const lotId = searchParams.get("lot_id");
+    const expiringWithin = searchParams.get("expiring_within"); // hours
+    const vendorLabel = searchParams.get("vendor_label");
+
+    const hasFilter =
+      !!(filters.search || filters.type || filters.status || filters.country
+        || (filters.tags && filters.tags.length > 0)
+        || lotId || expiringWithin || vendorLabel || searchParams.get("isp"));
+    const countMode: "exact" | "estimated" | undefined = cursorDate
+      ? undefined
+      : hasFilter
+        ? "estimated"
+        : "exact";
+
     let query = supabase
       .from("proxies")
-      .select("*", { count: "exact" })
+      .select("*", countMode ? { count: countMode } : {})
       .eq("is_deleted", filters.isDeleted ?? false);
 
     if (filters.search) {
@@ -49,6 +71,22 @@ export async function GET(request: NextRequest) {
     if (filters.tags && filters.tags.length > 0) {
       query = query.overlaps("tags", filters.tags);
     }
+    // Wave 21C: filter by lot — drives `/proxies?lot_id=X` from the
+    // /lots page. Uses idx_proxies_purchase_lot (Wave 21A index).
+    if (lotId) {
+      query = query.eq("purchase_lot_id", lotId);
+    }
+    // Wave 21C: filter by free-text vendor label.
+    if (vendorLabel) {
+      query = query.eq("vendor_label", vendorLabel);
+    }
+    // Wave 21C: "Expiring within N hours" quick chip. Uses
+    // idx_proxies_expiry_vendor (Wave 21A index).
+    if (expiringWithin) {
+      const hours = Math.max(1, Math.min(parseInt(expiringWithin, 10) || 24, 24 * 90));
+      const horizon = new Date(Date.now() + hours * 3600_000).toISOString();
+      query = query.lt("expires_at", horizon).gte("expires_at", new Date().toISOString());
+    }
 
     const isp = searchParams.get("isp");
     if (isp) {
@@ -57,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;
-    const cursorDate = searchParams.get("cursor"); // ISO date string for cursor-based pagination
+    // cursorDate already pulled from searchParams above (Wave 21C)
 
     query = query.order(filters.sortBy ?? "created_at", {
       ascending: filters.sortOrder === "asc",
