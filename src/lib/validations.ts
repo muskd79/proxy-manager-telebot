@@ -163,6 +163,25 @@ export const UpdateUserSchema = z.object({
   { message: "Rate limits must follow hierarchy: hourly \u2264 daily \u2264 total" }
 );
 
+// ─── Vendor order schemas ────────────────────────────────────────
+
+const UUID_V7_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Zod schema for `POST /api/vendors/[id]/orders` body.
+ * Idempotency key MUST be UUIDv7 — the time-ordered prefix keeps the
+ * unique-index scan clustered and lets the saga tell at-a-glance how old
+ * a stuck order is.
+ */
+export const CreateVendorOrderSchema = z.object({
+  vendor_product_id: z.string().uuid("vendor_product_id must be a UUID"),
+  quantity: z.coerce.number().int().min(1).max(1000),
+  idempotency_key: z
+    .string()
+    .regex(UUID_V7_RE, "idempotency_key must be UUIDv7"),
+});
+
 // ─── Settings schemas ────────────────────────────────────────────
 
 export const UpdateSettingsSchema = z.object({

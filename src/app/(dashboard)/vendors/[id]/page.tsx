@@ -1,6 +1,8 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,7 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ShoppingCart, FileText } from "lucide-react";
+import { BuyVendorModal } from "@/components/vendors/buy/BuyVendorModal";
+
+interface VendorMeta {
+  id: string;
+  slug: string;
+  display_name: string;
+  status: "active" | "paused" | "deprecated";
+}
 
 interface VendorProduct {
   id: string;
@@ -34,20 +44,32 @@ export default function VendorDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
+  const [vendor, setVendor] = useState<VendorMeta | null>(null);
   const [products, setProducts] = useState<VendorProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [buyOpen, setBuyOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/vendors/${id}/products`, { cache: "no-store" });
-      const body = await res.json();
-      if (!body.success) {
-        toast.error(body.error ?? "Failed to load products");
-        return;
+      const [productsRes, vendorRes] = await Promise.all([
+        fetch(`/api/vendors/${id}/products`, { cache: "no-store" }),
+        fetch(`/api/vendors`, { cache: "no-store" }),
+      ]);
+      const productsBody = await productsRes.json();
+      const vendorBody = await vendorRes.json();
+
+      if (!productsBody.success) {
+        toast.error(productsBody.error ?? "Failed to load products");
+      } else {
+        setProducts(productsBody.data as VendorProduct[]);
       }
-      setProducts(body.data as VendorProduct[]);
+      if (vendorBody.success) {
+        const v = (vendorBody.data.vendors as VendorMeta[]).find((x) => x.id === id);
+        setVendor(v ?? null);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Network error");
     } finally {
@@ -79,13 +101,64 @@ export default function VendorDetailPage({
 
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Vendor catalog</h1>
-        <Button size="sm" onClick={syncCatalog} disabled={syncing}>
-          <RefreshCw className={syncing ? "animate-spin" : undefined} />
-          Sync from vendor
-        </Button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {vendor?.display_name ?? "Vendor catalog"}
+          </h1>
+          {vendor && (
+            <div className="mt-1 flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">slug:</span>
+              <code className="text-xs">{vendor.slug}</code>
+              <Badge
+                variant={vendor.status === "active" ? "default" : "secondary"}
+                className="ml-2"
+              >
+                {vendor.status}
+              </Badge>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Link href={`/vendors/${id}/orders`}>
+            <Button variant="outline" size="sm">
+              <FileText />
+              Orders
+            </Button>
+          </Link>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setBuyOpen(true)}
+            disabled={!vendor || vendor.status !== "active" || products.length === 0}
+            title={
+              !vendor || vendor.status !== "active"
+                ? "Vendor must be active"
+                : products.length === 0
+                  ? "Sync the catalog first"
+                  : undefined
+            }
+          >
+            <ShoppingCart />
+            Buy now
+          </Button>
+          <Button variant="outline" size="sm" onClick={syncCatalog} disabled={syncing}>
+            <RefreshCw className={syncing ? "animate-spin" : undefined} />
+            Sync
+          </Button>
+        </div>
       </div>
+
+      {vendor && (
+        <BuyVendorModal
+          vendorId={vendor.id}
+          vendorSlug={vendor.slug}
+          vendorStatus={vendor.status}
+          open={buyOpen}
+          onOpenChange={setBuyOpen}
+          onOrderCreated={(orderId) => router.push(`/vendors/${id}/orders`)}
+        />
+      )}
 
       {loading ? (
         <Skeleton className="h-40 w-full" />
