@@ -173,7 +173,10 @@ function Step2Preview({
       </div>
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={() => w.setPasteText(w.state.pasteText)}>
+        {/* Wave 22E-2 BUG FIX (B8): pre-fix code called setPasteText with the
+            current text — a no-op self-set. Now uses the BACK_TO_PASTE
+            reducer action which actually flips the wizard step. */}
+        <Button variant="outline" onClick={w.backToPaste}>
           <ArrowLeft /> Back to paste
         </Button>
         <Button onClick={w.goToMetadata} disabled={validCount === 0}>

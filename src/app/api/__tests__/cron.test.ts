@@ -473,10 +473,10 @@ describe("GET /api/cron/expire-proxies", () => {
     expect(body.data.expired).toBe(0);
   });
 
-  it("revokes expired proxies and sets status to expired", async () => {
+  it("revokes expired proxies and sets status to expired (Wave 22E-2 batch path)", async () => {
     const { sendTelegramMessage } = await import("@/lib/telegram/send");
 
-    // First call: fetch expired proxies
+    // 1) Fetch expired proxies
     queueReturn({
       data: [
         {
@@ -490,11 +490,11 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    // Update proxy
-    queueReturn({ data: null, error: null });
-    // Fetch user for notification
+    // 2) Batch UPDATE (returns count, not data)
+    queueReturn({ data: null, error: null, count: 1 });
+    // 3) Batch SELECT tele_users (Wave 22E-2: array, not single)
     queueReturn({
-      data: { telegram_id: 12345, language: "en" },
+      data: [{ id: "user1", telegram_id: 12345, language: "en" }],
       error: null,
     });
 
@@ -532,9 +532,9 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: null, error: null, count: 1 });
     queueReturn({
-      data: { telegram_id: 99999, language: "vi" },
+      data: [{ id: "user1", telegram_id: 99999, language: "vi" }],
       error: null,
     });
 
@@ -590,15 +590,71 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: null, error: null, count: 1 });
     queueReturn({
-      data: { telegram_id: 12345, language: "en" },
+      data: [{ id: "user1", telegram_id: 12345, language: "en" }],
       error: null,
     });
 
     // Should not throw even though sendTelegramMessage rejects
     const res = await GET(createCronRequest("test-cron-secret"));
     expect(res.status).toBe(200);
+  });
+
+  // Wave 22E-2 BUG FIX (B1) regression: 100 expired proxies must result
+  // in ONE batch UPDATE, not 100 sequential UPDATEs.
+  it("uses ONE batch UPDATE for N expired proxies (Wave 22E-2 B1)", async () => {
+    const proxies = Array.from({ length: 50 }, (_, i) => ({
+      id: `px${i}`,
+      assigned_to: null,
+      host: `1.1.1.${i}`,
+      port: 8080,
+      type: "http",
+      expires_at: "2024-01-01T00:00:00Z",
+    }));
+    queueReturn({ data: proxies, error: null });
+    // Batch update returns count
+    queueReturn({ data: null, error: null, count: 50 });
+    // No tele_users batch needed since assigned_to=null
+
+    const res = await GET(createCronRequest("test-cron-secret"));
+    const body = await res.json();
+
+    expect(body.data.expired).toBe(50);
+    // Critical: only ONE update call across all 50 proxies.
+    const updateCalls = dbCalls.filter(
+      (c) => c.table === "proxies" && c.operation === "update",
+    );
+    expect(updateCalls.length).toBe(1);
+  });
+
+  // Wave 22E-2 BUG FIX (B1) regression: tele_users fetched in ONE batch SELECT.
+  it("uses ONE batch tele_users SELECT for N expired proxies (Wave 22E-2 B1)", async () => {
+    const proxies = Array.from({ length: 30 }, (_, i) => ({
+      id: `px${i}`,
+      assigned_to: `user${i % 5}`, // 5 distinct users across 30 proxies
+      host: `1.1.1.${i}`,
+      port: 8080,
+      type: "http",
+      expires_at: "2024-01-01T00:00:00Z",
+    }));
+    queueReturn({ data: proxies, error: null });
+    queueReturn({ data: null, error: null, count: 30 });
+    queueReturn({
+      data: Array.from({ length: 5 }, (_, i) => ({
+        id: `user${i}`,
+        telegram_id: 10000 + i,
+        language: "en",
+      })),
+      error: null,
+    });
+
+    await GET(createCronRequest("test-cron-secret"));
+
+    const userSelects = dbCalls.filter(
+      (c) => c.table === "tele_users" && c.operation === "select",
+    );
+    expect(userSelects.length).toBe(1);
   });
 });
 

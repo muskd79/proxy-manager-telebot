@@ -57,6 +57,14 @@ export interface ParsedProxyRow {
   port: number;
   username?: string;
   password?: string;
+  /**
+   * Vendor-supplied country (5th column when present in CSV).
+   * Wave 22E-2 BUG FIX (B7): pre-fix parser ignored this field and
+   * the import wizard overwrote whatever was in CSV with our GeoIP
+   * heuristic. Now: if vendor provides country, it wins; GeoIP only
+   * fills in the gap.
+   */
+  country?: string;
   line: number;
   raw: string;
   error?: string;
@@ -90,12 +98,18 @@ export function parseProxyCsv(text: string): ParsedProxyRow[] {
     const portStr = parts[1] ?? "";
     const username = parts[2] || undefined;
     const password = parts[3] || undefined;
+    // Wave 22E-2: optional 5th column captures vendor's country label.
+    // Common vendor formats: host:port:user:pass:country (Proxy-Seller),
+    // host,port,user,pass,country (CSV exports).
+    const countryRaw = parts[4]?.trim();
+    const country = countryRaw && countryRaw.length <= 100 ? countryRaw : undefined;
 
     const row: ParsedProxyRow = {
       host,
       port: 0,
       username,
       password,
+      country,
       line: i + 1,
       raw,
     };

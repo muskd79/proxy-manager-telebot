@@ -120,6 +120,35 @@ describe("parseProxyCsv", () => {
     expect(rows[0].line).toBe(1);
     expect(rows[1].line).toBe(2);
   });
+
+  // Wave 22E-2 BUG FIX (B7) regression — the parser MUST capture a 5th
+  // country column when the vendor provides one, so the import wizard
+  // doesn't overwrite it with our GeoIP heuristic.
+  it("captures 5th country column with colon delimiter", () => {
+    const rows = parseProxyCsv("1.2.3.4:8080:user:pass:VN");
+    expect(rows[0].country).toBe("VN");
+  });
+
+  it("captures 5th country column with comma delimiter", () => {
+    const rows = parseProxyCsv("1.2.3.4,8080,user,pass,US");
+    expect(rows[0].country).toBe("US");
+  });
+
+  it("captures 5th country column with tab delimiter", () => {
+    const rows = parseProxyCsv("1.2.3.4\t8080\tuser\tpass\tSG");
+    expect(rows[0].country).toBe("SG");
+  });
+
+  it("returns undefined country when 5th column absent", () => {
+    const rows = parseProxyCsv("1.2.3.4:8080:user:pass");
+    expect(rows[0].country).toBeUndefined();
+  });
+
+  it("ignores 5th column if too long (>100 chars)", () => {
+    const longCountry = "x".repeat(101);
+    const rows = parseProxyCsv(`1.2.3.4:8080:user:pass:${longCountry}`);
+    expect(rows[0].country).toBeUndefined();
+  });
 });
 
 describe("maskSecret", () => {

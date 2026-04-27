@@ -54,6 +54,10 @@ type Action =
   | { type: "SET_METADATA"; partial: Partial<LotMetadataForm> }
   | { type: "GO_TO_METADATA" }
   | { type: "BACK_TO_PARSED" }
+  // Wave 22E-2 BUG FIX (B8): added BACK_TO_PASTE so the "Back to paste"
+  // button in step 2 can actually navigate back. Pre-fix code called
+  // setPasteText(state.pasteText) — a no-op self-set with no step change.
+  | { type: "BACK_TO_PASTE" }
   | { type: "SUBMITTING" }
   | { type: "DONE"; result: WizardState["result"] }
   | { type: "ERROR"; message: string }
@@ -99,6 +103,9 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, step: "metadata" };
     case "BACK_TO_PARSED":
       return { ...state, step: "parsed" };
+    case "BACK_TO_PASTE":
+      // Keep pasteText so the user doesn't lose their input; only flip step.
+      return { ...state, step: "paste" };
     case "SUBMITTING":
       return { ...state, step: "submitting", errorMessage: null };
     case "DONE":
@@ -129,6 +136,10 @@ export function useImportWizard() {
     dispatch({ type: "BACK_TO_PARSED" });
   }, []);
 
+  const backToPaste = useCallback(() => {
+    dispatch({ type: "BACK_TO_PASTE" });
+  }, []);
+
   const setMetadata = useCallback((partial: Partial<LotMetadataForm>) => {
     dispatch({ type: "SET_METADATA", partial });
   }, []);
@@ -143,16 +154,19 @@ export function useImportWizard() {
       }
 
       const proxies: ProxyImportRow[] = validRows.map((r) => {
-        const country = countryFromIp(r.host); // Wave 21D — best-effort hint
+        // Wave 22E-2 BUG FIX (B7): vendor-supplied country wins over our
+        // GeoIP heuristic. Pre-fix code unconditionally called
+        // countryFromIp(host) and silently discarded any country parsed
+        // from the CSV. Now: prefer r.country (5th CSV column);
+        // fall back to GeoIP only when vendor didn't supply one.
+        const country = r.country ?? countryFromIp(r.host);
         return {
           host: r.host,
           port: r.port,
           type: "http",
           username: r.username ?? null,
           password: r.password ?? null,
-          // Vendor-supplied label OR our GeoIP hint. Real GeoIP fill happens
-          // server-side in a follow-up cron when we ping each proxy.
-          country: country,
+          country,
           isp: null,
           tags: null,
           notes: null,
@@ -218,6 +232,7 @@ export function useImportWizard() {
     parsePaste,
     goToMetadata,
     backToParsed,
+    backToPaste,
     setMetadata,
     submit,
     reset,

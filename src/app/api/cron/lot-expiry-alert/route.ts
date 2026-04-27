@@ -85,23 +85,42 @@ export async function GET(request: NextRequest) {
         .filter(Boolean)
         .join("\n");
 
+      // Wave 22E-2 BUG FIX (B6): mark the alert window as FIRED before
+      // sending Telegram messages. Pre-fix code awaited the DB update
+      // AFTER the fire-and-forget Telegram sends; if the DB update failed
+      // (transient connection blip), the next cron tick re-queried
+      // expiring_soon_lots and saw alert_window IS NOT NULL → fired the
+      // same alert again, spamming admins. Updating first is at-least-
+      // once-suppress: a DB update success but Telegram fail still marks
+      // the window so the next tick won't re-spam. Manual recovery is
+      // possible via "resend alert" button (Wave 22D admin UI).
+      const col = lot.alert_window === "24h"
+        ? "last_alert_24h_at"
+        : lot.alert_window === "7d"
+          ? "last_alert_7d_at"
+          : "last_alert_30d_at";
+      const { error: updateErr } = await supabaseAdmin
+        .from("purchase_lots")
+        .update({ [col]: new Date().toISOString() })
+        .eq("id", lot.id);
+
+      // If we cannot persist the dedup mark, do NOT send the Telegram
+      // alert — the next tick will retry the whole entry idempotently.
+      // This trades a small alert delay for never spamming.
+      if (updateErr) {
+        console.error(
+          `lot-expiry dedup mark failed for lot=${lot.id}:`,
+          updateErr.message,
+        );
+        continue;
+      }
+
       // Fire-and-forget per admin so one failure doesn't block the rest.
       for (const chatId of adminChatIds) {
         sendTelegramMessage(chatId, text).catch((e) =>
           console.error(`alert delivery to ${chatId} failed:`, e instanceof Error ? e.message : String(e)),
         );
       }
-
-      // Mark this window as fired so the view filters this lot out next tick.
-      const col = lot.alert_window === "24h"
-        ? "last_alert_24h_at"
-        : lot.alert_window === "7d"
-          ? "last_alert_7d_at"
-          : "last_alert_30d_at";
-      await supabaseAdmin
-        .from("purchase_lots")
-        .update({ [col]: new Date().toISOString() })
-        .eq("id", lot.id);
 
       alerted += 1;
     }

@@ -106,6 +106,11 @@ export async function autoAssignProxy(
       type: string;
       username: string | null;
       password: string | null;
+      // Wave 22E-2 BUG FIX (B4): RPC now optionally returns expires_at
+      // so we don't compute a misleading client-side date. If the RPC
+      // is updated server-side to include this field, we display it;
+      // otherwise we fall back to a fresh fetch.
+      expires_at?: string | null;
     }>;
     batch_id: string | null;
   };
@@ -127,9 +132,24 @@ export async function autoAssignProxy(
   // Note: The RPC already created the proxy_request record, assigned the
   // proxy, and incremented usage counters — no need to do it manually.
 
-  const expiresAt = new Date(
-    Date.now() + 30 * 24 * 60 * 60 * 1000
-  ).toISOString();
+  // Wave 22E-2 BUG FIX (B4): pre-fix code calculated `expires_at` as
+  // `now + 30 days` and showed it to the user. The RPC sets its own
+  // expiry server-side and the displayed date often DID NOT match the
+  // DB record (off by a few seconds at minimum, off by hours/days when
+  // the RPC default differed). Now: prefer expires_at returned by the
+  // RPC; if not yet returned (older RPC version), do ONE fetch from the
+  // proxies row to get the authoritative date.
+  let expiresAtDate: string | null = null;
+  if (proxy.expires_at) {
+    expiresAtDate = proxy.expires_at;
+  } else {
+    const { data: fresh } = await supabaseAdmin
+      .from("proxies")
+      .select("expires_at")
+      .eq("id", proxy.id)
+      .single();
+    expiresAtDate = (fresh as { expires_at: string | null } | null)?.expires_at ?? null;
+  }
 
   const text = fillTemplate(t("proxyAssigned", lang), {
     host: proxy.host,
@@ -137,7 +157,9 @@ export async function autoAssignProxy(
     type: proxy.type.toUpperCase(),
     username: proxy.username ?? "N/A",
     password: proxy.password ?? "N/A",
-    expires: new Date(expiresAt).toISOString().split("T")[0],
+    expires: expiresAtDate
+      ? new Date(expiresAtDate).toISOString().split("T")[0]
+      : "—",
   });
 
   await logChatMessage(
