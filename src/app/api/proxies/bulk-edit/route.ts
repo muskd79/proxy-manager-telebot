@@ -5,40 +5,27 @@ import { requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
-import { proxyMachine } from "@/lib/state-machine/proxy";
 import { ProxyStatus } from "@/types/database";
 
 /**
  * POST /api/proxies/bulk-edit
  *
- * Replaces the per-row PUT loop in src/components/proxies/proxy-bulk-edit.tsx
- * (was N sequential HTTP calls = 30s for 1000 rows). Single SQL UPDATE
- * with WHERE id = ANY($1) finishes in milliseconds at 10k scale.
+ * Wave 22E-3 — atomic bulk edit via the safe_bulk_edit_proxies RPC.
  *
- * Supported updates (all optional, any combination):
- *   - status:        new status; ALL selected rows must currently be in a
- *                    state that legally transitions to the target per
- *                    proxyMachine. If even one row's transition is invalid
- *                    the whole bulk fails (atomic).
- *   - extend_expiry_days: adds N days to expires_at (NULL becomes
- *                    `now + N days`).
- *   - tags_add / tags_remove: array merge / difference; uses
- *                    array_append / array_remove inside an SQL UPDATE.
- *   - notes:         overwrite. (No partial-merge semantics; admin can
- *                    paste the new full text.)
- *   - is_deleted:    soft-delete or restore.
+ * Pre-Wave-22E-3 (HIGH bug B2): the route did a 3-step pattern (SELECT
+ * statuses, app-side proxyMachine guard, UPDATE). Two concurrent admins
+ * could both pass the guard with different "current" statuses, then
+ * both UPDATE — producing illegal final states (banned -> available
+ * without going through maintenance). This was a HIGH-severity race
+ * flagged by code-reviewer.
  *
- * Body shape:
- *   { ids: string[] (max 5000),  -- the rows to update
- *     updates: { status?, extend_expiry_days?, tags_add?, tags_remove?,
- *                notes?, is_deleted? } }
+ * Now: ONE RPC call. The state-machine guard runs inside the same
+ * transaction as the UPDATE so concurrent edits are serialised by the
+ * row locks the UPDATE acquires. Either all rows transition legally
+ * or the RPC returns 409 with `invalid_count` and ZERO rows change.
  *
- * Idempotency: client may resubmit. The status-machine guard rejects an
- * already-applied transition (e.g. banned -> banned passes; banned ->
- * available fails). Tag merges are idempotent by definition.
- *
- * Audit: emits ONE activity_logs entry per bulk action with the count
- * + updates applied + filter keys (so audit table stays compact at scale).
+ * Idempotency: re-submitting the same payload after a 409 still
+ * returns 409 — caller must change their request, not retry.
  */
 
 const BulkEditSchema = z
@@ -67,6 +54,14 @@ const BulkEditSchema = z
   })
   .strict();
 
+interface BulkEditResult {
+  ok: boolean;
+  updated?: number;
+  invalid_count?: number;
+  requested_status?: string;
+  error?: string;
+}
+
 export async function POST(request: NextRequest) {
   const csrfErr = assertSameOrigin(request);
   if (csrfErr) return csrfErr;
@@ -91,95 +86,44 @@ export async function POST(request: NextRequest) {
 
     const { ids, updates } = parsed.data;
 
-    // 1. Status-machine guard: fetch current statuses for all rows and
-    //    verify every transition is legal before issuing the UPDATE.
-    if (updates.status) {
-      const { data: rows, error } = await supabaseAdmin
-        .from("proxies")
-        .select("id, status")
-        .in("id", ids);
-      if (error || !rows) {
-        return NextResponse.json(
-          { success: false, error: "Failed to load current statuses" },
-          { status: 500 },
-        );
-      }
-      const invalidTransitions = rows
-        .filter((r) => r.status !== updates.status)
-        .filter(
-          (r) =>
-            !proxyMachine.canTransition(
-              r.status as ProxyStatus,
-              updates.status as ProxyStatus,
-            ),
-        );
-      if (invalidTransitions.length > 0) {
+    // Single atomic RPC call. The guard + UPDATE happen in one DB
+    // transaction so concurrent bulk edits cannot interleave.
+    const { data, error } = await supabaseAdmin.rpc("safe_bulk_edit_proxies", {
+      p_ids: ids,
+      p_status: updates.status ?? null,
+      p_is_deleted: updates.is_deleted ?? null,
+      p_notes: updates.notes ?? null,
+      p_extend_days: updates.extend_expiry_days ?? null,
+      p_tags_add: updates.tags_add ?? null,
+      p_tags_remove: updates.tags_remove ?? null,
+    });
+
+    if (error) {
+      console.error("safe_bulk_edit_proxies RPC error:", error.message);
+      return NextResponse.json(
+        { success: false, error: "Bulk edit failed" },
+        { status: 500 },
+      );
+    }
+
+    const result = data as BulkEditResult;
+
+    if (!result.ok) {
+      // Status transition rejected — surface 409 with invalid_count.
+      if (result.error === "invalid_status_transition") {
         return NextResponse.json(
           {
             success: false,
-            error: `Bulk status change rejected: ${invalidTransitions.length} rows cannot transition to ${updates.status}`,
-            invalid_count: invalidTransitions.length,
+            error: `Bulk status change rejected: ${result.invalid_count} rows cannot transition to ${result.requested_status}`,
+            invalid_count: result.invalid_count,
           },
           { status: 409 },
         );
       }
-    }
-
-    // 2. Build the update payload.
-    //    - status, notes, is_deleted are direct sets.
-    //    - extend_expiry_days needs an SQL expression — done via RPC.
-    //    - tags_add / tags_remove also via RPC (array ops).
-    //    For Wave 21C MVP, the simple direct sets go via supabase.from().update();
-    //    expiry-extend + tag merges fall through to a SECURITY DEFINER RPC
-    //    in a follow-up migration. Here we apply only the direct sets and
-    //    return a clear error if expiry/tags ops are requested.
-    const directUpdates: Record<string, unknown> = {};
-    if (updates.status !== undefined) directUpdates.status = updates.status;
-    if (updates.notes !== undefined) directUpdates.notes = updates.notes;
-    if (updates.is_deleted !== undefined) {
-      directUpdates.is_deleted = updates.is_deleted;
-      directUpdates.deleted_at = updates.is_deleted ? new Date().toISOString() : null;
-    }
-
-    let updatedCount = 0;
-    if (Object.keys(directUpdates).length > 0) {
-      const { error, count } = await supabaseAdmin
-        .from("proxies")
-        .update(directUpdates, { count: "exact" })
-        .in("id", ids);
-      if (error) {
-        console.error("bulk-edit update error:", error.message);
-        return NextResponse.json(
-          { success: false, error: "Bulk update failed" },
-          { status: 500 },
-        );
-      }
-      updatedCount = count ?? 0;
-    }
-
-    // 3. Tag + expiry ops via RPC (Wave 21C migration adds bulk_proxy_ops).
-    //    Detected at the schema layer; if requested but RPC absent, return a
-    //    clear actionable error rather than silently dropping.
-    if (
-      updates.extend_expiry_days !== undefined ||
-      (updates.tags_add && updates.tags_add.length > 0) ||
-      (updates.tags_remove && updates.tags_remove.length > 0)
-    ) {
-      const { data, error } = await supabaseAdmin.rpc("bulk_proxy_ops", {
-        p_ids: ids,
-        p_extend_days: updates.extend_expiry_days ?? null,
-        p_tags_add: updates.tags_add ?? null,
-        p_tags_remove: updates.tags_remove ?? null,
-      });
-      if (error) {
-        console.error("bulk_proxy_ops RPC error:", error.message);
-        return NextResponse.json(
-          { success: false, error: "Bulk tag/expiry op failed", details: error.message },
-          { status: 500 },
-        );
-      }
-      const rpcResult = data as { updated: number } | null;
-      updatedCount = Math.max(updatedCount, rpcResult?.updated ?? 0);
+      return NextResponse.json(
+        { success: false, error: result.error ?? "Bulk edit rejected" },
+        { status: 400 },
+      );
     }
 
     logActivity({
@@ -189,7 +133,7 @@ export async function POST(request: NextRequest) {
       resourceType: "proxy",
       details: {
         count: ids.length,
-        updated: updatedCount,
+        updated: result.updated,
         updates,
       },
       ipAddress: request.headers.get("x-forwarded-for") || undefined,
@@ -203,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { requested: ids.length, updated: updatedCount },
+      data: { requested: ids.length, updated: result.updated ?? 0 },
     });
   } catch (err) {
     console.error("bulk-edit POST unexpected:", err instanceof Error ? err.message : String(err));
