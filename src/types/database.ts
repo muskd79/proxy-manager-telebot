@@ -114,11 +114,43 @@ export interface TeleUser {
   updated_at: string;
 }
 
+export interface ProxyCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  sort_order: number;
+  is_hidden: boolean;
+  proxy_count: number;
+  default_price_usd: number | null;
+  min_stock_alert: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProxyCategoryInsert = Omit<
+  ProxyCategory,
+  "id" | "created_at" | "updated_at" | "proxy_count"
+> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+  proxy_count?: number;
+};
+
+export type ProxyCategoryUpdate = Partial<Omit<ProxyCategory, "id" | "created_at">> & {
+  updated_at?: string;
+};
+
 export interface Proxy {
   id: string;
   host: string;
   port: number;
   type: "http" | "https" | "socks5";
+  /** Wave 22A — FK to proxy_categories. Null when uncategorised. */
+  category_id?: string | null;
   username: string | null;
   password: string | null;
   country: string | null;
@@ -418,8 +450,55 @@ export interface Database {
           },
         ];
       };
+      // ─── Wave 21A inventory tables ───
+      purchase_lots: {
+        Row: PurchaseLot;
+        Insert: PurchaseLotInsert;
+        Update: PurchaseLotUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "purchase_lots_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "admins";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // ─── Wave 22A categories ───
+      proxy_categories: {
+        Row: ProxyCategory;
+        Insert: ProxyCategoryInsert;
+        Update: ProxyCategoryUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "proxy_categories_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "admins";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      // Wave 21C — feeds the dashboard cost-by-vendor card.
+      dashboard_cost_by_vendor: {
+        Row: {
+          vendor_label: string;
+          month: string;
+          lot_count: number;
+          proxy_total: number;
+          spend_usd: number | null;
+        };
+      };
+      // Wave 21C — feeds the lot-expiry-alert cron.
+      expiring_soon_lots: {
+        Row: PurchaseLot & {
+          alert_window: "24h" | "7d" | "30d" | null;
+        };
+      };
+    };
     Functions: Record<string, never>;
     Enums: {
       admin_role: "super_admin" | "admin" | "viewer";

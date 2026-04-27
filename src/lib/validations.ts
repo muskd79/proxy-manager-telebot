@@ -163,23 +163,39 @@ export const UpdateUserSchema = z.object({
   { message: "Rate limits must follow hierarchy: hourly \u2264 daily \u2264 total" }
 );
 
-// ─── Vendor order schemas ────────────────────────────────────────
+// ─── Category schemas (Wave 22A) ─────────────────────────────────
 
-const UUID_V7_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const CreateCategorySchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).nullable().optional(),
+  color: z.string().min(1).max(30).default("purple"),
+  icon: z.string().min(1).max(50).default("tag"),
+  sort_order: z.coerce.number().int().min(0).max(999_999).optional(),
+  default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  min_stock_alert: z.coerce.number().int().min(0).optional(),
+});
 
-/**
- * Zod schema for `POST /api/vendors/[id]/orders` body.
- * Idempotency key MUST be UUIDv7 — the time-ordered prefix keeps the
- * unique-index scan clustered and lets the saga tell at-a-glance how old
- * a stuck order is.
- */
-export const CreateVendorOrderSchema = z.object({
-  vendor_product_id: z.string().uuid("vendor_product_id must be a UUID"),
-  quantity: z.coerce.number().int().min(1).max(1000),
-  idempotency_key: z
-    .string()
-    .regex(UUID_V7_RE, "idempotency_key must be UUIDv7"),
+export const UpdateCategorySchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  color: z.string().min(1).max(30).optional(),
+  icon: z.string().min(1).max(50).optional(),
+  sort_order: z.coerce.number().int().min(0).max(999_999).optional(),
+  is_hidden: z.boolean().optional(),
+  default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  min_stock_alert: z.coerce.number().int().min(0).optional(),
+});
+
+export const ReorderCategoriesSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  sort_orders: z.array(z.coerce.number().int().min(0)).min(1).max(500),
+}).refine((d) => d.ids.length === d.sort_orders.length, {
+  message: "ids and sort_orders must have the same length",
+});
+
+export const AssignProxiesToCategorySchema = z.object({
+  proxy_ids: z.array(z.string().uuid()).min(1).max(5000),
+  category_id: z.string().uuid().nullable(),
 });
 
 // ─── Settings schemas ────────────────────────────────────────────
