@@ -33,12 +33,10 @@ export const BOT_COMMANDS = [
   { command: "requests", description_vi: "Duyet yeu cau (Admin)", description_en: "Pending requests (Admin)" },
 ] as const;
 
-// UI
-export const SIDEBAR_WIDTH = 240;
-export const SIDEBAR_COLLAPSED_WIDTH = 64;
-
-// Analytics
-export const ANALYTICS_DAYS = 14;
+// Wave 22D-5: deleted unused constants SIDEBAR_WIDTH,
+// SIDEBAR_COLLAPSED_WIDTH (sidebar uses Tailwind class tokens
+// directly), and ANALYTICS_DAYS (analytics route hard-codes its
+// own window). Add back here only when a caller needs them.
 
 // Proxy Types
 export const PROXY_TYPES = ["http", "https", "socks5"] as const;

@@ -7,8 +7,12 @@ import { InlineKeyboard } from "grammy";
  * 1. admins table (primary - per-admin telegram_id)
  * 2. settings.admin_telegram_ids (fallback for backward compat)
  * Returns deduplicated array of Telegram IDs.
+ *
+ * Wave 22D-5: dropped from public exports — only consumed internally
+ * by notifyAllAdmins. If a future caller needs admin Telegram IDs,
+ * re-export then.
  */
-export async function getAdminTelegramIds(): Promise<number[]> {
+async function getAdminTelegramIds(): Promise<number[]> {
   const ids = new Set<number>();
 
   // Primary: admins table
@@ -40,17 +44,10 @@ export async function getAdminTelegramIds(): Promise<number[]> {
   return Array.from(ids);
 }
 
-/**
- * Get admin display label (full_name or email) by admin ID.
- */
-export async function getAdminLabel(adminId: string): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from("admins")
-    .select("full_name, email")
-    .eq("id", adminId)
-    .single();
-  return data?.full_name || data?.email || "Admin";
-}
+// Wave 22D-5: deleted unused export `getAdminLabel(adminId)` —
+// zero callers anywhere in src. If actor display labels are needed
+// in the future, prefer the new `actor_display_name` column populated
+// at logActivity insert time (mig 032).
 
 /**
  * Get admin info by their Telegram ID.

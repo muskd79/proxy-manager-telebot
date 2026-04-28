@@ -61,26 +61,7 @@ export async function checkProxy(
   });
 }
 
-/**
- * Check multiple proxies in parallel.
- */
-export async function checkProxies(
-  proxies: Array<{
-    id: string;
-    host: string;
-    port: number;
-    type: "http" | "https" | "socks5";
-  }>,
-): Promise<Array<{ id: string } & ProxyCheckResult>> {
-  const results = await Promise.allSettled(
-    proxies.map(async (p) => {
-      const result = await checkProxy(p.host, p.port, p.type);
-      return { id: p.id, ...result };
-    }),
-  );
-
-  return results.map((r, i) => {
-    if (r.status === "fulfilled") return r.value;
-    return { id: proxies[i].id, alive: false, speed_ms: 0 };
-  });
-}
+// Wave 22D-5: deleted unused export `checkProxies` (plural batch).
+// /api/proxies/check builds its own loop; no caller needed this
+// helper. If batch checking is needed later, re-derive from
+// checkProxy() — it's a 5-line wrapper.

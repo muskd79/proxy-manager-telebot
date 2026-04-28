@@ -73,35 +73,5 @@ export function captureError(error: unknown, context: ErrorContext): void {
   // }
 }
 
-/**
- * Capture a message (non-error event).
- */
-export function captureMessage(
-  message: string,
-  context: Omit<ErrorContext, "level"> & { level?: "warning" | "info" },
-): void {
-  const { source, extra, level = "info" } = context;
-
-  const logEntry = {
-    level,
-    source,
-    message,
-    ...extra,
-    timestamp: new Date().toISOString(),
-  };
-
-  if (level === "warning") {
-    console.warn(`[${source}]`, JSON.stringify(logEntry));
-  } else {
-    console.info(`[${source}]`, JSON.stringify(logEntry));
-  }
-
-  // TODO: Uncomment when Sentry is installed
-  // if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
-  //   Sentry.captureMessage(message, {
-  //     tags: { source },
-  //     extra,
-  //     level,
-  //   });
-  // }
-}
+// Wave 22D-5: deleted unused export `captureMessage` — zero callers.
+// Re-add if/when a caller needs non-error Sentry breadcrumbs.
