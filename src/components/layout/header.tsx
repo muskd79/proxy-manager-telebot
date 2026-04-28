@@ -106,7 +106,8 @@ export function Header({ admin }: { admin: Admin }) {
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 h-8 w-8 p-0"
+          aria-label={theme === "dark" ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+          className="shrink-0 min-h-11 min-w-11 p-0"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           {theme === "dark" ? (
@@ -117,7 +118,16 @@ export function Header({ admin }: { admin: Admin }) {
         </Button>
 
         {/* Notifications */}
-        <Button variant="ghost" size="sm" className="relative h-8 w-8 p-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={
+            pendingCount > 0
+              ? `Thông báo: ${pendingCount} yêu cầu đang chờ`
+              : "Thông báo"
+          }
+          className="relative min-h-11 min-w-11 p-0"
+        >
           <Bell className="h-4 w-4" />
           {pendingCount > 0 && (
             <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
@@ -128,7 +138,10 @@ export function Header({ admin }: { admin: Admin }) {
 
         {/* User dropdown */}
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-accent focus:outline-none">
+          <DropdownMenuTrigger
+            aria-label={`Mở menu tài khoản của ${admin.display_name}`}
+            className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-accent focus:outline-none min-h-11"
+          >
             <Avatar className="h-7 w-7">
               <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
                 {admin.display_name.charAt(0).toUpperCase()}

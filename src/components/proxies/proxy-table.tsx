@@ -61,10 +61,15 @@ interface ProxyTableProps {
   onHealthCheck: (ids: string[]) => void;
 }
 
+// Wave 22N — typeColors rebuilt for WCAG AA contrast.
+// Pre-fix used `bg-{color}-500/10 text-{color}-500` which gave ~1.5:1
+// contrast against the muted bg — well below the 4.5:1 AA floor for
+// small text. Replaced with the {100 bg / 900 text} light pair and
+// {900/40 bg / 100 text} dark pair, both verified ≥4.5:1.
 const typeColors: Record<string, string> = {
-  http: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-  https: "bg-green-500/10 text-green-500 border-green-500/20",
-  socks5: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+  http: "bg-cyan-100 text-cyan-900 border-cyan-300 dark:bg-cyan-900/40 dark:text-cyan-100 dark:border-cyan-700",
+  https: "bg-green-100 text-green-900 border-green-300 dark:bg-green-900/40 dark:text-green-100 dark:border-green-700",
+  socks5: "bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-900/40 dark:text-purple-100 dark:border-purple-700",
 };
 
 export function ProxyTable({
@@ -114,7 +119,8 @@ export function ProxyTable({
       >
         <button
           onClick={() => onSort(column)}
-          className="flex items-center gap-1 hover:text-foreground transition-colors"
+          aria-label={`Sắp xếp theo ${typeof children === "string" ? children : column}`}
+          className="flex items-center gap-1 hover:text-foreground transition-colors min-h-11"
         >
           {children}
           <ArrowUpDown
@@ -128,7 +134,118 @@ export function ProxyTable({
   }
 
   return (
-    <Table aria-label="Danh sách proxy" aria-rowcount={proxies.length}>
+    <>
+      {/* Wave 22N — Mobile card view (<768px). The 11-col table is unusable
+          on mobile; cards show host:port, protocol badge, status badges and
+          the same dropdown actions. */}
+      <div className="md:hidden space-y-2" role="list" aria-label="Danh sách proxy">
+        {proxies.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">Chưa có proxy nào</p>
+        ) : (
+          proxies.map((proxy) => {
+            const statusList = proxyStatusBadges(proxy);
+            const selected = selectedIds.includes(proxy.id);
+            return (
+              <div
+                key={proxy.id}
+                role="listitem"
+                className={`rounded-lg border p-3 ${selected ? "bg-muted/50 border-primary/40" : "bg-card"}`}
+              >
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    checked={selected}
+                    onCheckedChange={() => toggleOne(proxy.id)}
+                    aria-label={`Chọn proxy ${proxy.host}:${proxy.port}`}
+                    className="mt-1"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <Link
+                      href={`/proxies/${proxy.id}`}
+                      className="font-mono text-sm font-medium hover:underline break-all"
+                    >
+                      {proxy.host}:{proxy.port}
+                    </Link>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      <span
+                        className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${typeColors[proxy.type] || ""}`}
+                      >
+                        {TYPE_LABEL[proxy.type] ?? proxy.type.toUpperCase()}
+                      </span>
+                      {proxy.network_type && (
+                        <Badge variant="outline" className="text-xs">
+                          {networkTypeLabel(proxy.network_type as NetworkType)}
+                        </Badge>
+                      )}
+                      {statusList.slice(0, 3).map((b, i) => (
+                        <Badge
+                          key={`${b.label}-${i}`}
+                          variant={b.variant}
+                          className={`text-xs ${b.tone === "muted" ? "opacity-70" : ""}`}
+                        >
+                          {b.label}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3">
+                      {proxy.country && <span>{proxy.country}</span>}
+                      {proxy.speed_ms != null && <span>{proxy.speed_ms}ms</span>}
+                      {proxy.expires_at && (
+                        <span>
+                          HSD: {new Date(proxy.expires_at).toLocaleDateString("vi-VN")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Mở menu thao tác cho proxy ${proxy.host}:${proxy.port}`}
+                          className="min-h-11 min-w-11"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <Link href={`/proxies/${proxy.id}`} className="flex items-center gap-2 w-full">
+                          <Eye className="size-4" />
+                          Xem chi tiết
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onEdit(proxy)}>
+                        <Pencil className="size-4" />
+                        Sửa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onHealthCheck([proxy.id])}>
+                        <Activity className="size-4" />
+                        Kiểm tra sống/chết
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => onDelete(proxy.id)}
+                      >
+                        <Trash2 className="size-4" />
+                        Xoá
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop / tablet table (≥768px). Wrapped in overflow-x-auto so
+          11 cols stay scrollable on narrow tablet widths without breaking
+          the layout. */}
+      <div className="relative w-full overflow-x-auto hidden md:block">
+        <Table aria-label="Danh sách proxy" aria-rowcount={proxies.length}>
       <TableHeader>
         <TableRow>
           <TableHead className="w-10">
@@ -172,6 +289,7 @@ export function ProxyTable({
                   <Checkbox
                     checked={selectedIds.includes(proxy.id)}
                     onCheckedChange={() => toggleOne(proxy.id)}
+                    aria-label={`Chọn proxy ${proxy.host}:${proxy.port}`}
                   />
                 </TableCell>
                 <TableCell className="font-mono text-sm">
@@ -256,7 +374,12 @@ export function ProxyTable({
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="ghost" size="icon-xs">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Mở menu thao tác cho proxy ${proxy.host}:${proxy.port}`}
+                          className="min-h-11 min-w-11"
+                        >
                           <MoreHorizontal className="size-4" />
                         </Button>
                       }
@@ -292,6 +415,8 @@ export function ProxyTable({
           })
         )}
       </TableBody>
-    </Table>
+        </Table>
+      </div>
+    </>
   );
 }

@@ -166,9 +166,13 @@ export function ProxyForm({
                 value={formData.host}
                 onChange={(e) => handleChange("host", e.target.value)}
                 aria-invalid={!!errors.host}
+                aria-describedby={errors.host ? "host-error" : undefined}
+                aria-required="true"
               />
               {errors.host && (
-                <p className="text-xs text-destructive">{errors.host}</p>
+                <p id="host-error" role="alert" className="text-xs text-destructive">
+                  {errors.host}
+                </p>
               )}
             </div>
             <div className="space-y-2">
@@ -180,9 +184,13 @@ export function ProxyForm({
                 value={formData.port}
                 onChange={(e) => handleChange("port", e.target.value)}
                 aria-invalid={!!errors.port}
+                aria-describedby={errors.port ? "port-error" : undefined}
+                aria-required="true"
               />
               {errors.port && (
-                <p className="text-xs text-destructive">{errors.port}</p>
+                <p id="port-error" role="alert" className="text-xs text-destructive">
+                  {errors.port}
+                </p>
               )}
             </div>
           </div>

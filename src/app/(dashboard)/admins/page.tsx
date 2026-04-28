@@ -256,6 +256,8 @@ export default function AdminsPage() {
             size="sm"
             onClick={fetchAdmins}
             disabled={loading}
+            aria-label="Làm mới danh sách quản trị viên"
+            className="min-h-11"
           >
             <RefreshCw
               className={`size-4 mr-1.5 ${loading ? "animate-spin" : ""}`}
@@ -267,7 +269,10 @@ export default function AdminsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
+          {/* Wave 22N — overflow-x-auto so 8-col admin table stays scrollable
+              on mobile/tablet without breaking layout. */}
+          <div className="relative w-full overflow-x-auto">
+          <Table aria-label="Danh sách quản trị viên">
             <TableHeader>
               <TableRow>
                 <TableHead>Email</TableHead>
@@ -369,6 +374,7 @@ export default function AdminsPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

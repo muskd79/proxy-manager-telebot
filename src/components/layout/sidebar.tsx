@@ -168,7 +168,8 @@ function NavContent({
             variant="ghost"
             size="sm"
             onClick={onLogout}
-            className={cn("shrink-0", collapsed ? "h-8 w-8 p-0" : "h-8 w-8 p-0")}
+            aria-label="Đăng xuất"
+            className={cn("shrink-0 min-h-11 min-w-11 p-0")}
           >
             <LogOut className="h-4 w-4" />
           </Button>
@@ -205,6 +206,8 @@ export function Sidebar({ admin }: { admin: Admin }) {
             variant="ghost"
             size="sm"
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+            aria-expanded={!collapsed}
             className="absolute -right-3 top-16 z-10 h-6 w-6 rounded-full border bg-card p-0 shadow-sm"
           >
             <ChevronLeft
@@ -220,9 +223,10 @@ export function Sidebar({ admin }: { admin: Admin }) {
       {/* Mobile sidebar */}
       <Sheet>
         <SheetTrigger
-          className="fixed left-4 top-3 z-40 flex h-9 w-9 items-center justify-center rounded-lg border bg-card shadow-sm md:hidden"
+          aria-label="Mở thanh điều hướng"
+          className="fixed left-3 top-2 z-40 flex h-11 w-11 items-center justify-center rounded-lg border bg-card shadow-sm md:hidden"
         >
-          <Menu className="h-4 w-4" />
+          <Menu className="h-5 w-5" />
         </SheetTrigger>
         <SheetContent side="left" className="w-60 p-0">
           <NavContent admin={admin} collapsed={false} onLogout={handleLogout} />

@@ -212,11 +212,12 @@ export function CategoryFormDialog({
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
-                    className={`size-7 rounded-md border-2 ${
+                    className={`size-11 rounded-md border-2 ${
                       color === c ? "border-foreground" : "border-transparent"
                     }`}
                     style={{ backgroundColor: cssColorFor(c) }}
-                    aria-label={`color ${c}`}
+                    aria-label={`Chọn màu ${c}`}
+                    aria-pressed={color === c}
                   />
                 ))}
               </div>

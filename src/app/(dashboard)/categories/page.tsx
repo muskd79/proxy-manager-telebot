@@ -179,7 +179,14 @@ export default function CategoriesPage() {
             />
             Include hidden
           </label>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            aria-label="Làm mới danh mục"
+            className="min-h-11"
+          >
             <RefreshCw className={loading ? "animate-spin" : undefined} />
             Refresh
           </Button>
@@ -201,8 +208,8 @@ export default function CategoriesPage() {
       ) : rows.length === 0 ? (
         <EmptyState onCreate={() => setFormOpen(true)} />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
+        <div className="rounded-lg border relative w-full overflow-x-auto">
+          <Table aria-label="Danh sách danh mục">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16">Order</TableHead>
@@ -221,19 +228,21 @@ export default function CategoriesPage() {
                     <div className="flex flex-col">
                       <Button
                         variant="ghost"
-                        size="icon-xs"
+                        size="icon"
                         onClick={() => move(c, -1)}
                         disabled={i === 0}
-                        aria-label="Move up"
+                        aria-label={`Di chuyển danh mục ${c.name} lên trên`}
+                        className="min-h-11 min-w-11"
                       >
                         <ArrowUp />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-xs"
+                        size="icon"
                         onClick={() => move(c, 1)}
                         disabled={i === rows.length - 1}
-                        aria-label="Move down"
+                        aria-label={`Di chuyển danh mục ${c.name} xuống dưới`}
+                        className="min-h-11 min-w-11"
                       >
                         <ArrowDown />
                       </Button>
@@ -273,28 +282,34 @@ export default function CategoriesPage() {
                     <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         onClick={() => toggleHidden(c)}
                         title={c.is_hidden ? "Show" : "Hide"}
+                        aria-label={c.is_hidden ? `Hiện danh mục ${c.name}` : `Ẩn danh mục ${c.name}`}
+                        className="min-h-11 min-w-11"
                       >
                         {c.is_hidden ? <Eye /> : <EyeOff />}
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         onClick={() => {
                           setEditing(c);
                           setFormOpen(true);
                         }}
                         title="Edit"
+                        aria-label={`Sửa danh mục ${c.name}`}
+                        className="min-h-11 min-w-11"
                       >
                         <Pencil />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         onClick={() => setDeleting(c)}
                         title="Delete"
+                        aria-label={`Xoá danh mục ${c.name}`}
+                        className="min-h-11 min-w-11"
                       >
                         <Trash2 className="text-destructive" />
                       </Button>

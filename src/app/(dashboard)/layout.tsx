@@ -31,6 +31,15 @@ export default async function DashboardLayout({
   return (
     <RoleProvider role={(admin?.role as Role) ?? "viewer"}>
       <I18nProvider>
+        {/* Wave 22N — WCAG 2.1 AA: skip-to-content link.
+            Hidden until keyboard focus, then jumps screen-reader / keyboard
+            users past the sidebar + header straight to <main>. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          Bỏ qua, tới nội dung chính
+        </a>
         <div className="flex h-screen overflow-hidden bg-background">
           <Sidebar
             admin={{
@@ -61,7 +70,9 @@ export default async function DashboardLayout({
               role: admin?.role ?? "viewer",
               }}
             />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+            <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto p-4 md:p-6 focus:outline-none">
+              {children}
+            </main>
           </div>
         </div>
       </I18nProvider>
