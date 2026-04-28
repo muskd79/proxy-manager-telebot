@@ -1,8 +1,31 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+/**
+ * Activity log writer — the ONLY way to insert into activity_logs.
+ *
+ * Wave 22D unification: previously two parallel write paths existed —
+ * this one (sanitised, capped) and `lib/telegram/logging.ts:logActivity`
+ * (raw insert, NO sanitisation, NO cap). The Telegram path was used by
+ * the bot for user-supplied data like Telegram usernames and was
+ * exploitable: a username `"\nERROR actor_type=admin"` would forge a
+ * second structured row in any log scraper that splits on `\n`, and a
+ * GB-sized JSON blob would land in the DB unbounded.
+ *
+ * As of Wave 22D, the Telegram helper delegates here (see
+ * `src/lib/telegram/logging.ts`). All inserts go through the same
+ * sanitiser and the same per-string 1024 char cap.
+ */
+
 interface LogActivityParams {
   actorType: "admin" | "tele_user" | "system" | "bot";
   actorId?: string;
+  /**
+   * Wave 22D: human-readable actor label captured at insert time.
+   * Stored in `activity_logs.actor_display_name` (mig 032). The
+   * /logs UI prefers this over the truncated UUID. Point-in-time
+   * snapshot — a later admin rename does NOT rewrite history.
+   */
+  actorDisplayName?: string;
   action: string;
   resourceType?: string;
   resourceId?: string;
@@ -37,15 +60,20 @@ function sanitizeLogValue<T>(v: T): T {
 export async function logActivity(params: LogActivityParams): Promise<void> {
   // Sanitize every free-text value before it hits the DB. The `action` and
   // `resourceType` columns are enum-like and controlled server-side, so they
-  // don't need sanitizing; `details`, `ipAddress`, `userAgent` come from
-  // request headers or admin input and MUST be scrubbed.
+  // don't need sanitizing; `details`, `ipAddress`, `userAgent`,
+  // `actorDisplayName` come from request headers or admin/user input and
+  // MUST be scrubbed.
   const details = params.details ? sanitizeLogValue(params.details) : null;
   const ipAddress = params.ipAddress ? sanitizeLogValue(params.ipAddress) : null;
   const userAgent = params.userAgent ? sanitizeLogValue(params.userAgent) : null;
+  const actorDisplayName = params.actorDisplayName
+    ? sanitizeLogValue(params.actorDisplayName)
+    : null;
 
   const { error } = await supabaseAdmin.from("activity_logs").insert({
     actor_type: params.actorType,
     actor_id: params.actorId ?? null,
+    actor_display_name: actorDisplayName,
     action: params.action,
     resource_type: params.resourceType ?? null,
     resource_id: params.resourceId ?? null,

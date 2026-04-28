@@ -54,8 +54,21 @@ export async function GET(request: NextRequest) {
       query = query.lte("created_at", `${filters.dateTo}T23:59:59`);
     }
     if (filters.search) {
-      // Search in details JSONB - cast to text for ilike search
-      query = query.ilike("details::text" as string, `%${filters.search}%`);
+      // Wave 22D BUG FIX: pre-22D code did `.ilike("details::text", ...)`
+      // which silently failed — Supabase JS does NOT interpret `::text`
+      // casts inside the column-name parameter, so the filter was
+      // either dropped or returned a swallowed PostgREST error.
+      //
+      // Mig 032 added a generated tsvector column `search_text` over
+      // the most-searched details fields (reason, username, proxy_id,
+      // host, tele_user_id) plus action/resource_type/resource_id, with
+      // a GIN index for sub-millisecond full-text lookups even at 10M+
+      // rows. We use `websearch` mode so the operator can pass natural
+      // queries like `proxy_id "abc-123"` without escaping.
+      query = query.textSearch("search_text", filters.search, {
+        type: "websearch",
+        config: "simple",
+      });
     }
 
     const page = filters.page ?? 1;
