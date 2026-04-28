@@ -25,7 +25,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   },
 }));
 
-import { revokeProxy } from "@/lib/telegram/utils";
+import { revokeProxy } from "@/lib/telegram/revoke";
 
 describe("revokeProxy — Wave 22E-1 regression", () => {
   beforeEach(() => {

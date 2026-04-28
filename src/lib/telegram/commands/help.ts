@@ -1,6 +1,7 @@
 import type { Context } from "grammy";
 import { t } from "../messages";
-import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType } from "@/types/database";
 
 export async function handleHelp(ctx: Context) {

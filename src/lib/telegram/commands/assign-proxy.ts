@@ -1,12 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
-import {
-  checkRateLimit,
-  logChatMessage,
-  logActivity,
-  loadGlobalCaps,
-} from "../utils";
+import { logChatMessage, logActivity } from "../logging";
+import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
 import {
   ChatDirection,
   MessageType,

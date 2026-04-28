@@ -1,13 +1,9 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
-import {
-  getOrCreateUser,
-  getUserLanguage,
-  logChatMessage,
-  checkRateLimit,
-  loadGlobalCaps,
-} from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
+import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
 import { proxyTypeKeyboard, quantityKeyboard } from "../keyboard";
 import {
   ChatDirection,

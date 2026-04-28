@@ -238,3 +238,6 @@ export function useImportWizard() {
     reset,
   };
 }
+
+/** Convenience alias — use instead of repeating `ReturnType<typeof useImportWizard>` in prop interfaces. */
+export type WizardApi = ReturnType<typeof useImportWizard>;

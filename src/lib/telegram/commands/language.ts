@@ -1,7 +1,8 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
-import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { languageKeyboard } from "../keyboard";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";

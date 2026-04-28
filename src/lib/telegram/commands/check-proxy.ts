@@ -1,7 +1,8 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
-import { getUserLanguage, logChatMessage } from "../utils";
+import { getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType } from "@/types/database";
 
 export async function handleCheckProxy(ctx: Context) {

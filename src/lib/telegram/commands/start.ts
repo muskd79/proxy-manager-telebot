@@ -1,7 +1,8 @@
 import { type Context, Keyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
-import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 import { AUP_VERSION, sendAupPrompt } from "./aup";
 

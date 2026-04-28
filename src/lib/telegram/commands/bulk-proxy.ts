@@ -1,7 +1,8 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
-import { getUserLanguage, logChatMessage } from "../utils";
+import { getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { sendTelegramMessage, sendTelegramDocument } from "../send";
 import { formatProxiesAsText, formatProxiesAsBuffer } from "../format-proxies";
 import { notifyAllAdmins, notifyOtherAdmins, getAdminByTelegramId } from "../notify-admins";

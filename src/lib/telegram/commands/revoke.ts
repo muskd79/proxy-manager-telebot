@@ -1,7 +1,9 @@
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getOrCreateUser, getUserLanguage, logChatMessage, revokeProxy } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
+import { revokeProxy } from "../revoke";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleRevoke(ctx: Context) {

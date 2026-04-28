@@ -1,7 +1,8 @@
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType, RequestStatus } from "@/types/database";
 
 export async function handleCancel(ctx: Context) {

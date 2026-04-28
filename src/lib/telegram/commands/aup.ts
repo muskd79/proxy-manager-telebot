@@ -3,7 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
-import { logChatMessage } from "../utils";
+import { logChatMessage } from "../logging";
 
 /**
  * Current AUP version. Bump when the policy text changes — users with an

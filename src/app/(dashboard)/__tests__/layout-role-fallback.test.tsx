@@ -33,6 +33,8 @@ describe("dashboard/layout.tsx role fallback (Wave 22E-5 B1)", () => {
   });
 
   it("does not export getUserLang dead code (Wave 22E-5 cleanup)", () => {
+    // Wave 22E-4: utils.ts was split into 4 focused modules.
+    // getUserLanguage now lives in user.ts.
     const file = path.join(
       __dirname,
       "..",
@@ -40,7 +42,7 @@ describe("dashboard/layout.tsx role fallback (Wave 22E-5 B1)", () => {
       "..",
       "lib",
       "telegram",
-      "utils.ts",
+      "user.ts",
     );
     const source = fs.readFileSync(file, "utf8");
     // getUserLanguage (sync) is the canonical export; getUserLang (async)

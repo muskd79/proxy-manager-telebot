@@ -1,6 +1,7 @@
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getOrCreateUser, getUserLanguage, logChatMessage } from "../utils";
+import { getOrCreateUser, getUserLanguage } from "../user";
+import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleStatus(ctx: Context) {
