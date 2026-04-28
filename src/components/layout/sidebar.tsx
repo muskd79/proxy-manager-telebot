@@ -59,26 +59,29 @@ function NavContent({
   // Wave 22O — realtime pending count + browser notification.
   const { count: pendingCount } = usePendingRequests();
 
+  // Wave 22P — IA reorder per UI/UX agent feedback:
+  //   Requests #2 (badge — daily admin attention)
+  //   Categories → System group (rare config, was wrongly at #3)
+  //   /history merged INTO /logs page as sub-tabs
   const navItems: NavItem[] = [
     { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
-    { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
-    // Wave 22K — /lots removed per user request. Table stays in DB
-    // for FK integrity + historical data; route + nav link gone.
-    { title: t("sidebar.categories"), href: "/categories", icon: Shield },
-    { title: t("sidebar.users"), href: "/users", icon: Users },
     {
       title: t("sidebar.requests"),
       href: "/requests",
       icon: FileText,
       badge: pendingCount ?? undefined,
     },
-    { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare, section: t("sidebar.monitoring") },
+    { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
+    { title: t("sidebar.users"), href: "/users", icon: Users },
+    { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare },
+    { title: t("sidebar.logs"), href: "/logs", icon: ScrollText, section: t("sidebar.monitoring") },
     { title: t("sidebar.botSimulator"), href: "/bot-simulator", icon: Terminal },
-    { title: t("sidebar.history"), href: "/history", icon: History },
-    { title: t("sidebar.logs"), href: "/logs", icon: ScrollText },
-    { title: t("sidebar.trash"), href: "/trash", icon: Trash2, section: t("sidebar.system") },
+    { title: t("sidebar.categories"), href: "/categories", icon: Shield, section: t("sidebar.system") },
+    { title: t("sidebar.trash"), href: "/trash", icon: Trash2 },
     { title: t("sidebar.admins"), href: "/admins", icon: Shield, minRole: "super_admin" },
     { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin" },
+    // /history now redirects to /logs?tab=history — entry kept for
+    // backward-compat URLs; sidebar link removed.
   ];
 
   const roleLevel: Record<string, number> = { viewer: 0, admin: 1, super_admin: 2 };

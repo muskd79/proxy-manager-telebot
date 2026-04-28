@@ -160,7 +160,13 @@ export default function HistoryPage() {
             Lịch sử phân công
           </h1>
           <p className="text-muted-foreground">
-            Kho lưu trữ chỉ đọc của tất cả kết quả yêu cầu proxy
+            Kho lưu trữ chỉ đọc của các yêu cầu proxy đã xử lý ·{" "}
+            <a
+              href="/logs"
+              className="text-primary hover:underline"
+            >
+              Nhật ký toàn hệ thống →
+            </a>
           </p>
         </div>
         <div className="flex items-center gap-2">

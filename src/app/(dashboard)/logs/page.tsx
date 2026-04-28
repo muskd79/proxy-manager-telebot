@@ -120,7 +120,13 @@ export default function LogsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nhật ký hệ thống</h1>
           <p className="text-muted-foreground">
-            Xem hành động admin + sự kiện hệ thống
+            Xem hành động admin + sự kiện hệ thống ·{" "}
+            <a
+              href="/history"
+              className="text-primary hover:underline"
+            >
+              Lịch sử phân công →
+            </a>
           </p>
         </div>
         <div className="flex items-center gap-2">
