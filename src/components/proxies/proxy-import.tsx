@@ -63,7 +63,24 @@ interface ProxyCategoryOption {
   default_country: string | null;
   default_proxy_type: ProxyType | null;
   default_isp: string | null;
+  // Wave 22K — purchase-metadata defaults the category prefills.
+  default_network_type: string | null;
+  default_vendor_source: string | null;
+  default_purchase_price_usd: number | null;
+  default_sale_price_usd: number | null;
 }
+
+// Wave 22K — common "Phân loại" suggestions. Free text (admin-extensible)
+// — typing a value not in this list is allowed.
+const NETWORK_TYPE_SUGGESTIONS = [
+  "ipv4",
+  "ipv6",
+  "isp",
+  "residential",
+  "mobile",
+  "bandwidth",
+  "static_residential",
+] as const;
 
 interface ParsedProxy {
   line: number;
@@ -87,6 +104,14 @@ export function ProxyImport() {
   const [notes, setNotes] = useState("");
   const [isp, setIsp] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
+  // Wave 22K — new fields user requested.
+  const [networkType, setNetworkType] = useState("");
+  const [vendorSource, setVendorSource] = useState("");
+  const today = new Date().toISOString().slice(0, 10);
+  const [purchaseDate, setPurchaseDate] = useState<string>(today);
+  const [expiresAt, setExpiresAt] = useState<string>("");
+  const [purchasePrice, setPurchasePrice] = useState<string>("");
+  const [salePrice, setSalePrice] = useState<string>("");
   const [importing, setImporting] = useState(false);
   const [probing, setProbing] = useState(false);
   const [probeProgress, setProbeProgress] = useState(0);
@@ -115,6 +140,11 @@ export function ProxyImport() {
               default_country: c.default_country,
               default_proxy_type: c.default_proxy_type,
               default_isp: c.default_isp,
+              // Wave 22K — purchase metadata defaults from category.
+              default_network_type: c.default_network_type ?? null,
+              default_vendor_source: c.default_vendor_source ?? null,
+              default_purchase_price_usd: c.default_purchase_price_usd ?? null,
+              default_sale_price_usd: c.default_sale_price_usd ?? null,
             })),
           );
         }
@@ -123,7 +153,8 @@ export function ProxyImport() {
   }, []);
 
   // When admin picks a category, auto-fill the bulk fields with its
-  // defaults (admin can still override per-form).
+  // defaults (admin can still override per-form). Wave 22K extended:
+  // also pulls network_type / vendor_source / purchase + sale prices.
   useEffect(() => {
     if (!categoryId) return;
     const cat = categories.find((c) => c.id === categoryId);
@@ -131,6 +162,12 @@ export function ProxyImport() {
     if (cat.default_country) setCountry(cat.default_country);
     if (cat.default_proxy_type) setProxyType(cat.default_proxy_type);
     if (cat.default_isp) setIsp(cat.default_isp);
+    if (cat.default_network_type) setNetworkType(cat.default_network_type);
+    if (cat.default_vendor_source) setVendorSource(cat.default_vendor_source);
+    if (cat.default_purchase_price_usd != null)
+      setPurchasePrice(String(cat.default_purchase_price_usd));
+    if (cat.default_sale_price_usd != null)
+      setSalePrice(String(cat.default_sale_price_usd));
   }, [categoryId, categories]);
 
   function parseProxyLine(line: string, lineNum: number): ParsedProxy {
@@ -284,6 +321,15 @@ export function ProxyImport() {
           notes: notes || undefined,
           isp: isp || undefined,
           category_id: categoryId || null,
+          // Wave 22K — bulk-applied per-proxy metadata.
+          network_type: networkType || undefined,
+          vendor_source: vendorSource || undefined,
+          purchase_date: purchaseDate || undefined,
+          expires_at: expiresAt || undefined,
+          purchase_price_usd: purchasePrice
+            ? Number(purchasePrice)
+            : undefined,
+          sale_price_usd: salePrice ? Number(salePrice) : undefined,
         }),
       });
 
@@ -386,13 +432,42 @@ export function ProxyImport() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-network-type">Phân loại</Label>
+              <Input
+                id="import-network-type"
+                list="import-network-list"
+                placeholder="ipv4 / ipv6 / isp / dung lượng..."
+                value={networkType}
+                onChange={(e) => setNetworkType(e.target.value)}
+                maxLength={80}
+              />
+              <datalist id="import-network-list">
+                {NETWORK_TYPE_SUGGESTIONS.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Tự gõ giá trị mới nếu không có trong gợi ý.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-vendor">Nguồn</Label>
+              <Input
+                id="import-vendor"
+                placeholder="VD: Proxy-Seller, Tự build"
+                value={vendorSource}
+                onChange={(e) => setVendorSource(e.target.value)}
+                maxLength={200}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="import-country">Quốc gia</Label>
               <Input
                 id="import-country"
                 list="import-country-list"
-                placeholder="VD: US, VN, JP"
+                placeholder="VD: VN, US, JP"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               />
@@ -400,8 +475,62 @@ export function ProxyImport() {
                 {countries.map((c) => <option key={c} value={c} />)}
               </datalist>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="import-isp">ISP</Label>
+              <Label htmlFor="import-purchase-date">Ngày mua *</Label>
+              <Input
+                id="import-purchase-date"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => setPurchaseDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-expires-at">Ngày hết hạn</Label>
+              <Input
+                id="import-expires-at"
+                type="date"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="import-purchase-price">Giá mua ($)</Label>
+              <Input
+                id="import-purchase-price"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={purchasePrice}
+                onChange={(e) => setPurchasePrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-sale-price">Giá bán ($)</Label>
+              <Input
+                id="import-sale-price"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+              />
+              {purchasePrice && salePrice && Number(salePrice) > Number(purchasePrice) && (
+                <p className="text-xs text-emerald-500">
+                  Lãi: ${(Number(salePrice) - Number(purchasePrice)).toFixed(2)}/proxy
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-isp">ISP (nhà mạng)</Label>
               <Input
                 id="import-isp"
                 placeholder="VD: Viettel, AWS"
@@ -415,7 +544,7 @@ export function ProxyImport() {
             <Label htmlFor="import-notes">Ghi chú</Label>
             <Textarea
               id="import-notes"
-              placeholder="Áp dụng cho mọi proxy được import"
+              placeholder="Áp dụng cho mọi proxy được import (tuỳ chọn)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />

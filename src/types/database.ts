@@ -134,17 +134,16 @@ export interface ProxyCategory {
   default_proxy_type: ProxyType | null;
   default_isp: string | null;
   /**
-   * Wave 22J — snapshot default for the proxy classification (see
-   * Proxy.network_type for values). Same snapshot semantics.
+   * Wave 22J → 22K — snapshot default for the proxy classification.
+   * Free text (admin-extensible). See Proxy.network_type.
    */
-  default_network_type:
-    | "isp"
-    | "datacenter_ipv4"
-    | "datacenter_ipv6"
-    | "residential"
-    | "mobile"
-    | "static_residential"
-    | null;
+  default_network_type: string | null;
+  /** Wave 22K — snapshot default for vendor / source. */
+  default_vendor_source?: string | null;
+  /** Wave 22K — snapshot default for admin cost. */
+  default_purchase_price_usd?: number | null;
+  /** Wave 22K — snapshot default for sale price. */
+  default_sale_price_usd?: number | null;
   min_stock_alert: number;
   created_by: string | null;
   created_at: string;
@@ -184,26 +183,19 @@ export interface Proxy {
   assigned_at: string | null;
   expires_at: string | null;
   /**
-   * Wave 22J — proxy classification (independent of transport
-   * protocol). NULL for un-classified rows; UI shows "Chưa phân loại".
+   * Wave 22J → 22K — proxy classification. FREE TEXT (admin-extensible).
+   * Common suggested values: "ipv4", "ipv6", "isp", "residential",
+   * "mobile", "bandwidth", "static_residential". Admin can type
+   * custom labels per import (e.g., "proxy dung lượng").
    * Distinct from `type` (wire protocol) and `isp` (free-text vendor
-   * name). Values:
-   *   - 'isp'                 → resold-from-ISP proxies (residential-grade
-   *                             but provided by an ISP partner)
-   *   - 'datacenter_ipv4'     → standard datacenter IPv4
-   *   - 'datacenter_ipv6'     → datacenter IPv6 / IPv6-rotating
-   *   - 'residential'         → home/end-user IPs
-   *   - 'mobile'              → 4G/5G mobile-carrier IPs
-   *   - 'static_residential'  → ISP-issued but static residential
+   * name).
    */
-  network_type?:
-    | "isp"
-    | "datacenter_ipv4"
-    | "datacenter_ipv6"
-    | "residential"
-    | "mobile"
-    | "static_residential"
-    | null;
+  network_type?: string | null;
+  /**
+   * Wave 22K — sticker sale price (USD). Pair with cost_usd
+   * (admin's purchase price) to compute margin per proxy.
+   */
+  sale_price_usd?: number | null;
   /**
    * Wave 22G — cascaded from proxy_categories.is_hidden. When true,
    * the proxy is filtered out of default /proxies queries and is not
@@ -219,11 +211,20 @@ export interface Proxy {
   updated_at: string;
 
   // ─── Wave 21A — manual inventory management ───
-  /** When admin paid for this proxy (distinct from created_at = DB insert). */
-  purchase_date: string;
-  /** Free-text vendor name (e.g. "Proxy-Seller"); NOT FK to vendors table. */
+  /**
+   * When admin paid for this proxy (distinct from created_at = DB insert).
+   * Wave 22K relaxed NOT NULL — proxies imported without a known date
+   * have null here.
+   */
+  purchase_date: string | null;
+  /**
+   * Free-text vendor name (e.g. "Proxy-Seller", "Self-built").
+   * UI labels this as "Nguồn" (source).
+   */
   vendor_label: string | null;
-  /** Per-proxy cost paid. */
+  /**
+   * Per-proxy cost paid. UI labels this as "Giá mua".
+   */
   cost_usd: number | null;
   /** FK to purchase_lots — groups proxies bought together. */
   purchase_lot_id: string | null;

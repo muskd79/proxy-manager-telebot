@@ -18,54 +18,52 @@ export const CreateProxySchema = z.object({
     .refine(publicHostLiteral, publicHostMessage),
   port: z.coerce.number().int().min(1).max(65535, "Port must be 1-65535"),
   type: z.enum(["http", "https", "socks5"]),
-  // Wave 22J — proxy classification (independent of `type` wire protocol).
-  network_type: z
-    .enum([
-      "isp",
-      "datacenter_ipv4",
-      "datacenter_ipv6",
-      "residential",
-      "mobile",
-      "static_residential",
-    ])
-    .nullable()
-    .optional(),
+  // Wave 22J → 22K — proxy classification (free text, admin-extensible).
+  network_type: z.string().min(1).max(80).nullable().optional(),
   username: z.string().max(255).nullable().optional(),
   password: z.string().max(255).nullable().optional(),
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
   category_id: z.string().uuid().nullable().optional(),
+  // Wave 22K — per-proxy purchase metadata (denorm from purchase_lots).
+  purchase_date: z.string().nullable().optional(),
+  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  vendor_source: z.string().max(200).nullable().optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
-  expires_at: z.string().datetime().nullable().optional(),
+  expires_at: z
+    .string()
+    .refine((s) => !s || !Number.isNaN(new Date(s).getTime()), "Invalid date")
+    .nullable()
+    .optional(),
 });
 
 export const UpdateProxySchema = z.object({
   host: z.string().min(1).max(255).refine(publicHostLiteral, publicHostMessage).optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
   type: z.enum(["http", "https", "socks5"]).optional(),
-  network_type: z
-    .enum([
-      "isp",
-      "datacenter_ipv4",
-      "datacenter_ipv6",
-      "residential",
-      "mobile",
-      "static_residential",
-    ])
-    .nullable()
-    .optional(),
+  network_type: z.string().min(1).max(80).nullable().optional(),
   username: z.string().max(255).nullable().optional(),
   password: z.string().max(255).nullable().optional(),
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
   category_id: z.string().uuid().nullable().optional(),
+  // Wave 22K — purchase metadata mutable.
+  purchase_date: z.string().nullable().optional(),
+  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  vendor_source: z.string().max(200).nullable().optional(),
   status: z.enum(["available", "assigned", "maintenance"]).optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
-  expires_at: z.string().datetime().nullable().optional(),
+  expires_at: z
+    .string()
+    .refine((s) => !s || !Number.isNaN(new Date(s).getTime()), "Invalid date")
+    .nullable()
+    .optional(),
   assigned_to: z.string().uuid().nullable().optional(),
   is_deleted: z.boolean().optional(),
   deleted_at: z.string().datetime().nullable().optional(),
@@ -80,8 +78,6 @@ const ImportProxyRowSchema = z.object({
   username: z.string().max(255).optional(),
   password: z.string().max(255).optional(),
   country: z.string().max(100).optional(),
-  // Wave 22I — per-row override from auto-detect probe (overrides
-  // batch type/country if present).
   isp: z.string().max(255).optional(),
   line: z.number().int().optional(),
   raw: z.string().optional(),
@@ -91,13 +87,17 @@ export const ImportProxiesSchema = z.object({
   proxies: z.array(ImportProxyRowSchema).min(1, "proxies array must not be empty").max(10000, "Maximum 10,000 proxies per import"),
   type: z.enum(["http", "https", "socks5"]).optional(),
   country: z.string().max(100).optional(),
-  // Wave 22C: tags removed in favour of category_id (Wave 22A).
-  // Wave 22G/I: assign all imported proxies to one category. Each
-  // proxy inherits the category's defaults via Wave 22G snapshot
-  // semantics (filled at row level by the wizard before submit).
+  // Wave 22C: tags removed → category_id. Wave 22G/I: bulk assignment.
   category_id: z.string().uuid().nullable().optional(),
   notes: z.string().max(1000).optional(),
   isp: z.string().max(255).optional(),
+  // Wave 22K — bulk-applied to every imported row.
+  network_type: z.string().min(1).max(80).optional(),
+  vendor_source: z.string().max(200).optional(),
+  purchase_date: z.string().optional(),
+  expires_at: z.string().optional(),
+  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).optional(),
+  sale_price_usd: z.coerce.number().min(0).max(1_000_000).optional(),
 });
 
 // ─── Proxy health check ─────────────────────────────────────────
@@ -197,15 +197,9 @@ export const UpdateUserSchema = z.object({
 
 // ─── Category schemas (Wave 22A) ─────────────────────────────────
 
-// Wave 22J — proxy classification enum, used in Proxy + Category schemas.
-const NetworkTypeEnum = z.enum([
-  "isp",
-  "datacenter_ipv4",
-  "datacenter_ipv6",
-  "residential",
-  "mobile",
-  "static_residential",
-]);
+// Wave 22J → 22K — proxy classification: free text (admin-extensible).
+// 80-char cap matches mig 038 CHECK constraint.
+const NetworkTypeText = z.string().min(1).max(80);
 
 export const CreateCategorySchema = z.object({
   name: z.string().min(1).max(120),
@@ -219,8 +213,12 @@ export const CreateCategorySchema = z.object({
   default_country: z.string().min(2).max(64).nullable().optional(),
   default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
   default_isp: z.string().min(1).max(200).nullable().optional(),
-  // Wave 22J — proxy classification default.
-  default_network_type: NetworkTypeEnum.nullable().optional(),
+  // Wave 22J → 22K — proxy classification default (free text).
+  default_network_type: NetworkTypeText.nullable().optional(),
+  // Wave 22K — purchase metadata defaults.
+  default_vendor_source: z.string().min(1).max(200).nullable().optional(),
+  default_purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
 });
 
 export const UpdateCategorySchema = z.object({
@@ -237,7 +235,11 @@ export const UpdateCategorySchema = z.object({
   default_country: z.string().min(2).max(64).nullable().optional(),
   default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
   default_isp: z.string().min(1).max(200).nullable().optional(),
-  default_network_type: NetworkTypeEnum.nullable().optional(),
+  default_network_type: NetworkTypeText.nullable().optional(),
+  // Wave 22K — purchase metadata defaults.
+  default_vendor_source: z.string().min(1).max(200).nullable().optional(),
+  default_purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
 });
 
 export const ReorderCategoriesSchema = z.object({

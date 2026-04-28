@@ -35,7 +35,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Wave 22C: tags removed. Wave 22G/I: category_id added.
-    const { proxies, type, country, notes, isp, category_id } = parsed.data;
+    // Wave 22K: + network_type, vendor_source, purchase_date,
+    // expires_at, purchase_price_usd, sale_price_usd.
+    const {
+      proxies,
+      type,
+      country,
+      notes,
+      isp,
+      category_id,
+      network_type,
+      vendor_source,
+      purchase_date,
+      expires_at,
+      purchase_price_usd,
+      sale_price_usd,
+    } = parsed.data;
 
     const importId = crypto.randomUUID();
 
@@ -80,14 +95,18 @@ export async function POST(request: NextRequest) {
         username: proxy.username || null,
         password: proxy.password || null,
         country: proxy.country || country || null,
-        // Wave 22C: tags removed.
-        // Wave 22I: per-row ISP override from probe / category prefill.
         isp: proxy.isp || isp || null,
         notes: notes || null,
-        // Wave 22G/I: bulk category assignment. Trigger
-        // fn_proxy_inherit_hidden_on_reassign auto-sets `hidden`
-        // from the category's is_hidden state (mig 036).
         category_id: category_id ?? null,
+        // Wave 22K — bulk-applied per-proxy purchase metadata.
+        // Reuses Wave 21A columns: purchase_date / vendor_label /
+        // cost_usd. sale_price_usd is new in Wave 22K.
+        network_type: network_type || null,
+        purchase_date: purchase_date || new Date().toISOString().slice(0, 10),
+        expires_at: expires_at || null,
+        vendor_label: vendor_source || null,
+        cost_usd: purchase_price_usd ?? null,
+        sale_price_usd: sale_price_usd ?? null,
         status: "available",
         is_deleted: false,
         created_by: admin.id,

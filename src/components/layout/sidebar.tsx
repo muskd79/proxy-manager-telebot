@@ -59,8 +59,8 @@ function NavContent({
   const navItems: NavItem[] = [
     { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
     { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
-    { title: t("sidebar.lots"), href: "/lots", icon: FileText },
-    // Wave 22G: i18n key 'sidebar.categories' renders "Danh mục" / "Categories"
+    // Wave 22K — /lots removed per user request. Table stays in DB
+    // for FK integrity + historical data; route + nav link gone.
     { title: t("sidebar.categories"), href: "/categories", icon: Shield },
     { title: t("sidebar.users"), href: "/users", icon: Users },
     { title: t("sidebar.requests"), href: "/requests", icon: FileText },
