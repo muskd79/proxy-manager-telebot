@@ -37,6 +37,7 @@ import { Pagination } from "@/components/shared/pagination";
 import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
+import { buildCsv } from "@/lib/csv";
 
 export default function UsersPage() {
   const { t } = useI18n();
@@ -140,14 +141,24 @@ export default function UsersPage() {
 
       if (!json.success || !json.data?.data) throw new Error("No data");
 
-      const csvRows = [
-        ["telegram_id", "username", "first_name", "last_name", "status", "approval_mode", "max_proxies", "created_at"].join(","),
-        ...json.data.data.map((u: Record<string, unknown>) =>
-          [u.telegram_id, u.username || "", u.first_name || "", u.last_name || "", u.status, u.approval_mode, u.max_proxies, u.created_at].join(",")
-        ),
-      ];
+      // Wave 22D-6 SECURITY FIX: pre-22D-6 did `row.join(",")` with
+      // ZERO quoting and ZERO formula-injection escape. A username
+      // like `=cmd|"/c calc"!A1` would EXECUTE in Excel on download.
+      // A username with a comma silently corrupted every column
+      // alignment downstream. Now: buildCsv handles both via the
+      // sanitiser in lib/csv.ts.
+      const csv = buildCsv<Record<string, unknown>>(json.data.data, [
+        { header: "telegram_id", value: (u) => (u.telegram_id as number | string) ?? "" },
+        { header: "username", value: (u) => (u.username as string) ?? "" },
+        { header: "first_name", value: (u) => (u.first_name as string) ?? "" },
+        { header: "last_name", value: (u) => (u.last_name as string) ?? "" },
+        { header: "status", value: (u) => (u.status as string) ?? "" },
+        { header: "approval_mode", value: (u) => (u.approval_mode as string) ?? "" },
+        { header: "max_proxies", value: (u) => (u.max_proxies as number) ?? 0 },
+        { header: "created_at", value: (u) => (u.created_at as string) ?? "" },
+      ]);
 
-      const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+      const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

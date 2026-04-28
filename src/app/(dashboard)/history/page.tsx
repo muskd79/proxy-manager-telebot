@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { buildCsv } from "@/lib/csv";
 
 interface HistoryRecord {
   id: string;
@@ -103,28 +104,26 @@ export default function HistoryPage() {
   }, [fetchHistory]);
 
   const handleExport = () => {
-    const headers = [
-      "Proxy",
-      "User",
-      "Status",
-      "Processed By",
-      "Requested At",
-      "Processed At",
-    ];
-    const rows = records.map((r) => [
-      r.proxy ? `${r.proxy.host}:${r.proxy.port}` : "N/A",
-      r.tele_user?.username ?? r.tele_user?.first_name ?? "N/A",
-      r.status,
-      r.admin?.full_name ?? r.admin?.email ?? "Auto",
-      r.requested_at
-        ? format(new Date(r.requested_at), "yyyy-MM-dd HH:mm")
-        : "",
-      r.processed_at
-        ? format(new Date(r.processed_at), "yyyy-MM-dd HH:mm")
-        : "",
+    // Wave 22D-6: previous code did `row.join(",")` with NO escaping
+    // — a username containing `,` or `"` corrupted every downstream
+    // row. Worse: leading `=` / `+` / `-` / `@` triggered formula
+    // execution when an admin opened the file in Excel/Sheets. Now
+    // via buildCsv (formula-injection safe + RFC-4180 quoting).
+    const csv = buildCsv<HistoryRecord>(records, [
+      { header: "Proxy", value: (r) => (r.proxy ? `${r.proxy.host}:${r.proxy.port}` : "N/A") },
+      { header: "User", value: (r) => r.tele_user?.username ?? r.tele_user?.first_name ?? "N/A" },
+      { header: "Status", value: (r) => r.status },
+      { header: "Processed By", value: (r) => r.admin?.full_name ?? r.admin?.email ?? "Auto" },
+      {
+        header: "Requested At",
+        value: (r) => (r.requested_at ? format(new Date(r.requested_at), "yyyy-MM-dd HH:mm") : ""),
+      },
+      {
+        header: "Processed At",
+        value: (r) => (r.processed_at ? format(new Date(r.processed_at), "yyyy-MM-dd HH:mm") : ""),
+      },
     ]);
 
-    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

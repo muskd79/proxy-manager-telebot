@@ -27,6 +27,7 @@ import { TableSkeleton } from "@/components/shared/table-skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Inbox } from "lucide-react";
 import type { ActivityLog } from "@/types/database";
+import { buildCsv } from "@/lib/csv";
 
 const actorTypeBadgeVariant: Record<
   string,
@@ -87,30 +88,16 @@ export default function LogsPage() {
   }, [fetchLogs]);
 
   const handleExport = () => {
-    const headers = [
-      "Timestamp",
-      "Actor Type",
-      "Actor ID",
-      "Action",
-      "Resource Type",
-      "Resource ID",
-      "Details",
-    ];
-    const rows = logs.map((log) => [
-      format(new Date(log.created_at), "yyyy-MM-dd HH:mm:ss"),
-      log.actor_type,
-      log.actor_id ?? "",
-      log.action,
-      log.resource_type ?? "",
-      log.resource_id ?? "",
-      log.details ? JSON.stringify(log.details) : "",
+    // Wave 22D-6: use shared buildCsv (formula-injection safe).
+    const csv = buildCsv<ActivityLog>(logs, [
+      { header: "Timestamp", value: (l) => format(new Date(l.created_at), "yyyy-MM-dd HH:mm:ss") },
+      { header: "Actor Type", value: (l) => l.actor_type },
+      { header: "Actor ID", value: (l) => l.actor_id ?? "" },
+      { header: "Action", value: (l) => l.action },
+      { header: "Resource Type", value: (l) => l.resource_type ?? "" },
+      { header: "Resource ID", value: (l) => l.resource_id ?? "" },
+      { header: "Details", value: (l) => (l.details ? JSON.stringify(l.details) : "") },
     ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-      )
-      .join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
