@@ -62,6 +62,12 @@ export function captureError(error: unknown, context: ErrorContext): void {
     console.info(`[${source}]`, JSON.stringify(logEntry));
   }
 
+  // Dev-mode visibility: shows what would have gone to Sentry
+  // (Option B: no @sentry/nextjs installed — see setup steps at top of file)
+  if (process.env.NODE_ENV === "development") {
+    console.log("[would-have-sentry]", { source, level, message: errorMessage, userId, extra });
+  }
+
   // TODO: Uncomment when Sentry is installed
   // if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
   //   Sentry.captureException(error, {
