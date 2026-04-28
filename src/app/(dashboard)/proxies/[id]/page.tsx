@@ -43,7 +43,17 @@ export default function ProxyDetailPage({
       );
       if (res.ok) {
         const result = await res.json();
-        setHistory(result.data || []);
+        // Wave 22W BUG FIX: /api/requests returns ApiResponse<PaginatedResponse<T>>
+        // so result.data is the wrapper { data, total, page, pageSize, totalPages },
+        // NOT the array directly. Pre-fix passed the wrapper into history state and
+        // ProxyDetail's `assignmentHistory.map(...)` crashed with
+        // "j.map is not a function" — exactly what user hit on /proxies/[id].
+        const list = Array.isArray(result?.data)
+          ? result.data
+          : Array.isArray(result?.data?.data)
+            ? result.data.data
+            : [];
+        setHistory(list);
       }
     } catch (err) {
       console.error("Failed to fetch proxy history:", err);

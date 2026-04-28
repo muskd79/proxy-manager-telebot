@@ -55,6 +55,14 @@ export async function GET(request: NextRequest) {
       query = query.eq("tele_user_id", filters.teleUserId);
     }
 
+    // Wave 22W — proxyId filter for /proxies/[id] assignment-history panel.
+    // Pre-fix: panel called /api/requests?proxyId=X but API ignored the
+    // param → returned ALL requests → mismatched render OR crash.
+    const proxyId = searchParams.get("proxyId");
+    if (proxyId) {
+      query = query.eq("proxy_id", proxyId);
+    }
+
     if (filters.proxyType) {
       query = query.eq("proxy_type", filters.proxyType);
     }

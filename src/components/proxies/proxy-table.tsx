@@ -34,6 +34,7 @@ import {
   type NetworkType,
 } from "@/lib/proxy-labels";
 import Link from "next/link";
+import { CredentialCell } from "@/components/proxies/credential-cell";
 
 /**
  * Wave 22J — proxy table rebuild.
@@ -257,6 +258,8 @@ export function ProxyTable({
             />
           </TableHead>
           <SortableHead column="host">Host:Cổng</SortableHead>
+          <TableHead>Username</TableHead>
+          <TableHead>Mật khẩu</TableHead>
           <SortableHead column="type">Giao thức</SortableHead>
           <TableHead>Phân loại</TableHead>
           <TableHead>Trạng thái</TableHead>
@@ -273,7 +276,7 @@ export function ProxyTable({
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={13} className="text-center py-8">
+            <TableCell colSpan={15} className="text-center py-8">
               <p className="text-muted-foreground">Chưa có proxy nào</p>
             </TableCell>
           </TableRow>
@@ -298,6 +301,13 @@ export function ProxyTable({
                   <Link href={`/proxies/${proxy.id}`} className="hover:underline">
                     {proxy.host}:{proxy.port}
                   </Link>
+                </TableCell>
+                {/* Wave 22W — username + masked password with click-to-reveal */}
+                <TableCell>
+                  <CredentialCell value={proxy.username} kind="username" />
+                </TableCell>
+                <TableCell>
+                  <CredentialCell value={proxy.password} kind="password" />
                 </TableCell>
                 <TableCell>
                   <span

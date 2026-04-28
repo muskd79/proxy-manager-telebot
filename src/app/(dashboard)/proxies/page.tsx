@@ -294,9 +294,14 @@ export default function ProxiesPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canWrite && (
-            <Link href="/proxies/import" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            // Wave 22W — promote to primary variant + clearer label so admins
+            // hunting for "dán 1000 proxy" actually spot the entry.
+            <Link
+              href="/proxies/import"
+              className={buttonVariants({ variant: "default", size: "sm" })}
+            >
               <Upload className="size-4 mr-1.5" />
-              {t("common.import")}
+              Dán / Import proxy
             </Link>
           )}
           <Button
