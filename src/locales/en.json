@@ -2,6 +2,8 @@
   "sidebar": {
     "dashboard": "Dashboard",
     "proxies": "Proxies",
+    "lots": "Lots",
+    "categories": "Categories",
     "users": "Users",
     "requests": "Requests",
     "chat": "Chat",

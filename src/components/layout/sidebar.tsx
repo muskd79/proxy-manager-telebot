@@ -59,8 +59,9 @@ function NavContent({
   const navItems: NavItem[] = [
     { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
     { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
-    { title: "Lots", href: "/lots", icon: FileText },
-    { title: "Categories", href: "/categories", icon: Shield },
+    { title: t("sidebar.lots"), href: "/lots", icon: FileText },
+    // Wave 22G: i18n key 'sidebar.categories' renders "Danh mục" / "Categories"
+    { title: t("sidebar.categories"), href: "/categories", icon: Shield },
     { title: t("sidebar.users"), href: "/users", icon: Users },
     { title: t("sidebar.requests"), href: "/requests", icon: FileText },
     { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare, section: t("sidebar.monitoring") },

@@ -169,10 +169,14 @@ export const CreateCategorySchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).nullable().optional(),
   color: z.string().min(1).max(30).default("purple"),
-  icon: z.string().min(1).max(50).default("tag"),
+  icon: z.string().min(1).max(50).default("folder"),
   sort_order: z.coerce.number().int().min(0).max(999_999).optional(),
   default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
   min_stock_alert: z.coerce.number().int().min(0).optional(),
+  // Wave 22G — rich-category defaults snapshot to new proxies in this group.
+  default_country: z.string().min(2).max(64).nullable().optional(),
+  default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
+  default_isp: z.string().min(1).max(200).nullable().optional(),
 });
 
 export const UpdateCategorySchema = z.object({
@@ -184,6 +188,11 @@ export const UpdateCategorySchema = z.object({
   is_hidden: z.boolean().optional(),
   default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
   min_stock_alert: z.coerce.number().int().min(0).optional(),
+  // Wave 22G — admin can edit defaults; only NEW proxies pick them up
+  // (snapshot semantics — existing proxies untouched).
+  default_country: z.string().min(2).max(64).nullable().optional(),
+  default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
+  default_isp: z.string().min(1).max(200).nullable().optional(),
 });
 
 export const ReorderCategoriesSchema = z.object({

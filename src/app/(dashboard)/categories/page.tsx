@@ -162,10 +162,12 @@ export default function CategoriesPage() {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Categories</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Danh mục</h1>
           <p className="text-sm text-muted-foreground">
-            Strong groupings for proxy inventory. Replaces flat tags. Use the{" "}
-            <code>/proxies?category_id=X</code> filter to see members.
+            Quản lý gom nhóm proxy theo nguồn / quốc gia / loại / giá.
+            Mỗi danh mục có tham số mặc định (loại, quốc gia, giá, ISP)
+            để prefill khi thêm proxy mới. Toggle ẩn ở đây sẽ ẩn toàn
+            bộ proxy thuộc danh mục.
           </p>
         </div>
         <div className="flex gap-2">
@@ -334,15 +336,15 @@ export default function CategoriesPage() {
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-lg border border-dashed p-10 text-center">
-      <h3 className="text-lg font-semibold">No categories yet</h3>
+      <h3 className="text-lg font-semibold">Chưa có danh mục nào</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Strong categories replace flat tags. Group your proxies by source
-        (&quot;Proxy-Seller US Residential&quot;), purpose (&quot;Premium&quot;),
-        or any axis that helps with bulk operations.
+        Tạo danh mục để gom nhóm proxy theo nguồn (&quot;Proxy-Seller US
+        Residential&quot;), mục đích (&quot;Premium&quot;), hoặc bất kỳ trục
+        nào hữu ích cho bulk operations.
       </p>
       <Button className="mt-3" onClick={onCreate}>
         <Plus />
-        Create your first category
+        Tạo danh mục đầu tiên
       </Button>
     </div>
   );

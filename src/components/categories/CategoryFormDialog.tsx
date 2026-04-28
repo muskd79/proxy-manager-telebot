@@ -41,8 +41,10 @@ const COLOR_PRESETS = [
   "gray",
 ] as const;
 
+// Wave 22G: replaced "tag" with "folder" as default. The "tag" icon
+// misleads — tags concept was deprecated (mig 028 → 036).
 const ICON_PRESETS = [
-  "tag",
+  "folder",
   "globe",
   "shield",
   "zap",
@@ -70,9 +72,13 @@ export function CategoryFormDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState<string>("purple");
-  const [icon, setIcon] = useState<string>("tag");
+  const [icon, setIcon] = useState<string>("folder");
   const [sortOrder, setSortOrder] = useState(0);
   const [defaultPrice, setDefaultPrice] = useState("");
+  // Wave 22G — rich-category snapshot defaults.
+  const [defaultCountry, setDefaultCountry] = useState("");
+  const [defaultProxyType, setDefaultProxyType] = useState<string>("");
+  const [defaultIsp, setDefaultIsp] = useState("");
   const [minStock, setMinStock] = useState(0);
   const [isHidden, setIsHidden] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,15 +92,21 @@ export function CategoryFormDialog({
       setIcon(category.icon);
       setSortOrder(category.sort_order);
       setDefaultPrice(category.default_price_usd?.toString() ?? "");
+      setDefaultCountry(category.default_country ?? "");
+      setDefaultProxyType(category.default_proxy_type ?? "");
+      setDefaultIsp(category.default_isp ?? "");
       setMinStock(category.min_stock_alert);
       setIsHidden(category.is_hidden);
     } else {
       setName("");
       setDescription("");
       setColor("purple");
-      setIcon("tag");
+      setIcon("folder");
       setSortOrder(0);
       setDefaultPrice("");
+      setDefaultCountry("");
+      setDefaultProxyType("");
+      setDefaultIsp("");
       setMinStock(0);
       setIsHidden(false);
     }
@@ -112,6 +124,11 @@ export function CategoryFormDialog({
         icon,
         sort_order: sortOrder,
         default_price_usd: defaultPrice ? Number(defaultPrice) : null,
+        // Wave 22G snapshot defaults — null when blank so the
+        // backend treats them as absent rather than empty strings.
+        default_country: defaultCountry.trim() || null,
+        default_proxy_type: defaultProxyType || null,
+        default_isp: defaultIsp.trim() || null,
         min_stock_alert: minStock,
       };
       if (isEdit) body.is_hidden = isHidden;
@@ -143,17 +160,17 @@ export function CategoryFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit category" : "New category"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Sửa danh mục" : "Danh mục mới"}</DialogTitle>
           <DialogDescription>
-            Strong-category metadata. The proxies list filters by category, the
-            dashboard rolls up cost per category, and the bulk-assign UI moves
-            proxies between categories.
+            Tham số mặc định (loại / quốc gia / giá / ISP) sẽ được prefill
+            khi admin thêm proxy mới vào danh mục này. Toggle ẩn cascade —
+            ẩn danh mục thì TOÀN BỘ proxy thuộc danh mục cũng ẩn theo.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
           <div className="space-y-1">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">Tên danh mục *</Label>
             <Input
               id="name"
               value={name}
@@ -164,14 +181,14 @@ export function CategoryFormDialog({
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="desc">Description</Label>
+            <Label htmlFor="desc">Mô tả</Label>
             <Textarea
               id="desc"
               rows={2}
               value={description}
               maxLength={2000}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional context for other admins"
+              placeholder="Ghi chú cho admin khác (tuỳ chọn)"
             />
           </div>
 
@@ -210,7 +227,7 @@ export function CategoryFormDialog({
 
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="sort">Sort order</Label>
+              <Label htmlFor="sort">Thứ tự</Label>
               <Input
                 id="sort"
                 type="number"
@@ -220,7 +237,18 @@ export function CategoryFormDialog({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="price">Default price ($)</Label>
+              <Label htmlFor="minstock">Cảnh báo tồn kho</Label>
+              <Input
+                id="minstock"
+                type="number"
+                min={0}
+                value={minStock}
+                onChange={(e) => setMinStock(Math.max(0, Number(e.target.value) || 0))}
+                placeholder="VD: 50"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="price">Giá mặc định ($)</Label>
               <Input
                 id="price"
                 type="number"
@@ -228,32 +256,71 @@ export function CategoryFormDialog({
                 min="0"
                 value={defaultPrice}
                 onChange={(e) => setDefaultPrice(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="minstock">Min stock alert</Label>
-              <Input
-                id="minstock"
-                type="number"
-                min={0}
-                value={minStock}
-                onChange={(e) => setMinStock(Math.max(0, Number(e.target.value) || 0))}
+                placeholder="0.00"
               />
             </div>
           </div>
 
+          {/* Wave 22G — snapshot defaults section */}
+          <div className="space-y-2 rounded-md border border-dashed bg-muted/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Tham số mặc định cho proxy mới
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Khi thêm proxy vào danh mục này, các trường dưới sẽ tự fill.
+              Admin vẫn có thể override per-proxy. Sửa ở đây KHÔNG ảnh hưởng
+              proxy đã có (snapshot, không inheritance).
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="def-type">Loại proxy</Label>
+                <select
+                  id="def-type"
+                  value={defaultProxyType}
+                  onChange={(e) => setDefaultProxyType(e.target.value)}
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">— không —</option>
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                  <option value="socks5">SOCKS5</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="def-country">Quốc gia</Label>
+                <Input
+                  id="def-country"
+                  value={defaultCountry}
+                  onChange={(e) => setDefaultCountry(e.target.value)}
+                  placeholder="VD: VN, US, JP"
+                  maxLength={64}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="def-isp">ISP</Label>
+                <Input
+                  id="def-isp"
+                  value={defaultIsp}
+                  onChange={(e) => setDefaultIsp(e.target.value)}
+                  placeholder="VD: VNPT, Viettel"
+                  maxLength={200}
+                />
+              </div>
+            </div>
+          </div>
+
           {isEdit && (
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
               <input
                 type="checkbox"
                 checked={isHidden}
                 onChange={(e) => setIsHidden(e.target.checked)}
+                className="size-4"
               />
               <span>
-                Hidden — proxies in this category stay in the inventory but the
-                category does not appear in the bot's <code>/getproxy</code>{" "}
-                category picker.
+                <strong>Ẩn danh mục</strong> — toàn bộ {category?.proxy_count ?? 0} proxy
+                thuộc danh mục này sẽ ẩn khỏi list mặc định, không phân phối
+                qua bot. Bật lại sẽ unhide hết.
               </span>
             </label>
           )}
@@ -261,11 +328,11 @@ export function CategoryFormDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            Huỷ
           </Button>
           <Button onClick={save} disabled={!canSave}>
             {submitting ? <Loader2 className="animate-spin" /> : <Save />}
-            {isEdit ? "Save" : "Create"}
+            {isEdit ? "Lưu" : "Tạo"}
           </Button>
         </DialogFooter>
       </DialogContent>

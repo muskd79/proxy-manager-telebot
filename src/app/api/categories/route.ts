@@ -86,9 +86,15 @@ export async function POST(request: NextRequest) {
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         color: parsed.data.color ?? "purple",
-        icon: parsed.data.icon ?? "tag",
+        // Wave 22G: default icon "folder" replaces the misleading "tag"
+        // (tags concept was deprecated in Wave 22A/22C/22G).
+        icon: parsed.data.icon ?? "folder",
         sort_order: parsed.data.sort_order ?? 0,
         default_price_usd: parsed.data.default_price_usd ?? null,
+        // Wave 22G — rich category snapshot defaults.
+        default_country: parsed.data.default_country ?? null,
+        default_proxy_type: parsed.data.default_proxy_type ?? null,
+        default_isp: parsed.data.default_isp ?? null,
         min_stock_alert: parsed.data.min_stock_alert ?? 0,
         created_by: admin.id,
       })

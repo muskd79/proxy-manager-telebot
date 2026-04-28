@@ -2,6 +2,8 @@
   "sidebar": {
     "dashboard": "Trang chủ",
     "proxies": "Proxy",
+    "lots": "Lô hàng",
+    "categories": "Danh mục",
     "users": "Người dùng",
     "requests": "Yêu cầu",
     "chat": "Tin nhắn",

@@ -124,6 +124,16 @@ export interface ProxyCategory {
   is_hidden: boolean;
   proxy_count: number;
   default_price_usd: number | null;
+  /**
+   * Wave 22G — snapshot defaults prefilled into new proxies in this
+   * category. NULL means "no default; admin must enter manually or
+   * use Probe & autofill". Sigh-edits to these fields do NOT
+   * retroactively change existing proxies (snapshot semantics —
+   * see mig 036 + architect's pushback note about audit honesty).
+   */
+  default_country: string | null;
+  default_proxy_type: ProxyType | null;
+  default_isp: string | null;
   min_stock_alert: number;
   created_by: string | null;
   created_at: string;
@@ -163,12 +173,19 @@ export interface Proxy {
   assigned_at: string | null;
   expires_at: string | null;
   /**
-   * @deprecated Wave 22A — replaced by category_id (FK to proxy_categories).
-   * Wave 22C stripped all UI/API references; column is read-only and will
-   * be dropped in a future wave once admins confirm migration. New code
-   * MUST NOT write to this field.
+   * @deprecated Wave 22A → 22C → 22G — TOMBSTONED in mig 036.
+   * Archived to proxies_tags_archive. DROP COLUMN scheduled mig 037.
+   * Field kept as `?:` purely so older fixtures don't break TS; new
+   * code MUST NOT read or write it.
    */
   tags?: string[] | null;
+  /**
+   * Wave 22G — cascaded from proxy_categories.is_hidden. When true,
+   * the proxy is filtered out of default /proxies queries and is not
+   * eligible for distribution via /getproxy. Re-toggles automatically
+   * on category reassignment via fn_proxy_inherit_hidden_on_reassign.
+   */
+  hidden?: boolean;
   notes: string | null;
   is_deleted: boolean;
   deleted_at: string | null;

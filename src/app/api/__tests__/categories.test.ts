@@ -32,7 +32,9 @@ describe("CreateCategorySchema (Wave 22A)", () => {
   it("applies default color and icon", () => {
     const r = CreateCategorySchema.parse({ name: "X" });
     expect(r.color).toBe("purple");
-    expect(r.icon).toBe("tag");
+    // Wave 22G: default icon changed from "tag" to "folder" (the
+    // tags concept was deprecated; "tag" icon was misleading).
+    expect(r.icon).toBe("folder");
   });
 
   it("rejects negative default_price_usd", () => {

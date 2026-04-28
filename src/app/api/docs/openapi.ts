@@ -66,7 +66,9 @@ export const openApiSpec = {
           assigned_to: { type: "string", format: "uuid", nullable: true },
           assigned_at: { type: "string", format: "date-time", nullable: true },
           expires_at: { type: "string", format: "date-time", nullable: true },
-          tags: { type: "array", items: { type: "string" }, nullable: true },
+          // Wave 22G — `tags` removed; use `category_id` (FK to proxy_categories).
+          category_id: { type: "string", format: "uuid", nullable: true, description: "Wave 22G — replaces flat tags" },
+          hidden: { type: "boolean", description: "Cascaded from category.is_hidden (Wave 22G)" },
           notes: { type: "string", nullable: true },
           is_deleted: { type: "boolean" },
           deleted_at: { type: "string", format: "date-time", nullable: true },
@@ -188,13 +190,7 @@ export const openApiSpec = {
           speed_ms: { type: "integer" },
         },
       },
-      TagEntry: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          count: { type: "integer" },
-        },
-      },
+      // Wave 22G: TagEntry removed. Categories endpoint replaces.
       ProxyStats: {
         type: "object",
         properties: {
@@ -226,7 +222,8 @@ export const openApiSpec = {
           { name: "status", in: "query", schema: { type: "string", enum: ["available", "assigned", "expired", "banned", "maintenance"] } },
           { name: "country", in: "query", schema: { type: "string" } },
           { name: "isp", in: "query", schema: { type: "string" }, description: "Filter by ISP (partial match)" },
-          { name: "tags", in: "query", schema: { type: "string" }, description: "Comma-separated tags (overlaps filter)" },
+          { name: "category_id", in: "query", schema: { type: "string", format: "uuid" }, description: "Wave 22G — filter by category" },
+          { name: "include_hidden", in: "query", schema: { type: "boolean", default: false }, description: "Wave 22G — include proxies hidden by category cascade" },
           { name: "sortBy", in: "query", schema: { type: "string", default: "created_at" } },
           { name: "sortOrder", in: "query", schema: { type: "string", enum: ["asc", "desc"], default: "desc" } },
           { name: "isDeleted", in: "query", schema: { type: "boolean", default: false }, description: "Show soft-deleted proxies" },
@@ -276,7 +273,7 @@ export const openApiSpec = {
                   country: { type: "string", maxLength: 100, nullable: true },
                   city: { type: "string", maxLength: 100, nullable: true },
                   isp: { type: "string", maxLength: 255, nullable: true },
-                  tags: { type: "array", items: { type: "string", maxLength: 50 }, maxItems: 20, nullable: true },
+                  category_id: { type: "string", format: "uuid", nullable: true, description: "Wave 22G — replaces tags" },
                   notes: { type: "string", maxLength: 1000, nullable: true },
                   expires_at: { type: "string", format: "date-time", nullable: true },
                 },
@@ -328,7 +325,7 @@ export const openApiSpec = {
                   city: { type: "string", maxLength: 100, nullable: true },
                   isp: { type: "string", maxLength: 255, nullable: true },
                   status: { type: "string", enum: ["available", "assigned", "maintenance"] },
-                  tags: { type: "array", items: { type: "string", maxLength: 50 }, maxItems: 20, nullable: true },
+                  category_id: { type: "string", format: "uuid", nullable: true, description: "Wave 22G — replaces tags" },
                   notes: { type: "string", maxLength: 1000, nullable: true },
                   expires_at: { type: "string", format: "date-time", nullable: true },
                   assigned_to: { type: "string", format: "uuid", nullable: true },
@@ -439,7 +436,7 @@ export const openApiSpec = {
                   },
                   type: { type: "string", enum: ["http", "https", "socks5"], description: "Default type for all" },
                   country: { type: "string", maxLength: 100, description: "Default country for all" },
-                  tags: { type: "array", items: { type: "string", maxLength: 50 }, maxItems: 20 },
+                  category_id: { type: "string", format: "uuid", nullable: true, description: "Wave 22G — assign all imported proxies to a category" },
                   notes: { type: "string", maxLength: 1000 },
                   isp: { type: "string", maxLength: 255 },
                 },
@@ -511,33 +508,16 @@ export const openApiSpec = {
       },
     },
 
-    "/proxies/tags": {
-      get: {
-        summary: "List all tags",
-        description: "Returns all unique tags with usage counts, sorted by most used.",
-        tags: ["Proxies"],
-        security: [{ bearerAuth: [] }],
-        responses: {
-          200: {
-            description: "Tag list",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    success: { type: "boolean" },
-                    data: { type: "array", items: { $ref: "#/components/schemas/TagEntry" } },
-                  },
-                },
-              },
-            },
-          },
-          401: { description: "Unauthorized" },
-        },
-      },
-      put: {
-        summary: "Manage tags",
-        description: "Rename or delete a tag across all proxies. Requires admin or super_admin.",
+    // Wave 22G: removed /proxies/tags endpoint group entirely.
+    // Tags concept was deprecated in Wave 22A, UI/API stripped in
+    // Wave 22C, tombstoned in Wave 22G mig 036, drop scheduled mig 037.
+    // Use /api/categories/* for the replacement strong-categories
+    // surface.
+
+    "/proxies/probe": {
+      post: {
+        summary: "Auto-detect proxy type + GeoIP",
+        description: "Wave 22G — probes a host:port to detect protocol (HTTP/HTTPS/SOCKS5), aliveness, country, ISP. Used by the proxy create form's Probe & autofill button.",
         tags: ["Proxies"],
         security: [{ bearerAuth: [] }],
         requestBody: {
@@ -545,32 +525,38 @@ export const openApiSpec = {
           content: {
             "application/json": {
               schema: {
-                oneOf: [
-                  {
-                    type: "object",
-                    required: ["action", "from", "to"],
-                    properties: {
-                      action: { type: "string", enum: ["rename"] },
-                      from: { type: "string", maxLength: 50 },
-                      to: { type: "string", maxLength: 50 },
-                    },
-                  },
-                  {
-                    type: "object",
-                    required: ["action", "tag"],
-                    properties: {
-                      action: { type: "string", enum: ["delete"] },
-                      tag: { type: "string", maxLength: 50 },
-                    },
-                  },
-                ],
+                type: "object",
+                required: ["host", "port"],
+                properties: {
+                  host: { type: "string", maxLength: 253 },
+                  port: { type: "integer", minimum: 1, maximum: 65535 },
+                },
               },
             },
           },
         },
         responses: {
-          200: { description: "Number of proxies updated", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, data: { type: "object", properties: { updated: { type: "integer" } } } } } } } },
-          400: { description: "Validation error" },
+          200: {
+            description: "Probe result",
+            content: { "application/json": { schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean" },
+                data: {
+                  type: "object",
+                  properties: {
+                    alive: { type: "boolean" },
+                    type: { type: "string", enum: ["http", "https", "socks5"], nullable: true },
+                    speed_ms: { type: "integer" },
+                    country: { type: "string", nullable: true },
+                    country_code: { type: "string", nullable: true },
+                    isp: { type: "string", nullable: true },
+                    geo_source: { type: "string", nullable: true },
+                  },
+                },
+              },
+            } } },
+          },
           401: { description: "Unauthorized" },
         },
       },
