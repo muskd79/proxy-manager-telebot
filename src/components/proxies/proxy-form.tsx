@@ -23,13 +23,20 @@ import {
 } from "@/components/ui/select";
 import type { Proxy } from "@/types/database";
 import { z } from "zod";
+import {
+  NETWORK_TYPE_VALUES,
+  NETWORK_TYPE_LABEL,
+  type NetworkType,
+} from "@/lib/proxy-labels";
 
 const proxyTypeValues = ["http", "https", "socks5"] as const;
 
 const proxySchema = z.object({
-  host: z.string().min(1, "Host is required"),
-  port: z.coerce.number().int().min(1).max(65535, "Port must be 1-65535"),
+  host: z.string().min(1, "Bắt buộc nhập host"),
+  port: z.coerce.number().int().min(1).max(65535, "Port phải nằm trong khoảng 1-65535"),
   type: z.enum(proxyTypeValues),
+  // Wave 22J — phân loại proxy (không liên quan tới giao thức `type`).
+  network_type: z.enum(NETWORK_TYPE_VALUES).optional().or(z.literal("")),
   username: z.string().optional(),
   password: z.string().optional(),
   country: z.string().optional(),
@@ -59,6 +66,7 @@ export function ProxyForm({
     host: proxy?.host || "",
     port: proxy?.port?.toString() || "",
     type: proxy?.type || "http",
+    network_type: (proxy?.network_type ?? "") as NetworkType | "",
     username: proxy?.username || "",
     password: proxy?.password || "",
     country: proxy?.country || "",
@@ -115,6 +123,7 @@ export function ProxyForm({
         host: formData.host,
         port: parseInt(formData.port),
         type: formData.type,
+        network_type: formData.network_type || null,
         username: formData.username || null,
         password: formData.password || null,
         country: formData.country || null,
@@ -139,11 +148,11 @@ export function ProxyForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Proxy" : "Add Proxy"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Sửa proxy" : "Thêm proxy"}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Update the proxy details below."
-              : "Enter the proxy details to add a new proxy."}
+              ? "Cập nhật thông tin proxy bên dưới."
+              : "Nhập thông tin proxy mới. Có thể bỏ trống các trường tuỳ chọn."}
           </DialogDescription>
         </DialogHeader>
 
@@ -163,7 +172,7 @@ export function ProxyForm({
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="port">Port *</Label>
+              <Label htmlFor="port">Cổng *</Label>
               <Input
                 id="port"
                 placeholder="8080"
@@ -178,39 +187,64 @@ export function ProxyForm({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Type *</Label>
-            <Select
-              value={formData.type}
-              onValueChange={(val) => handleChange("type", val ?? formData.type)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="http">HTTP</SelectItem>
-                <SelectItem value="https">HTTPS</SelectItem>
-                <SelectItem value="socks5">SOCKS5</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Giao thức *</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(val) => handleChange("type", val ?? formData.type)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="http">HTTP</SelectItem>
+                  <SelectItem value="https">HTTPS</SelectItem>
+                  <SelectItem value="socks5">SOCKS5</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Giao thức truyền tải: HTTP/HTTPS/SOCKS5</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Phân loại</Label>
+              <Select
+                value={formData.network_type || "_none"}
+                onValueChange={(val) =>
+                  handleChange("network_type", val === "_none" ? "" : val ?? "")
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Chưa phân loại" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Chưa phân loại</SelectItem>
+                  {NETWORK_TYPE_VALUES.map((nt) => (
+                    <SelectItem key={nt} value={nt}>
+                      {NETWORK_TYPE_LABEL[nt as NetworkType]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Phân loại proxy: ISP / Datacenter / Dân cư / Mobile</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Tên đăng nhập</Label>
               <Input
                 id="username"
-                placeholder="Optional"
+                placeholder="(tuỳ chọn)"
                 value={formData.username}
                 onChange={(e) => handleChange("username", e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Mật khẩu</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Optional"
+                placeholder="(tuỳ chọn)"
                 value={formData.password}
                 onChange={(e) => handleChange("password", e.target.value)}
               />
@@ -219,11 +253,11 @@ export function ProxyForm({
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="country">Country</Label>
+              <Label htmlFor="country">Quốc gia</Label>
               <Input
                 id="country"
                 list="country-list"
-                placeholder="e.g. US, VN, JP"
+                placeholder="VD: US, VN, JP"
                 value={formData.country}
                 onChange={(e) => handleChange("country", e.target.value)}
               />
@@ -234,44 +268,45 @@ export function ProxyForm({
               </datalist>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="city">Thành phố</Label>
               <Input
                 id="city"
-                placeholder="New York"
+                placeholder="VD: Hà Nội"
                 value={formData.city}
                 onChange={(e) => handleChange("city", e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="isp">ISP</Label>
+              <Label htmlFor="isp">ISP (nhà mạng)</Label>
               <Input
                 id="isp"
-                placeholder="Optional"
+                placeholder="VD: Viettel, FPT"
                 value={formData.isp}
                 onChange={(e) => handleChange("isp", e.target.value)}
               />
             </div>
           </div>
 
-          {/* Wave 22C: tags input removed. Strong categories supersede flat
-              tags — assign via /categories admin page or the bulk-assign
-              dropdown on the /proxies list. */}
+          {/* Wave 22C: tags input removed. Strong categories supersede. */}
 
           <div className="space-y-2">
-            <Label htmlFor="expires_at">Expires At</Label>
+            <Label htmlFor="expires_at">Ngày hết hạn</Label>
             <Input
               id="expires_at"
               type="date"
               value={formData.expires_at}
               onChange={(e) => handleChange("expires_at", e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Để trống nếu proxy không có hạn sử dụng cố định.
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">Ghi chú</Label>
             <Textarea
               id="notes"
-              placeholder="Additional notes..."
+              placeholder="Ghi chú nội bộ (tuỳ chọn)"
               value={formData.notes}
               onChange={(e) => handleChange("notes", e.target.value)}
             />
@@ -283,10 +318,10 @@ export function ProxyForm({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              Huỷ
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : isEdit ? "Update" : "Create"}
+              {saving ? "Đang lưu..." : isEdit ? "Cập nhật" : "Tạo"}
             </Button>
           </DialogFooter>
         </form>

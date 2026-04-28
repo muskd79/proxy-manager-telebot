@@ -213,18 +213,8 @@ export function ProxyDetail({
             </div>
           )}
 
-          {proxy.tags && proxy.tags.length > 0 && (
-            <div className="mt-4 pt-4 border-t">
-              <p className="text-xs text-muted-foreground mb-2">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {proxy.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Wave 22J — tags column dropped (mig 037). Categories
+              replaced flat tags. The category badge is shown above. */}
 
           {proxy.notes && (
             <div className="mt-4 pt-4 border-t">

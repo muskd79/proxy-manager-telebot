@@ -22,13 +22,32 @@ import {
   MoreHorizontal,
   Eye,
   Pencil,
-  UserPlus,
   Activity,
   Trash2,
   ArrowUpDown,
 } from "lucide-react";
 import type { Proxy } from "@/types/database";
+import {
+  networkTypeLabel,
+  proxyStatusBadges,
+  TYPE_LABEL,
+  type NetworkType,
+} from "@/lib/proxy-labels";
 import Link from "next/link";
+
+/**
+ * Wave 22J — proxy table rebuild.
+ *
+ * Column changes per user request:
+ *   - Headers fully Vietnamese
+ *   - NEW "Phân loại" column showing network_type (ISP / Datacenter
+ *     IPv4 / Datacenter IPv6 / Dân cư / Mobile / Static Residential)
+ *   - "Trạng thái" column now renders MULTIPLE badges from
+ *     proxyStatusBadges() — combines lifecycle status + expiry
+ *     state + hidden flag, all visible at once
+ *   - REMOVED "Tags" column (column dropped in mig 037)
+ *   - Date displays use vi-VN locale
+ */
 
 interface ProxyTableProps {
   proxies: Proxy[];
@@ -41,25 +60,6 @@ interface ProxyTableProps {
   onDelete: (id: string) => void;
   onHealthCheck: (ids: string[]) => void;
 }
-
-const statusVariant: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  available: "default",
-  assigned: "secondary",
-  expired: "destructive",
-  banned: "destructive",
-  maintenance: "outline",
-};
-
-const statusColors: Record<string, string> = {
-  available: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-  assigned: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  expired: "bg-red-500/10 text-red-500 border-red-500/20",
-  banned: "bg-red-700/10 text-red-700 border-red-700/20",
-  maintenance: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-};
 
 const typeColors: Record<string, string> = {
   http: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
@@ -83,11 +83,8 @@ export function ProxyTable({
   const someSelected = proxies.some((p) => selectedIds.includes(p.id));
 
   function toggleAll() {
-    if (allSelected) {
-      onSelectionChange([]);
-    } else {
-      onSelectionChange(proxies.map((p) => p.id));
-    }
+    if (allSelected) onSelectionChange([]);
+    else onSelectionChange(proxies.map((p) => p.id));
   }
 
   function toggleOne(id: string) {
@@ -131,7 +128,7 @@ export function ProxyTable({
   }
 
   return (
-    <Table aria-label="Proxy inventory" aria-rowcount={proxies.length}>
+    <Table aria-label="Danh sách proxy" aria-rowcount={proxies.length}>
       <TableHeader>
         <TableRow>
           <TableHead className="w-10">
@@ -139,18 +136,18 @@ export function ProxyTable({
               checked={allSelected}
               indeterminate={someSelected && !allSelected}
               onCheckedChange={toggleAll}
-              aria-label="Select all proxies"
+              aria-label="Chọn tất cả proxy"
             />
           </TableHead>
-          <SortableHead column="host">Host:Port</SortableHead>
-          <SortableHead column="type">Type</SortableHead>
-          <SortableHead column="status">Status</SortableHead>
-          <TableHead>Tags</TableHead>
-          <TableHead>Country</TableHead>
+          <SortableHead column="host">Host:Cổng</SortableHead>
+          <SortableHead column="type">Giao thức</SortableHead>
+          <TableHead>Phân loại</TableHead>
+          <TableHead>Trạng thái</TableHead>
+          <SortableHead column="country">Quốc gia</SortableHead>
           <TableHead>ISP</TableHead>
-          <TableHead>Assigned To</TableHead>
-          <SortableHead column="speed_ms">Speed</SortableHead>
-          <SortableHead column="expires_at">Expires</SortableHead>
+          <TableHead>Người dùng</TableHead>
+          <SortableHead column="speed_ms">Tốc độ</SortableHead>
+          <SortableHead column="expires_at">Ngày hết hạn</SortableHead>
           <TableHead className="w-10" />
         </TableRow>
       </TableHeader>
@@ -158,140 +155,141 @@ export function ProxyTable({
         {proxies.length === 0 ? (
           <TableRow>
             <TableCell colSpan={11} className="text-center py-8">
-              <p className="text-muted-foreground">No proxies found</p>
+              <p className="text-muted-foreground">Chưa có proxy nào</p>
             </TableCell>
           </TableRow>
         ) : (
-          proxies.map((proxy) => (
-            <TableRow
-              key={proxy.id}
-              className={selectedIds.includes(proxy.id) ? "bg-muted/50" : ""}
-              aria-selected={selectedIds.includes(proxy.id)}
-              tabIndex={0}
-            >
-              <TableCell>
-                <Checkbox
-                  checked={selectedIds.includes(proxy.id)}
-                  onCheckedChange={() => toggleOne(proxy.id)}
-                />
-              </TableCell>
-              <TableCell className="font-mono text-sm">
-                <Link
-                  href={`/proxies/${proxy.id}`}
-                  className="hover:underline"
-                >
-                  {proxy.host}:{proxy.port}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <span
-                  className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
-                    typeColors[proxy.type] || ""
-                  }`}
-                >
-                  {proxy.type.toUpperCase()}
-                </span>
-              </TableCell>
-              <TableCell>
-                <span
-                  className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
-                    statusColors[proxy.status] || ""
-                  }`}
-                >
-                  {proxy.status}
-                </span>
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {proxy.tags?.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
+          proxies.map((proxy) => {
+            const statusList = proxyStatusBadges(proxy);
+            return (
+              <TableRow
+                key={proxy.id}
+                className={selectedIds.includes(proxy.id) ? "bg-muted/50" : ""}
+                aria-selected={selectedIds.includes(proxy.id)}
+                tabIndex={0}
+              >
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds.includes(proxy.id)}
+                    onCheckedChange={() => toggleOne(proxy.id)}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm">
+                  <Link href={`/proxies/${proxy.id}`} className="hover:underline">
+                    {proxy.host}:{proxy.port}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${typeColors[proxy.type] || ""}`}
+                  >
+                    {TYPE_LABEL[proxy.type] ?? proxy.type.toUpperCase()}
+                  </span>
+                </TableCell>
+                <TableCell className="text-xs">
+                  {proxy.network_type ? (
+                    <Badge variant="outline" className="text-xs">
+                      {networkTypeLabel(proxy.network_type as NetworkType)}
                     </Badge>
-                  ))}
-                  {(!proxy.tags || proxy.tags.length === 0) && (
+                  ) : (
+                    <span className="text-muted-foreground">Chưa phân loại</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {statusList.length === 0 ? (
+                      <span className="text-muted-foreground text-xs">-</span>
+                    ) : (
+                      statusList.map((b, i) => (
+                        <Badge
+                          key={`${b.label}-${i}`}
+                          variant={b.variant}
+                          className={`text-xs ${b.tone === "muted" ? "opacity-70" : ""}`}
+                        >
+                          {b.label}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {proxy.country || "-"}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {proxy.isp || "-"}
+                </TableCell>
+                <TableCell>
+                  {proxy.assigned_to ? (
+                    <Link
+                      href={`/users/${proxy.assigned_to}`}
+                      className="text-sm text-blue-400 hover:underline"
+                    >
+                      Xem
+                    </Link>
+                  ) : (
                     <span className="text-muted-foreground">-</span>
                   )}
-                </div>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {proxy.country || "-"}
-              </TableCell>
-              <TableCell className="text-xs text-muted-foreground">
-                {proxy.isp || "-"}
-              </TableCell>
-              <TableCell>
-                {proxy.assigned_to ? (
-                  <Link
-                    href={`/users/${proxy.assigned_to}`}
-                    className="text-sm text-blue-400 hover:underline"
-                  >
-                    View user
-                  </Link>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {proxy.speed_ms != null ? (
-                  <span
-                    className={`text-sm ${
-                      proxy.speed_ms < 500
-                        ? "text-emerald-500"
-                        : proxy.speed_ms < 1000
-                        ? "text-yellow-500"
-                        : "text-red-500"
-                    }`}
-                  >
-                    {proxy.speed_ms}ms
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {proxy.expires_at
-                  ? new Date(proxy.expires_at).toLocaleDateString()
-                  : "-"}
-              </TableCell>
-              <TableCell>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="ghost" size="icon-xs">
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Link href={`/proxies/${proxy.id}`} className="flex items-center gap-2 w-full">
-                        <Eye className="size-4" />
-                        View Details
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit(proxy)}>
-                      <Pencil className="size-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => onHealthCheck([proxy.id])}
+                </TableCell>
+                <TableCell>
+                  {proxy.speed_ms != null ? (
+                    <span
+                      className={`text-sm ${
+                        proxy.speed_ms < 500
+                          ? "text-emerald-500"
+                          : proxy.speed_ms < 1000
+                            ? "text-yellow-500"
+                            : "text-red-500"
+                      }`}
                     >
-                      <Activity className="size-4" />
-                      Health Check
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => onDelete(proxy.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
-            </TableRow>
-          ))
+                      {proxy.speed_ms}ms
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {proxy.expires_at
+                    ? new Date(proxy.expires_at).toLocaleDateString("vi-VN")
+                    : "Vĩnh viễn"}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="ghost" size="icon-xs">
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <Link href={`/proxies/${proxy.id}`} className="flex items-center gap-2 w-full">
+                          <Eye className="size-4" />
+                          Xem chi tiết
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onEdit(proxy)}>
+                        <Pencil className="size-4" />
+                        Sửa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onHealthCheck([proxy.id])}>
+                        <Activity className="size-4" />
+                        Kiểm tra sống/chết
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => onDelete(proxy.id)}
+                      >
+                        <Trash2 className="size-4" />
+                        Xoá
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            );
+          })
         )}
       </TableBody>
     </Table>

@@ -12,17 +12,25 @@ import {
 import { Search, X } from "lucide-react";
 import { ProxyType, ProxyStatus } from "@/types/database";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
+import {
+  NETWORK_TYPE_VALUES,
+  NETWORK_TYPE_LABEL,
+  STATUS_LABEL,
+  EXPIRY_LABEL,
+  type NetworkType,
+} from "@/lib/proxy-labels";
 
 /**
- * Filter bar for the proxies list page.
+ * Wave 22C → 22J: filter bar fully Vietnamese.
  *
- * Wave 22C: tag inputs + chips removed in favour of strong categories.
- * Use the dedicated /categories page to manage groupings; the filter
- * here drops down to standard fields (search, type, status, country, ISP).
+ * Adds two new filters introduced in Wave 22J:
+ *   - "Phân loại" (network_type)
+ *   - "Hạn dùng" (derived from expires_at — server resolves to a
+ *     date predicate)
  *
- * The category filter chip is rendered as a separate component on
- * /proxies?category_id=X — kept out of this component to keep the
- * filter bar simple and avoid coupling categories fetch to filter UI.
+ * Categories are the strong grouping; the per-category filter chip
+ * is rendered separately on /proxies?category_id=X — kept out of
+ * this component to keep the bar simple.
  */
 
 interface ProxyFiltersProps {
@@ -52,7 +60,9 @@ export function ProxyFilters({
   const hasActiveFilters =
     filters.search ||
     filters.type ||
+    filters.networkType ||
     filters.status ||
+    filters.expiryStatus ||
     filters.country ||
     filters.isp ||
     filters.categoryId;
@@ -63,46 +73,86 @@ export function ProxyFilters({
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search by host..."
+            placeholder="Tìm theo host..."
             value={filters.search || ""}
             onChange={(e) => updateFilter("search", e.target.value)}
             className="pl-8"
           />
         </div>
 
+        {/* Giao thức (HTTP/HTTPS/SOCKS5) */}
         <Select
           value={filters.type || "all"}
           onValueChange={(val: string | null) =>
             updateFilter("type", !val || val === "all" ? undefined : val)
           }
         >
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Type" />
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Giao thức" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="all">Mọi giao thức</SelectItem>
             <SelectItem value={ProxyType.HTTP}>HTTP</SelectItem>
             <SelectItem value={ProxyType.HTTPS}>HTTPS</SelectItem>
             <SelectItem value={ProxyType.SOCKS5}>SOCKS5</SelectItem>
           </SelectContent>
         </Select>
 
+        {/* Wave 22J — Phân loại proxy (network_type) */}
+        <Select
+          value={filters.networkType || "all"}
+          onValueChange={(val: string | null) =>
+            updateFilter("networkType", !val || val === "all" ? undefined : val)
+          }
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Phân loại" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Mọi phân loại</SelectItem>
+            {NETWORK_TYPE_VALUES.map((nt) => (
+              <SelectItem key={nt} value={nt}>
+                {NETWORK_TYPE_LABEL[nt as NetworkType]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Trạng thái sử dụng */}
         <Select
           value={filters.status || "all"}
           onValueChange={(val: string | null) =>
             updateFilter("status", !val || val === "all" ? undefined : val)
           }
         >
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Status" />
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Trạng thái" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value={ProxyStatus.Available}>Available</SelectItem>
-            <SelectItem value={ProxyStatus.Assigned}>Assigned</SelectItem>
-            <SelectItem value={ProxyStatus.Expired}>Expired</SelectItem>
-            <SelectItem value={ProxyStatus.Banned}>Banned</SelectItem>
-            <SelectItem value={ProxyStatus.Maintenance}>Maintenance</SelectItem>
+            <SelectItem value="all">Mọi trạng thái</SelectItem>
+            <SelectItem value={ProxyStatus.Available}>{STATUS_LABEL.available}</SelectItem>
+            <SelectItem value={ProxyStatus.Assigned}>{STATUS_LABEL.assigned}</SelectItem>
+            <SelectItem value={ProxyStatus.Banned}>{STATUS_LABEL.banned}</SelectItem>
+            <SelectItem value={ProxyStatus.Maintenance}>{STATUS_LABEL.maintenance}</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Wave 22J — Hạn dùng (derived) */}
+        <Select
+          value={filters.expiryStatus || "all"}
+          onValueChange={(val: string | null) =>
+            updateFilter("expiryStatus", !val || val === "all" ? undefined : val)
+          }
+        >
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Hạn dùng" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Mọi hạn dùng</SelectItem>
+            <SelectItem value="valid">{EXPIRY_LABEL.valid}</SelectItem>
+            <SelectItem value="expiring_soon">{EXPIRY_LABEL.expiring_soon}</SelectItem>
+            <SelectItem value="expired">{EXPIRY_LABEL.expired}</SelectItem>
+            <SelectItem value="never">{EXPIRY_LABEL.never}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -113,10 +163,10 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Country" />
+            <SelectValue placeholder="Quốc gia" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Countries</SelectItem>
+            <SelectItem value="all">Mọi quốc gia</SelectItem>
             {countries.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -125,7 +175,6 @@ export function ProxyFilters({
           </SelectContent>
         </Select>
 
-        {/* ISP filter */}
         <Input
           placeholder="ISP..."
           value={filters.isp || ""}
@@ -136,7 +185,7 @@ export function ProxyFilters({
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="size-4 mr-1" />
-            Clear
+            Xoá lọc
           </Button>
         )}
       </div>

@@ -70,6 +70,40 @@ export async function GET(request: NextRequest) {
     if (filters.country) {
       query = query.eq("country", filters.country);
     }
+
+    // Wave 22J — phân loại proxy (network_type)
+    const networkType = searchParams.get("networkType") || searchParams.get("network_type");
+    if (networkType) {
+      query = query.eq("network_type", networkType);
+    }
+
+    // Wave 22J — Hạn dùng filter (derived from expires_at).
+    // valid          : expires_at IS NULL OR > NOW()  (treat NULL as valid)
+    // expiring_soon  : expires_at BETWEEN NOW() AND NOW()+7d
+    // expired        : expires_at <= NOW()
+    // never          : expires_at IS NULL
+    const expiryStatus = searchParams.get("expiryStatus") || searchParams.get("expiry_status");
+    if (expiryStatus) {
+      const now = new Date().toISOString();
+      const sevenD = new Date(Date.now() + 7 * 86_400_000).toISOString();
+      if (expiryStatus === "expired") {
+        query = query.lte("expires_at", now);
+      } else if (expiryStatus === "expiring_soon") {
+        query = query.gte("expires_at", now).lte("expires_at", sevenD);
+      } else if (expiryStatus === "valid") {
+        query = query.gt("expires_at", sevenD);
+      } else if (expiryStatus === "never") {
+        query = query.is("expires_at", null);
+      }
+    }
+
+    // Wave 22G — cascade hide (default off; admin explicitly opts in
+    // to see hidden rows from /proxies?include_hidden=true).
+    const includeHidden = searchParams.get("include_hidden") === "true";
+    if (!includeHidden) {
+      query = query.eq("hidden", false);
+    }
+
     // Wave 22C: tags filter removed (Wave 22A categories supersede it).
     // Wave 21C: filter by lot — drives `/proxies?lot_id=X` from the
     // /lots page. Uses idx_proxies_purchase_lot (Wave 21A index).

@@ -127,13 +127,24 @@ export interface ProxyCategory {
   /**
    * Wave 22G — snapshot defaults prefilled into new proxies in this
    * category. NULL means "no default; admin must enter manually or
-   * use Probe & autofill". Sigh-edits to these fields do NOT
-   * retroactively change existing proxies (snapshot semantics —
-   * see mig 036 + architect's pushback note about audit honesty).
+   * use Probe & autofill". Edits to these fields do NOT retroactively
+   * change existing proxies (snapshot semantics — see mig 036).
    */
   default_country: string | null;
   default_proxy_type: ProxyType | null;
   default_isp: string | null;
+  /**
+   * Wave 22J — snapshot default for the proxy classification (see
+   * Proxy.network_type for values). Same snapshot semantics.
+   */
+  default_network_type:
+    | "isp"
+    | "datacenter_ipv4"
+    | "datacenter_ipv6"
+    | "residential"
+    | "mobile"
+    | "static_residential"
+    | null;
   min_stock_alert: number;
   created_by: string | null;
   created_at: string;
@@ -173,12 +184,26 @@ export interface Proxy {
   assigned_at: string | null;
   expires_at: string | null;
   /**
-   * @deprecated Wave 22A → 22C → 22G — TOMBSTONED in mig 036.
-   * Archived to proxies_tags_archive. DROP COLUMN scheduled mig 037.
-   * Field kept as `?:` purely so older fixtures don't break TS; new
-   * code MUST NOT read or write it.
+   * Wave 22J — proxy classification (independent of transport
+   * protocol). NULL for un-classified rows; UI shows "Chưa phân loại".
+   * Distinct from `type` (wire protocol) and `isp` (free-text vendor
+   * name). Values:
+   *   - 'isp'                 → resold-from-ISP proxies (residential-grade
+   *                             but provided by an ISP partner)
+   *   - 'datacenter_ipv4'     → standard datacenter IPv4
+   *   - 'datacenter_ipv6'     → datacenter IPv6 / IPv6-rotating
+   *   - 'residential'         → home/end-user IPs
+   *   - 'mobile'              → 4G/5G mobile-carrier IPs
+   *   - 'static_residential'  → ISP-issued but static residential
    */
-  tags?: string[] | null;
+  network_type?:
+    | "isp"
+    | "datacenter_ipv4"
+    | "datacenter_ipv6"
+    | "residential"
+    | "mobile"
+    | "static_residential"
+    | null;
   /**
    * Wave 22G — cascaded from proxy_categories.is_hidden. When true,
    * the proxy is filtered out of default /proxies queries and is not

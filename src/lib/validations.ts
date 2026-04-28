@@ -18,11 +18,24 @@ export const CreateProxySchema = z.object({
     .refine(publicHostLiteral, publicHostMessage),
   port: z.coerce.number().int().min(1).max(65535, "Port must be 1-65535"),
   type: z.enum(["http", "https", "socks5"]),
+  // Wave 22J — proxy classification (independent of `type` wire protocol).
+  network_type: z
+    .enum([
+      "isp",
+      "datacenter_ipv4",
+      "datacenter_ipv6",
+      "residential",
+      "mobile",
+      "static_residential",
+    ])
+    .nullable()
+    .optional(),
   username: z.string().max(255).nullable().optional(),
   password: z.string().max(255).nullable().optional(),
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
+  category_id: z.string().uuid().nullable().optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
@@ -32,11 +45,23 @@ export const UpdateProxySchema = z.object({
   host: z.string().min(1).max(255).refine(publicHostLiteral, publicHostMessage).optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
   type: z.enum(["http", "https", "socks5"]).optional(),
+  network_type: z
+    .enum([
+      "isp",
+      "datacenter_ipv4",
+      "datacenter_ipv6",
+      "residential",
+      "mobile",
+      "static_residential",
+    ])
+    .nullable()
+    .optional(),
   username: z.string().max(255).nullable().optional(),
   password: z.string().max(255).nullable().optional(),
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
+  category_id: z.string().uuid().nullable().optional(),
   status: z.enum(["available", "assigned", "maintenance"]).optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
@@ -172,6 +197,16 @@ export const UpdateUserSchema = z.object({
 
 // ─── Category schemas (Wave 22A) ─────────────────────────────────
 
+// Wave 22J — proxy classification enum, used in Proxy + Category schemas.
+const NetworkTypeEnum = z.enum([
+  "isp",
+  "datacenter_ipv4",
+  "datacenter_ipv6",
+  "residential",
+  "mobile",
+  "static_residential",
+]);
+
 export const CreateCategorySchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).nullable().optional(),
@@ -184,6 +219,8 @@ export const CreateCategorySchema = z.object({
   default_country: z.string().min(2).max(64).nullable().optional(),
   default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
   default_isp: z.string().min(1).max(200).nullable().optional(),
+  // Wave 22J — proxy classification default.
+  default_network_type: NetworkTypeEnum.nullable().optional(),
 });
 
 export const UpdateCategorySchema = z.object({
@@ -200,6 +237,7 @@ export const UpdateCategorySchema = z.object({
   default_country: z.string().min(2).max(64).nullable().optional(),
   default_proxy_type: z.enum(["http", "https", "socks5"]).nullable().optional(),
   default_isp: z.string().min(1).max(200).nullable().optional(),
+  default_network_type: NetworkTypeEnum.nullable().optional(),
 });
 
 export const ReorderCategoriesSchema = z.object({

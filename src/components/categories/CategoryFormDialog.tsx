@@ -16,6 +16,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProxyCategory } from "@/types/database";
 import { Loader2, Save } from "lucide-react";
+import {
+  NETWORK_TYPE_VALUES,
+  NETWORK_TYPE_LABEL,
+  type NetworkType,
+} from "@/lib/proxy-labels";
 
 /**
  * Create / edit dialog for proxy_categories.
@@ -79,6 +84,8 @@ export function CategoryFormDialog({
   const [defaultCountry, setDefaultCountry] = useState("");
   const [defaultProxyType, setDefaultProxyType] = useState<string>("");
   const [defaultIsp, setDefaultIsp] = useState("");
+  // Wave 22J — proxy classification snapshot default.
+  const [defaultNetworkType, setDefaultNetworkType] = useState<string>("");
   const [minStock, setMinStock] = useState(0);
   const [isHidden, setIsHidden] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +102,7 @@ export function CategoryFormDialog({
       setDefaultCountry(category.default_country ?? "");
       setDefaultProxyType(category.default_proxy_type ?? "");
       setDefaultIsp(category.default_isp ?? "");
+      setDefaultNetworkType(category.default_network_type ?? "");
       setMinStock(category.min_stock_alert);
       setIsHidden(category.is_hidden);
     } else {
@@ -107,6 +115,7 @@ export function CategoryFormDialog({
       setDefaultCountry("");
       setDefaultProxyType("");
       setDefaultIsp("");
+      setDefaultNetworkType("");
       setMinStock(0);
       setIsHidden(false);
     }
@@ -129,6 +138,8 @@ export function CategoryFormDialog({
         default_country: defaultCountry.trim() || null,
         default_proxy_type: defaultProxyType || null,
         default_isp: defaultIsp.trim() || null,
+        // Wave 22J — proxy classification default.
+        default_network_type: defaultNetworkType || null,
         min_stock_alert: minStock,
       };
       if (isEdit) body.is_hidden = isHidden;
@@ -271,9 +282,9 @@ export function CategoryFormDialog({
               Admin vẫn có thể override per-proxy. Sửa ở đây KHÔNG ảnh hưởng
               proxy đã có (snapshot, không inheritance).
             </p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="def-type">Loại proxy</Label>
+                <Label htmlFor="def-type">Giao thức</Label>
                 <select
                   id="def-type"
                   value={defaultProxyType}
@@ -285,6 +296,24 @@ export function CategoryFormDialog({
                   <option value="https">HTTPS</option>
                   <option value="socks5">SOCKS5</option>
                 </select>
+                <p className="text-[10px] text-muted-foreground">HTTP / HTTPS / SOCKS5</p>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="def-network-type">Phân loại</Label>
+                <select
+                  id="def-network-type"
+                  value={defaultNetworkType}
+                  onChange={(e) => setDefaultNetworkType(e.target.value)}
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">— không —</option>
+                  {NETWORK_TYPE_VALUES.map((nt) => (
+                    <option key={nt} value={nt}>
+                      {NETWORK_TYPE_LABEL[nt as NetworkType]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">ISP / Datacenter / Dân cư / Mobile</p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="def-country">Quốc gia</Label>
@@ -297,14 +326,15 @@ export function CategoryFormDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="def-isp">ISP</Label>
+                <Label htmlFor="def-isp">ISP (nhà mạng)</Label>
                 <Input
                   id="def-isp"
                   value={defaultIsp}
                   onChange={(e) => setDefaultIsp(e.target.value)}
-                  placeholder="VD: VNPT, Viettel"
+                  placeholder="VD: VNPT, Viettel, AWS"
                   maxLength={200}
                 />
+                <p className="text-[10px] text-muted-foreground">Tên nhà mạng/ISP cụ thể</p>
               </div>
             </div>
           </div>

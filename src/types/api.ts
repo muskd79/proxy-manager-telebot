@@ -36,12 +36,24 @@ export interface ApiResponse<T> {
 export interface ProxyFilters {
   search?: string;
   type?: ProxyType;
+  /** Wave 22J — network classification filter. */
+  networkType?:
+    | "isp"
+    | "datacenter_ipv4"
+    | "datacenter_ipv6"
+    | "residential"
+    | "mobile"
+    | "static_residential";
   status?: ProxyStatus;
+  /** Wave 22J — separate filter for "Còn hạn / Hết hạn / Sắp hết hạn". */
+  expiryStatus?: "valid" | "expiring_soon" | "expired" | "never";
   country?: string;
   assignedTo?: string;
   // Wave 22C: tags filter removed (use category_id instead).
   categoryId?: string;
   isp?: string;
+  /** Wave 22G — show proxies hidden by category cascade. */
+  includeHidden?: boolean;
   isDeleted?: boolean;
   page?: number;
   pageSize?: number;
