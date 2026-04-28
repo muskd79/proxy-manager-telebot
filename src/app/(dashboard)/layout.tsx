@@ -37,7 +37,13 @@ export default async function DashboardLayout({
               id: admin?.id ?? user.id,
               email: admin?.email ?? user.email ?? "",
               display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
-              role: admin?.role ?? "admin",
+              // Wave 22E-5 CRITICAL FIX (B1): default to "viewer" not "admin".
+              // An authenticated user with no row in the admins table (deleted
+              // admin, race during creation) used to receive "admin" — passing
+              // every client-side `useRole` minRole guard. Server-side
+              // requireAdminOrAbove still queried the DB and was safe; only
+              // the UI gates were bypassable. Default-deny is correct here.
+              role: admin?.role ?? "viewer",
             }}
           />
           <div className="flex flex-1 flex-col overflow-hidden">
@@ -46,7 +52,13 @@ export default async function DashboardLayout({
                 id: admin?.id ?? user.id,
                 email: admin?.email ?? user.email ?? "",
                 display_name: admin?.full_name ?? user.email?.split("@")[0] ?? "Admin",
-                role: admin?.role ?? "admin",
+                // Wave 22E-5 CRITICAL FIX (B1): default to "viewer" not "admin".
+              // An authenticated user with no row in the admins table (deleted
+              // admin, race during creation) used to receive "admin" — passing
+              // every client-side `useRole` minRole guard. Server-side
+              // requireAdminOrAbove still queried the DB and was safe; only
+              // the UI gates were bypassable. Default-deny is correct here.
+              role: admin?.role ?? "viewer",
               }}
             />
             <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>

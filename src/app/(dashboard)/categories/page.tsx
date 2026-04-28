@@ -74,8 +74,16 @@ export default function CategoriesPage() {
   }, [load]);
 
   /**
-   * Move a category one slot up or down. Sends only the affected pair
-   * to /api/categories/reorder — atomic at the DB level.
+   * Move a category one slot up or down.
+   *
+   * Wave 22E-5 BUG FIX (A2): pre-fix sent `[b.sort_order, a.sort_order]`
+   * — a literal swap of values. When two rows shared the same sort_order
+   * (very common: defaults to 0 on create), swapping identical values
+   * was a no-op and the user clicked the arrow with no visible change.
+   * Fix: rebuild the entire ordering with absolute positions (0, 1, 2,
+   * ..., N-1) and send the new positions for the swapped pair plus any
+   * other duplicates. This guarantees the swap always produces distinct
+   * sort_order values.
    */
   async function move(category: ProxyCategory, direction: -1 | 1) {
     const idx = rows.findIndex((r) => r.id === category.id);
@@ -83,15 +91,19 @@ export default function CategoriesPage() {
     const swapIdx = idx + direction;
     if (swapIdx < 0 || swapIdx >= rows.length) return;
 
-    const a = rows[idx];
-    const b = rows[swapIdx];
+    // Build a normalised ordering: every visible row gets a unique
+    // sort_order matching its display position (0, 1, 2, ...). Then
+    // perform the in-array swap to compute the new ordering.
+    const reordered = rows.map((r) => r.id);
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+
     try {
       const res = await fetch("/api/categories/reorder", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          ids: [a.id, b.id],
-          sort_orders: [b.sort_order, a.sort_order],
+          ids: reordered,
+          sort_orders: reordered.map((_, i) => i),
         }),
       });
       const data = await res.json();

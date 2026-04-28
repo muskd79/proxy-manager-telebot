@@ -75,25 +75,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: { expired: 0, notified: 0 } });
   }
 
-  // 2. Single batch UPDATE — race-safe via .in("id", ids) + status guard
-  //    so a concurrent revoke can't fight us.
+  // 2. Atomic batch expire + tele_users counter decrement via RPC.
+  //    Wave 22E-5 BUG FIX (A6): pre-fix UPDATE marked proxies expired but
+  //    did NOT decrement tele_users.proxies_used_total. Users had inflated
+  //    counters until the hourly/daily reset window, possibly blocking new
+  //    /getproxy requests for hours. The new safe_expire_proxies RPC
+  //    (mig 031) wraps both writes in one transaction.
   const ids = rows.map((r) => r.id);
-  const { error: updateErr, count } = await supabaseAdmin
-    .from("proxies")
-    .update(
-      { status: "expired", assigned_to: null, assigned_at: null },
-      { count: "exact" },
-    )
-    .in("id", ids)
-    .eq("status", "assigned"); // race guard
+  const { data: rpcData, error: updateErr } = await supabaseAdmin.rpc(
+    "safe_expire_proxies",
+    { p_proxy_ids: ids },
+  );
 
   if (updateErr) {
-    captureError(updateErr, { source: "cron.expire-proxies.update" });
+    captureError(updateErr, { source: "cron.expire-proxies.rpc" });
     return NextResponse.json(
-      { success: false, error: "Failed to update expired proxies" },
+      { success: false, error: "Failed to expire proxies" },
       { status: 500 },
     );
   }
+
+  const rpcResult = rpcData as { expired: number; users_decremented: number } | null;
+  const count = rpcResult?.expired ?? 0;
 
   // 3. Resolve Telegram chat IDs for the notify fan-out. ONE SELECT.
   const userIds = Array.from(new Set(rows.map((r) => r.assigned_to).filter((id): id is string => !!id)));
@@ -143,8 +146,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     data: {
-      expired: count ?? rows.length,
+      expired: count,
       notified,
+      users_decremented: rpcResult?.users_decremented ?? 0,
     },
   });
 }

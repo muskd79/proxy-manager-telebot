@@ -131,15 +131,26 @@ export async function DELETE(
 
   const { id } = await params;
 
-  const { error } = await supabase
+  // Wave 22E-5 BUG FIX (A5): Supabase delete on a non-existent ID returns
+  // no error and 0 rows, so the pre-fix handler returned 200 even though
+  // nothing was deleted. The UI showed "deleted" toast for ghost actions.
+  // Use count: "exact" and reject 404 explicitly.
+  const { count, error } = await supabase
     .from("proxy_categories")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", id);
 
   if (error) {
     return NextResponse.json(
       { success: false, error: "Failed to delete category" },
       { status: 500 },
+    );
+  }
+
+  if ((count ?? 0) === 0) {
+    return NextResponse.json(
+      { success: false, error: "Category not found" },
+      { status: 404 },
     );
   }
 

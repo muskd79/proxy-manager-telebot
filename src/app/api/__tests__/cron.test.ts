@@ -103,6 +103,16 @@ function buildChain(): Record<string, (...args: unknown[]) => unknown> {
 // Mocks
 // ---------------------------------------------------------------------------
 
+// RPC mock — Wave 22E-5 added safe_expire_proxies. The cron now calls
+// the RPC instead of doing a direct UPDATE, so the test mock layer needs
+// `rpc()` support. Each test that exercises the RPC path queues its own
+// return via `queueReturn` like other operations.
+const mockRpc = vi.fn(async (name: string, _args: unknown) => {
+  // Track in dbCalls so tests can assert how many RPC calls happened.
+  dbCalls.push({ table: `rpc:${name}`, operation: "rpc", filters: [] });
+  return resolveReturn() as { data: unknown; error: unknown };
+});
+
 vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
     from: (table: string) => {
@@ -110,6 +120,7 @@ vi.mock("@/lib/supabase/admin", () => ({
       chainState.table = table;
       return buildChain();
     },
+    rpc: (...args: unknown[]) => mockRpc(args[0] as string, args[1]),
   },
 }));
 
@@ -473,7 +484,7 @@ describe("GET /api/cron/expire-proxies", () => {
     expect(body.data.expired).toBe(0);
   });
 
-  it("revokes expired proxies and sets status to expired (Wave 22E-2 batch path)", async () => {
+  it("revokes expired proxies and sets status to expired (Wave 22E-5 RPC path)", async () => {
     const { sendTelegramMessage } = await import("@/lib/telegram/send");
 
     // 1) Fetch expired proxies
@@ -490,9 +501,9 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    // 2) Batch UPDATE (returns count, not data)
-    queueReturn({ data: null, error: null, count: 1 });
-    // 3) Batch SELECT tele_users (Wave 22E-2: array, not single)
+    // 2) RPC safe_expire_proxies (Wave 22E-5 atomic batch + counter dec)
+    queueReturn({ data: { expired: 1, users_decremented: 1 }, error: null });
+    // 3) Batch SELECT tele_users
     queueReturn({
       data: [{ id: "user1", telegram_id: 12345, language: "en" }],
       error: null,
@@ -503,11 +514,9 @@ describe("GET /api/cron/expire-proxies", () => {
 
     expect(body.data.expired).toBe(1);
 
-    // Verify proxy update call happened
-    const updateCall = dbCalls.find(
-      (c) => c.table === "proxies" && c.operation === "update"
-    );
-    expect(updateCall).toBeDefined();
+    // Wave 22E-5: route uses safe_expire_proxies RPC, not direct UPDATE.
+    const rpcCall = dbCalls.find((c) => c.table === "rpc:safe_expire_proxies");
+    expect(rpcCall).toBeDefined();
 
     // Verify telegram notification
     expect(sendTelegramMessage).toHaveBeenCalledWith(
@@ -532,7 +541,7 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null, count: 1 });
+    queueReturn({ data: { expired: 1, users_decremented: 1 }, error: null });
     queueReturn({
       data: [{ id: "user1", telegram_id: 99999, language: "vi" }],
       error: null,
@@ -562,7 +571,8 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    // Wave 22E-5: route now uses safe_expire_proxies RPC.
+    queueReturn({ data: { expired: 1, users_decremented: 0 }, error: null });
 
     const res = await GET(createCronRequest("test-cron-secret"));
     const body = await res.json();
@@ -590,7 +600,7 @@ describe("GET /api/cron/expire-proxies", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null, count: 1 });
+    queueReturn({ data: { expired: 1, users_decremented: 1 }, error: null });
     queueReturn({
       data: [{ id: "user1", telegram_id: 12345, language: "en" }],
       error: null,
@@ -602,8 +612,8 @@ describe("GET /api/cron/expire-proxies", () => {
   });
 
   // Wave 22E-2 BUG FIX (B1) regression: 100 expired proxies must result
-  // in ONE batch UPDATE, not 100 sequential UPDATEs.
-  it("uses ONE batch UPDATE for N expired proxies (Wave 22E-2 B1)", async () => {
+  // in ONE batch RPC call, not 100 sequential UPDATEs.
+  it("uses ONE batch RPC for N expired proxies (Wave 22E-2 B1 + 22E-5 RPC)", async () => {
     const proxies = Array.from({ length: 50 }, (_, i) => ({
       id: `px${i}`,
       assigned_to: null,
@@ -613,19 +623,18 @@ describe("GET /api/cron/expire-proxies", () => {
       expires_at: "2024-01-01T00:00:00Z",
     }));
     queueReturn({ data: proxies, error: null });
-    // Batch update returns count
-    queueReturn({ data: null, error: null, count: 50 });
-    // No tele_users batch needed since assigned_to=null
+    // RPC safe_expire_proxies — single call for all 50
+    queueReturn({ data: { expired: 50, users_decremented: 0 }, error: null });
 
     const res = await GET(createCronRequest("test-cron-secret"));
     const body = await res.json();
 
     expect(body.data.expired).toBe(50);
-    // Critical: only ONE update call across all 50 proxies.
-    const updateCalls = dbCalls.filter(
-      (c) => c.table === "proxies" && c.operation === "update",
+    // Critical: only ONE RPC call across all 50 proxies.
+    const rpcCalls = dbCalls.filter(
+      (c) => c.table === "rpc:safe_expire_proxies",
     );
-    expect(updateCalls.length).toBe(1);
+    expect(rpcCalls.length).toBe(1);
   });
 
   // Wave 22E-2 BUG FIX (B1) regression: tele_users fetched in ONE batch SELECT.
@@ -639,7 +648,7 @@ describe("GET /api/cron/expire-proxies", () => {
       expires_at: "2024-01-01T00:00:00Z",
     }));
     queueReturn({ data: proxies, error: null });
-    queueReturn({ data: null, error: null, count: 30 });
+    queueReturn({ data: { expired: 30, users_decremented: 5 }, error: null });
     queueReturn({
       data: Array.from({ length: 5 }, (_, i) => ({
         id: `user${i}`,
@@ -655,6 +664,41 @@ describe("GET /api/cron/expire-proxies", () => {
       (c) => c.table === "tele_users" && c.operation === "select",
     );
     expect(userSelects.length).toBe(1);
+  });
+
+  // Wave 22E-5 BUG FIX (A6) regression: tele_users counter must be
+  // decremented on expiry — verify the RPC is called and its
+  // users_decremented count is surfaced in the response.
+  it("decrements tele_users counter via safe_expire_proxies RPC (Wave 22E-5 A6)", async () => {
+    queueReturn({
+      data: [
+        {
+          id: "px1",
+          assigned_to: "user1",
+          host: "1.1.1.1",
+          port: 8080,
+          type: "http",
+          expires_at: "2024-01-01T00:00:00Z",
+        },
+      ],
+      error: null,
+    });
+    queueReturn({ data: { expired: 1, users_decremented: 1 }, error: null });
+    queueReturn({
+      data: [{ id: "user1", telegram_id: 12345, language: "en" }],
+      error: null,
+    });
+
+    const res = await GET(createCronRequest("test-cron-secret"));
+    const body = await res.json();
+
+    expect(body.data.expired).toBe(1);
+    expect(body.data.users_decremented).toBe(1);
+    // RPC was called exactly once with the correct shape.
+    expect(mockRpc).toHaveBeenCalledWith(
+      "safe_expire_proxies",
+      expect.objectContaining({ p_proxy_ids: ["px1"] }),
+    );
   });
 });
 

@@ -26,17 +26,6 @@ export function getUserLanguage(user: {
   return "en"; // default fallback
 }
 
-export async function getUserLang(
-  telegramId: number
-): Promise<SupportedLanguage> {
-  const { data } = await supabaseAdmin
-    .from("tele_users")
-    .select("language")
-    .eq("telegram_id", telegramId)
-    .single();
-  return (data?.language as SupportedLanguage) || "en";
-}
-
 export async function getOrCreateUser(ctx: Context) {
   const from = ctx.from;
   if (!from) return null;
