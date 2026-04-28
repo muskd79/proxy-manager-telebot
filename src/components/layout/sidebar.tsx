@@ -27,6 +27,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { usePendingRequests } from "@/hooks/use-pending-requests";
 
 interface Admin {
   id: string;
@@ -55,6 +56,8 @@ function NavContent({
 }) {
   const pathname = usePathname();
   const { t } = useI18n();
+  // Wave 22O — realtime pending count + browser notification.
+  const { count: pendingCount } = usePendingRequests();
 
   const navItems: NavItem[] = [
     { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
@@ -63,7 +66,12 @@ function NavContent({
     // for FK integrity + historical data; route + nav link gone.
     { title: t("sidebar.categories"), href: "/categories", icon: Shield },
     { title: t("sidebar.users"), href: "/users", icon: Users },
-    { title: t("sidebar.requests"), href: "/requests", icon: FileText },
+    {
+      title: t("sidebar.requests"),
+      href: "/requests",
+      icon: FileText,
+      badge: pendingCount ?? undefined,
+    },
     { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare, section: t("sidebar.monitoring") },
     { title: t("sidebar.botSimulator"), href: "/bot-simulator", icon: Terminal },
     { title: t("sidebar.history"), href: "/history", icon: History },
@@ -132,11 +140,22 @@ function NavContent({
                   <>
                     <span className="flex-1">{item.title}</span>
                     {item.badge !== undefined && item.badge > 0 && (
-                      <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-xs">
-                        {item.badge}
+                      <Badge
+                        variant="default"
+                        className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
+                        aria-label={`${item.badge} chưa duyệt`}
+                      >
+                        {item.badge > 99 ? "99+" : item.badge}
                       </Badge>
                     )}
                   </>
+                )}
+                {/* Wave 22O — collapsed sidebar shows pulse dot if badge > 0 */}
+                {collapsed && item.badge !== undefined && item.badge > 0 && (
+                  <span
+                    className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary"
+                    aria-label={`${item.badge} chưa duyệt`}
+                  />
                 )}
               </Link>
               </div>

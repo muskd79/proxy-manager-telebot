@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -496,34 +497,27 @@ export default function AdminDetailPage({ params }: { params: Promise<{ id: stri
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete confirm */}
-      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">
-              Permanently delete {admin.email}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Removes the admin row, auth.users entry, backup codes, and
-              nullifies their actor_id on past audit logs. Cannot be undone.
-              <br />
-              <br />
-              Blocked if this is the last active super_admin.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={acting}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              <Trash2 className="size-4 mr-1.5" />
-              Delete permanently
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Wave 22O — type-to-confirm hard delete (UI/UX agent flagged
+          single-click destructive admin delete as "không đủ scary"). */}
+      <DangerousConfirmDialog
+        open={showDelete}
+        onOpenChange={setShowDelete}
+        title={`Xoá vĩnh viễn ${admin.email}?`}
+        description={
+          <>
+            Xoá hàng admin, auth.users entry, backup codes, và nullify
+            actor_id trong audit log. <strong>Không thể hoàn tác.</strong>
+            <br />
+            <br />
+            Bị chặn nếu đây là super_admin cuối cùng còn hoạt động.
+          </>
+        }
+        confirmString={admin.email}
+        confirmHint={`Gõ chính xác email "${admin.email}" để xác nhận`}
+        actionLabel="Xoá vĩnh viễn"
+        loading={acting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
