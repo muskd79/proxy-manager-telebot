@@ -42,3 +42,7 @@ next-env.d.ts
 
 .vercel
 supabase/.temp/
+
+# Migration handoff doc — never commit (contains secrets)
+HANDOFF.md
+.env.handoff
