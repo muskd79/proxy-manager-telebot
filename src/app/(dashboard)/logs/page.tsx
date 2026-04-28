@@ -178,7 +178,16 @@ export default function LogsPage() {
               }}
             >
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Loại người thực hiện" />
+                <SelectValue
+                  placeholder="Loại người thực hiện"
+                  labels={{
+                    all: "Tất cả",
+                    admin: "Admin",
+                    tele_user: "Tele User",
+                    system: "System",
+                    bot: "Bot",
+                  }}
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả</SelectItem>
@@ -205,7 +214,17 @@ export default function LogsPage() {
               }}
             >
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Loại tài nguyên" />
+                <SelectValue
+                  placeholder="Loại tài nguyên"
+                  labels={{
+                    all: "Tất cả tài nguyên",
+                    proxy: "Proxy",
+                    tele_user: "Tele User",
+                    proxy_request: "Request",
+                    admin: "Admin",
+                    setting: "Setting",
+                  }}
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả tài nguyên</SelectItem>

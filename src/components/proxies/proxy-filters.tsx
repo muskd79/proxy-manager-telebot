@@ -37,6 +37,34 @@ interface CategoryOption {
   name: string;
 }
 
+// Wave 22AA — label maps drive both <SelectItem> children AND
+// <SelectValue labels={...}> trigger render. Single source of
+// truth so the displayed text never goes out of sync with the
+// raw value (Base UI's SelectValue defaults to showing the raw
+// value attribute, not the SelectItem text).
+const TYPE_LABELS = {
+  all: "Mọi giao thức",
+  http: "HTTP",
+  https: "HTTPS",
+  socks5: "SOCKS5",
+} as const;
+
+const STATUS_LABELS_FILTER = {
+  all: "Mọi trạng thái",
+  available: "Sẵn sàng",
+  assigned: "Đã giao",
+  banned: "Báo lỗi",
+  hidden: "Đã ẩn",
+} as const;
+
+const EXPIRY_LABELS_FILTER = {
+  all: "Mọi hạn dùng",
+  valid: "Còn hạn",
+  expiring_soon: "Sắp hết hạn",
+  expired: "Hết hạn",
+  never: "Vĩnh viễn",
+} as const;
+
 interface ProxyFiltersProps {
   filters: ProxyFiltersType;
   onFiltersChange: (filters: ProxyFiltersType) => void;
@@ -99,13 +127,13 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Giao thức" />
+            <SelectValue placeholder="Giao thức" labels={TYPE_LABELS} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Mọi giao thức</SelectItem>
-            <SelectItem value={ProxyType.HTTP}>HTTP</SelectItem>
-            <SelectItem value={ProxyType.HTTPS}>HTTPS</SelectItem>
-            <SelectItem value={ProxyType.SOCKS5}>SOCKS5</SelectItem>
+            <SelectItem value="all">{TYPE_LABELS.all}</SelectItem>
+            <SelectItem value={ProxyType.HTTP}>{TYPE_LABELS.http}</SelectItem>
+            <SelectItem value={ProxyType.HTTPS}>{TYPE_LABELS.https}</SelectItem>
+            <SelectItem value={ProxyType.SOCKS5}>{TYPE_LABELS.socks5}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -117,7 +145,15 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Phân loại" />
+            <SelectValue
+              placeholder="Phân loại"
+              labels={{
+                all: "Mọi phân loại",
+                ...Object.fromEntries(
+                  NETWORK_TYPE_VALUES.map((nt) => [nt, NETWORK_TYPE_LABEL[nt as NetworkType]]),
+                ),
+              }}
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Mọi phân loại</SelectItem>
@@ -144,14 +180,14 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Trạng thái" />
+            <SelectValue placeholder="Trạng thái" labels={STATUS_LABELS_FILTER} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Mọi trạng thái</SelectItem>
-            <SelectItem value={ProxyStatus.Available}>Sẵn sàng</SelectItem>
-            <SelectItem value={ProxyStatus.Assigned}>Đã giao</SelectItem>
-            <SelectItem value={ProxyStatus.Banned}>Báo lỗi</SelectItem>
-            <SelectItem value="hidden">Đã ẩn</SelectItem>
+            <SelectItem value="all">{STATUS_LABELS_FILTER.all}</SelectItem>
+            <SelectItem value={ProxyStatus.Available}>{STATUS_LABELS_FILTER.available}</SelectItem>
+            <SelectItem value={ProxyStatus.Assigned}>{STATUS_LABELS_FILTER.assigned}</SelectItem>
+            <SelectItem value={ProxyStatus.Banned}>{STATUS_LABELS_FILTER.banned}</SelectItem>
+            <SelectItem value="hidden">{STATUS_LABELS_FILTER.hidden}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -163,10 +199,10 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Hạn dùng" />
+            <SelectValue placeholder="Hạn dùng" labels={EXPIRY_LABELS_FILTER} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Mọi hạn dùng</SelectItem>
+            <SelectItem value="all">{EXPIRY_LABELS_FILTER.all}</SelectItem>
             <SelectItem value="valid">{EXPIRY_LABEL.valid}</SelectItem>
             <SelectItem value="expiring_soon">{EXPIRY_LABEL.expiring_soon}</SelectItem>
             <SelectItem value="expired">{EXPIRY_LABEL.expired}</SelectItem>
@@ -181,7 +217,13 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Quốc gia" />
+            <SelectValue
+              placeholder="Quốc gia"
+              labels={{
+                all: "Mọi quốc gia",
+                ...Object.fromEntries(countries.map((c) => [c, c])),
+              }}
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Mọi quốc gia</SelectItem>
@@ -203,7 +245,13 @@ export function ProxyFilters({
             }
           >
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Danh mục" />
+              <SelectValue
+                placeholder="Danh mục"
+                labels={{
+                  all: "Mọi danh mục",
+                  ...Object.fromEntries(categories.map((c) => [c.id, c.name])),
+                }}
+              />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Mọi danh mục</SelectItem>

@@ -18,13 +18,48 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
-function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
+/**
+ * Wave 22AA — `labels` map prop.
+ *
+ * Why this exists: Base UI's `Select.Value` renders the RAW `value`
+ * attribute by default (e.g. "all", "available"), not the matching
+ * `<Select.Item>`'s children. To get a human label you must pass
+ * children as a function. Doing that at every call site is noisy;
+ * the wrapper takes a `labels` map and does the lookup once.
+ *
+ * Usage:
+ *   <SelectValue
+ *     placeholder="Trạng thái"
+ *     labels={{ all: "Mọi trạng thái", available: "Sẵn sàng", ... }}
+ *   />
+ *
+ * Without `labels`, behaves exactly like the raw primitive (caller
+ * can still pass children / a custom render function).
+ */
+function SelectValue({
+  className,
+  labels,
+  children,
+  placeholder,
+  ...props
+}: SelectPrimitive.Value.Props & { labels?: Record<string, React.ReactNode> }) {
+  const resolvedChildren = labels
+    ? (val: unknown) => {
+        if (val == null || val === "") return placeholder ?? null;
+        const key = String(val);
+        return labels[key] ?? placeholder ?? key;
+      }
+    : children;
+
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
       className={cn("flex flex-1 text-left", className)}
+      placeholder={placeholder}
       {...props}
-    />
+    >
+      {resolvedChildren as React.ReactNode | ((value: unknown) => React.ReactNode)}
+    </SelectPrimitive.Value>
   )
 }
 

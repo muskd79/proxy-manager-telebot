@@ -216,7 +216,17 @@ export default function UsersPage() {
         >
           <SelectTrigger className="w-[160px] bg-background">
             <Filter className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Status" />
+            {/* Wave 22AA — labels map so trigger shows VI label, not raw value */}
+            <SelectValue
+              placeholder="Status"
+              labels={{
+                all: t("users.allStatus"),
+                active: t("users.active"),
+                blocked: t("users.blocked"),
+                pending: t("users.pending"),
+                banned: t("users.banned"),
+              }}
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("users.allStatus")}</SelectItem>

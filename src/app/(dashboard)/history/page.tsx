@@ -218,7 +218,15 @@ export default function HistoryPage() {
               }}
             >
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Trạng thái" />
+                <SelectValue
+                  placeholder="Trạng thái"
+                  labels={{
+                    all: "Tất cả trạng thái",
+                    approved: "Đã duyệt",
+                    auto_approved: "Tự động duyệt",
+                    rejected: "Từ chối",
+                  }}
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả trạng thái</SelectItem>
