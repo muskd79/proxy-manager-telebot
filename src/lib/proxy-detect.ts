@@ -288,56 +288,41 @@ function probeHttpProxy(host: string, port: number): Promise<ProbeOutcome> {
 }
 
 // ------------------------------------------------------------
-// GeoIP — country + ISP via a public free API (ipwho.is).
+// GeoIP — DELIBERATELY OMITTED.
 // ------------------------------------------------------------
-// ipwho.is: free, no API key, no rate limit on light usage,
-// returns country + ISP. We hit the proxy's IP directly (not a
-// hostname) because we already pinned it via assertPublicHost.
+// Wave 22H privacy decision: do NOT call any external GeoIP
+// service for proxy IP lookups.
 //
-// Failure tolerance: any non-2xx → return nulls; caller falls
-// back to category default or admin manual entry.
+// Why?
+//   The TCP-probe path above is fully self-built and leaks zero
+//   info beyond a connection from our Vercel IP to the proxy
+//   (which the proxy owner sees anyway when admin uses the
+//   proxy). NOT a leak.
+//
+//   But the previous geoIpLookup() called ipwho.is with the
+//   proxy IP. ipwho.is logs that query — they learn "someone
+//   queried IP X.Y.Z.W". If their logs are compromised / shared
+//   / subpoenaed, an adversary could correlate which proxies
+//   our admin owns.
+//
+//   Country + ISP come from:
+//     1. Category default (admin sets per-category — see Wave 22G)
+//     2. Manual entry on the proxy create form
+//     3. (Optional future) self-hosted MaxMind GeoLite2 mmdb
+//        bundled in repo — caller would import a separate
+//        offline lookup module.
+//
+// This function intentionally returns nulls. Callers MUST tolerate
+// missing country + ISP and surface them via category default or
+// manual entry.
 
 export interface GeoIpResult {
   country: string | null;
   country_code: string | null;
   isp: string | null;
-  source: "ipwho.is" | "fallback" | null;
+  source: null;
 }
 
-export async function geoIpLookup(ip: string): Promise<GeoIpResult> {
-  const empty: GeoIpResult = {
-    country: null,
-    country_code: null,
-    isp: null,
-    source: null,
-  };
-
-  // Cheap input validation — only IPv4/IPv6 octet shapes pass.
-  if (!/^[0-9a-fA-F:.]+$/.test(ip)) return empty;
-
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 4_000);
-    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
-      signal: ctrl.signal,
-      headers: { "User-Agent": "proxy-manager/1.0" },
-    });
-    clearTimeout(t);
-    if (!res.ok) return empty;
-    const body = (await res.json()) as {
-      success: boolean;
-      country?: string;
-      country_code?: string;
-      connection?: { isp?: string; org?: string };
-    };
-    if (!body.success) return empty;
-    return {
-      country: body.country ?? null,
-      country_code: body.country_code ?? null,
-      isp: body.connection?.isp ?? body.connection?.org ?? null,
-      source: "ipwho.is",
-    };
-  } catch {
-    return empty;
-  }
+export async function geoIpLookup(_ip: string): Promise<GeoIpResult> {
+  return { country: null, country_code: null, isp: null, source: null };
 }
