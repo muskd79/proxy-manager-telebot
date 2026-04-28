@@ -91,6 +91,17 @@ export async function getAdminByTelegramId(telegramId: number): Promise<{
 
 /**
  * Notify ALL admins with Telegram IDs.
+ *
+ * Wave 22D-4 reliability fix:
+ *   Pre-22D-4 fired each `sendTelegramMessage` in a for-loop with
+ *   fire-and-forget `.catch(console.error)`. If Telegram returned
+ *   429 (rate limit) on the 2nd admin, ALL subsequent admins
+ *   silently missed the notification — the approval-flow ping
+ *   would never reach them.
+ *   Now: Promise.allSettled + structured failure logging. The
+ *   function still returns void (caller doesn't need success
+ *   info), but failures land in logs with the offending Telegram
+ *   ID + reason, surfacing the reliability hole at incident time.
  */
 export async function notifyAllAdmins(
   text: string,
@@ -104,9 +115,30 @@ export async function notifyAllAdmins(
     ? ids.filter(id => id !== options.excludeTelegramId)
     : ids;
 
-  for (const id of filtered) {
-    sendTelegramMessage(id, text, options?.inlineKeyboard).catch(console.error);
-  }
+  if (filtered.length === 0) return;
+
+  const results = await Promise.allSettled(
+    filtered.map((id) =>
+      sendTelegramMessage(id, text, options?.inlineKeyboard),
+    ),
+  );
+
+  // Surface failures with the Telegram ID — without this, a 429 on
+  // admin #2 would silently drop notifications for admins #3..#N.
+  results.forEach((r, i) => {
+    const id = filtered[i];
+    if (r.status === "rejected") {
+      console.error(
+        `[notifyAllAdmins] Failed to notify telegram_id=${id}:`,
+        r.reason,
+      );
+    } else if (r.value && typeof r.value === "object" && "success" in r.value && r.value.success === false) {
+      console.error(
+        `[notifyAllAdmins] sendTelegramMessage rejected telegram_id=${id}:`,
+        (r.value as { error?: string }).error,
+      );
+    }
+  });
 }
 
 /**

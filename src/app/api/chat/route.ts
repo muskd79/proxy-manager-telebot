@@ -59,14 +59,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(response);
     }
 
-    // Otherwise, return conversation list
-    // Use a single query: get all messages with user info, then deduplicate to latest per user
-    const { data: allMessages, error: convError } = await supabase
-      .from("chat_messages")
-      .select("*, tele_users!inner(id, username, first_name, last_name, telegram_id, status, is_deleted)")
-      .eq("tele_users.is_deleted", false)
-      .order("created_at", { ascending: false })
-      .limit(5000); // Limit to last 5000 messages for performance
+    // Wave 22D-4 BUG FIX (HIGH): pre-22D-4 fetched the latest 5000
+    // chat_messages into Lambda memory and deduped client-side. Two
+    // problems:
+    //   1. OOM risk at scale.
+    //   2. CORRECTNESS: a single chatty user (>5,000 msgs) dominated
+    //      the recency window — quieter users were silently dropped
+    //      from the conversation list, never to be seen again.
+    //
+    // Mig 033 added the get_recent_conversations RPC which does the
+    // dedup in SQL via DISTINCT ON (tele_user_id) — memory is now
+    // O(distinct_users), and the search filter applies BEFORE dedup
+    // so a user's latest matching message wins (not "the user's
+    // latest message, if it happens to match"). Pagination via
+    // simple OFFSET — fine because the result set is bounded by
+    // user count, not message count.
+    const search = searchParams.get("search");
+    const offset = (page - 1) * limit;
+
+    const { data, error: convError } = await supabase.rpc(
+      "get_recent_conversations",
+      {
+        p_limit: limit,
+        p_offset: offset,
+        p_search: search || null,
+      },
+    );
 
     if (convError) {
       return NextResponse.json(
@@ -75,34 +93,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Group by user, keep only latest message per user
-    const userMap = new Map<string, ConversationResponse>();
-    for (const msg of allMessages || []) {
-      if (!userMap.has(msg.tele_user_id)) {
-        const teleUser = msg.tele_users as unknown as TeleUser;
-        userMap.set(msg.tele_user_id, {
-          user: teleUser,
-          lastMessage: {
-            id: msg.id,
-            tele_user_id: msg.tele_user_id,
-            telegram_message_id: msg.telegram_message_id,
-            direction: msg.direction,
-            message_text: msg.message_text,
-            message_type: msg.message_type,
-            raw_data: msg.raw_data,
-            created_at: msg.created_at,
-          } as ChatMessage,
-          unreadCount: 0,
-        });
-      }
-    }
+    type ConversationRow = {
+      msg_id: string;
+      tele_user_id: string;
+      telegram_message_id: number | null;
+      direction: ChatMessage["direction"];
+      message_text: string | null;
+      message_type: ChatMessage["message_type"];
+      raw_data: Record<string, unknown> | null;
+      msg_created_at: string;
+      user_id: string;
+      username: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      telegram_id: number;
+      status: TeleUser["status"];
+      total_count: string | number;
+    };
+    const rows = (data ?? []) as ConversationRow[];
 
-    const conversations = Array.from(userMap.values())
-      .sort((a, b) => {
-        const aTime = a.lastMessage?.created_at ?? "";
-        const bTime = b.lastMessage?.created_at ?? "";
-        return bTime.localeCompare(aTime);
-      });
+    const conversations: ConversationResponse[] = rows.map((row) => ({
+      user: {
+        id: row.user_id,
+        username: row.username,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        telegram_id: row.telegram_id,
+        status: row.status,
+      } as TeleUser,
+      lastMessage: {
+        id: row.msg_id,
+        tele_user_id: row.tele_user_id,
+        telegram_message_id: row.telegram_message_id,
+        direction: row.direction,
+        message_text: row.message_text,
+        message_type: row.message_type,
+        raw_data: row.raw_data,
+        created_at: row.msg_created_at,
+      } as ChatMessage,
+      unreadCount: 0,
+    }));
 
     const response: ApiResponse<ConversationResponse[]> = {
       success: true,
