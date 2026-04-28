@@ -63,6 +63,8 @@ export default function ProxiesPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [countries, setCountries] = useState<string[]>([]);
+  // Wave 22Z — categories list for the new Danh mục filter dropdown.
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
@@ -87,6 +89,10 @@ export default function ProxiesPage() {
       if (filters.type) params.set("type", filters.type);
       if (filters.status) params.set("status", filters.status);
       if (filters.country) params.set("country", filters.country);
+      if (filters.networkType) params.set("networkType", filters.networkType);
+      if (filters.expiryStatus) params.set("expiryStatus", filters.expiryStatus);
+      // Wave 22Z — category filter wired through to ?category_id=
+      if (filters.categoryId) params.set("category_id", filters.categoryId);
       // Wave 22C: tags param removed — categories filter via ?category_id=X.
       // Wave 22Y — isp filter param removed (column dropped from UI)
       params.set("page", String(filters.page || 1));
@@ -121,13 +127,34 @@ export default function ProxiesPage() {
     }
   }, []);
 
+  // Wave 22Z — fetch categories once on mount for the filter dropdown.
+  // Excludes hidden categories (default behaviour of /api/categories).
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/categories");
+      if (res.ok) {
+        const result = await res.json();
+        const list = Array.isArray(result?.data) ? result.data : [];
+        setCategories(
+          list.map((c: { id: string; name: string }) => ({
+            id: c.id,
+            name: c.name,
+          })),
+        );
+      }
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchProxies();
   }, [fetchProxies]);
 
   useEffect(() => {
     fetchCountries();
-  }, [fetchCountries]);
+    fetchCategories();
+  }, [fetchCountries, fetchCategories]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -421,6 +448,7 @@ export default function ProxiesPage() {
         filters={filters}
         onFiltersChange={setFilters}
         countries={countries}
+        categories={categories}
       />
 
       {/* Bulk actions */}

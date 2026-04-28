@@ -44,7 +44,15 @@ export interface ProxyFilters {
     | "residential"
     | "mobile"
     | "static_residential";
-  status?: ProxyStatus;
+  /**
+   * Wave 22Z — accept the synthetic value "hidden" in addition to
+   * the DB enum. The server interprets "hidden" as a filter-only
+   * value: show only proxies where hidden=true (cascade trigger
+   * already mirrors category.is_hidden into proxies.hidden, so this
+   * one column covers both manual + cascade hides). Other values
+   * keep their existing semantics + the default hidden=false guard.
+   */
+  status?: ProxyStatus | "hidden";
   /** Wave 22J — separate filter for "Còn hạn / Hết hạn / Sắp hết hạn". */
   expiryStatus?: "valid" | "expiring_soon" | "expired" | "never";
   country?: string;

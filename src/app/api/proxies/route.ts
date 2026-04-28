@@ -63,7 +63,18 @@ export async function GET(request: NextRequest) {
     if (filters.type) {
       query = query.eq("type", filters.type);
     }
-    if (filters.status) {
+    // Wave 22Z — synthetic "hidden" status. The user-facing filter
+    // collapses status to 4 buckets: available / assigned / banned /
+    // hidden. Real DB status enum is { available, assigned, expired,
+    // banned, maintenance } — "hidden" is NOT a status, it's the
+    // boolean column `hidden` (which the cascade trigger keeps in
+    // sync with category.is_hidden, so this single check covers both
+    // manual hide AND cascade hide). We branch here BEFORE the
+    // default-hide guard below so the cascade-default doesn't
+    // contradict the explicit user choice.
+    if (filters.status === "hidden") {
+      query = query.eq("hidden", true);
+    } else if (filters.status) {
       query = query.eq("status", filters.status);
     }
     if (filters.country) {
@@ -106,8 +117,12 @@ export async function GET(request: NextRequest) {
 
     // Wave 22G — cascade hide (default off; admin explicitly opts in
     // to see hidden rows from /proxies?include_hidden=true).
+    // Wave 22Z — when status="hidden" is selected we already applied
+    // .eq("hidden", true) above; skip the default-hide guard so we
+    // don't end up with a contradictory `hidden=true AND hidden=false`.
     const includeHidden = searchParams.get("include_hidden") === "true";
-    if (!includeHidden) {
+    const showingHiddenOnly = filters.status === "hidden";
+    if (!includeHidden && !showingHiddenOnly) {
       query = query.eq("hidden", false);
     }
 

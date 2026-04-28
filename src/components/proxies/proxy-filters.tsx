@@ -15,7 +15,6 @@ import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
-  STATUS_LABEL,
   EXPIRY_LABEL,
   type NetworkType,
 } from "@/lib/proxy-labels";
@@ -33,16 +32,28 @@ import {
  * this component to keep the bar simple.
  */
 
+interface CategoryOption {
+  id: string;
+  name: string;
+}
+
 interface ProxyFiltersProps {
   filters: ProxyFiltersType;
   onFiltersChange: (filters: ProxyFiltersType) => void;
   countries: string[];
+  /**
+   * Wave 22Z — categories list for the new Danh mục filter dropdown.
+   * Source: /api/categories. The parent page fetches once and passes
+   * the trimmed list down so this component stays presentational.
+   */
+  categories?: readonly CategoryOption[];
 }
 
 export function ProxyFilters({
   filters,
   onFiltersChange,
   countries,
+  categories = [],
 }: ProxyFiltersProps) {
   function updateFilter(key: keyof ProxyFiltersType, value: unknown) {
     onFiltersChange({ ...filters, [key]: value || undefined, page: 1 });
@@ -118,7 +129,14 @@ export function ProxyFilters({
           </SelectContent>
         </Select>
 
-        {/* Trạng thái sử dụng */}
+        {/* Wave 22Z — Trạng thái simplified to 4 buckets per user spec:
+              Sẵn sàng (available)
+              Đã giao  (assigned)
+              Báo lỗi  (banned)
+              Đã ẩn    (synthetic — proxies.hidden=true, which the
+                        cascade trigger keeps in sync with category.is_hidden)
+            "Maintenance" + "Expired" enum values still exist in DB but
+            are intentionally not exposed here per user "chỉ có 4 loại". */}
         <Select
           value={filters.status || "all"}
           onValueChange={(val: string | null) =>
@@ -130,10 +148,10 @@ export function ProxyFilters({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Mọi trạng thái</SelectItem>
-            <SelectItem value={ProxyStatus.Available}>{STATUS_LABEL.available}</SelectItem>
-            <SelectItem value={ProxyStatus.Assigned}>{STATUS_LABEL.assigned}</SelectItem>
-            <SelectItem value={ProxyStatus.Banned}>{STATUS_LABEL.banned}</SelectItem>
-            <SelectItem value={ProxyStatus.Maintenance}>{STATUS_LABEL.maintenance}</SelectItem>
+            <SelectItem value={ProxyStatus.Available}>Sẵn sàng</SelectItem>
+            <SelectItem value={ProxyStatus.Assigned}>Đã giao</SelectItem>
+            <SelectItem value={ProxyStatus.Banned}>Báo lỗi</SelectItem>
+            <SelectItem value="hidden">Đã ẩn</SelectItem>
           </SelectContent>
         </Select>
 
@@ -174,6 +192,29 @@ export function ProxyFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {/* Wave 22Z — Danh mục filter (uses ?category_id= server-side
+            via mig 028 + Wave 22A index idx_proxies_category_id) */}
+        {categories.length > 0 && (
+          <Select
+            value={filters.categoryId || "all"}
+            onValueChange={(val: string | null) =>
+              updateFilter("categoryId", !val || val === "all" ? undefined : val)
+            }
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Danh mục" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Mọi danh mục</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Wave 22Y — ISP filter input removed (column dropped from UI) */}
 
