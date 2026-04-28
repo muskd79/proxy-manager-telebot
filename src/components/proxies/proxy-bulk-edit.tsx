@@ -38,10 +38,10 @@ interface ProxyBulkEditProps {
 
 export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: ProxyBulkEditProps) {
   const [loading, setLoading] = useState(false);
+  // Wave 22Y — isp field removed from bulk-edit dialog (column dropped from UI)
   const [updateFields, setUpdateFields] = useState({
     status: "",
     country: "",
-    isp: "",
     notes: "",
   });
 
@@ -120,16 +120,7 @@ export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: P
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>ISP</Label>
-            <Input
-              value={updateFields.isp}
-              onChange={(e) => setUpdateFields(prev => ({ ...prev, isp: e.target.value }))}
-              placeholder="(deferred — not yet wired into bulk RPC)"
-              disabled
-            />
-          </div>
-
+          {/* Wave 22Y — ISP bulk-edit field removed (column dropped from UI) */}
           {/* Wave 22C: tags input removed. Use /categories for groupings. */}
 
           <div className="space-y-2">

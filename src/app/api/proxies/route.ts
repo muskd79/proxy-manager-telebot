@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
 
     const hasFilter =
       !!(filters.search || filters.type || filters.status || filters.country
-        || categoryId || expiringWithin || vendorLabel
-        || searchParams.get("isp"));
+        || categoryId || expiringWithin || vendorLabel);
     const countMode: "exact" | "estimated" | undefined = cursorDate
       ? undefined
       : hasFilter
@@ -131,10 +130,9 @@ export async function GET(request: NextRequest) {
       query = query.lt("expires_at", horizon).gte("expires_at", new Date().toISOString());
     }
 
-    const isp = searchParams.get("isp");
-    if (isp) {
-      query = query.ilike("isp", `%${isp}%`);
-    }
+    // Wave 22Y — ?isp= filter dropped (column removed from UI). API
+    // still accepts the field on POST/PUT for backward-compat with
+    // existing imports/scripts; just no longer queryable here.
 
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 20;

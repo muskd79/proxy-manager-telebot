@@ -173,10 +173,7 @@ export function ProxyDetail({
                 {proxy.city && ` / ${proxy.city}`}
               </p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">ISP</p>
-              <p className="text-sm font-medium">{proxy.isp || "Unknown"}</p>
-            </div>
+            {/* Wave 22Y — ISP block removed from proxy detail view */}
             <div>
               <p className="text-xs text-muted-foreground mb-1">Assigned To</p>
               {proxy.assigned_to ? (

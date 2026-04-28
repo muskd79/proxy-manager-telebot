@@ -64,7 +64,7 @@ export function ProxyFilters({
     filters.status ||
     filters.expiryStatus ||
     filters.country ||
-    filters.isp ||
+    // Wave 22Y — isp filter removed (column dropped from UI)
     filters.categoryId;
 
   return (
@@ -175,12 +175,7 @@ export function ProxyFilters({
           </SelectContent>
         </Select>
 
-        <Input
-          placeholder="ISP..."
-          value={filters.isp || ""}
-          onChange={(e) => updateFilter("isp", e.target.value)}
-          className="w-32"
-        />
+        {/* Wave 22Y — ISP filter input removed (column dropped from UI) */}
 
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>

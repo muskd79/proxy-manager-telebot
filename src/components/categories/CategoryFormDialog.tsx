@@ -173,9 +173,9 @@ export function CategoryFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Sửa danh mục" : "Danh mục mới"}</DialogTitle>
           <DialogDescription>
-            Tham số mặc định (loại / quốc gia / giá / ISP) sẽ được prefill
-            khi admin thêm proxy mới vào danh mục này. Toggle ẩn cascade —
-            ẩn danh mục thì TOÀN BỘ proxy thuộc danh mục cũng ẩn theo.
+            Tham số mặc định (loại / quốc gia / giá) sẽ được prefill khi
+            admin thêm proxy mới vào danh mục này. Toggle ẩn cascade — ẩn
+            danh mục thì TOÀN BỘ proxy thuộc danh mục cũng ẩn theo.
           </DialogDescription>
         </DialogHeader>
 
@@ -326,17 +326,9 @@ export function CategoryFormDialog({
                   maxLength={64}
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="def-isp">ISP (nhà mạng)</Label>
-                <Input
-                  id="def-isp"
-                  value={defaultIsp}
-                  onChange={(e) => setDefaultIsp(e.target.value)}
-                  placeholder="VD: VNPT, Viettel, AWS"
-                  maxLength={200}
-                />
-                <p className="text-[10px] text-muted-foreground">Tên nhà mạng/ISP cụ thể</p>
-              </div>
+              {/* Wave 22Y — default ISP field removed from category UI;
+                  the column stays on categories table for backward-compat
+                  but no longer surfaced in the form. */}
             </div>
           </div>
 

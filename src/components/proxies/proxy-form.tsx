@@ -41,7 +41,7 @@ const proxySchema = z.object({
   password: z.string().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
-  isp: z.string().optional(),
+  // Wave 22Y — ISP field removed from UI (kept in DB for legacy imports)
   // Wave 22C: tags removed in favour of categories. category_id is set
   // via the bulk-assign UI on /proxies; the per-proxy form stays simple.
   notes: z.string().optional(),
@@ -71,7 +71,6 @@ export function ProxyForm({
     password: proxy?.password || "",
     country: proxy?.country || "",
     city: proxy?.city || "",
-    isp: proxy?.isp || "",
     notes: proxy?.notes || "",
     expires_at: proxy?.expires_at
       ? new Date(proxy.expires_at).toISOString().split("T")[0]
@@ -128,7 +127,7 @@ export function ProxyForm({
         password: formData.password || null,
         country: formData.country || null,
         city: formData.city || null,
-        isp: formData.isp || null,
+        // Wave 22Y — isp omitted from UI submissions
         notes: formData.notes || null,
         expires_at: formData.expires_at
           ? new Date(formData.expires_at).toISOString()
@@ -259,7 +258,8 @@ export function ProxyForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          {/* Wave 22Y — ISP field dropped; grid collapses 3→2 columns */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="country">Quốc gia</Label>
               <Input
@@ -282,15 +282,6 @@ export function ProxyForm({
                 placeholder="VD: Hà Nội"
                 value={formData.city}
                 onChange={(e) => handleChange("city", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="isp">ISP (nhà mạng)</Label>
-              <Input
-                id="isp"
-                placeholder="VD: Viettel, FPT"
-                value={formData.isp}
-                onChange={(e) => handleChange("isp", e.target.value)}
               />
             </div>
           </div>

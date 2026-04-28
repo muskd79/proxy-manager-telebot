@@ -264,7 +264,8 @@ export function ProxyTable({
           <TableHead>Phân loại</TableHead>
           <TableHead>Trạng thái</TableHead>
           <SortableHead column="country">Quốc gia</SortableHead>
-          <TableHead>ISP</TableHead>
+          {/* Wave 22Y — ISP column removed (per user); column hidden from UI but
+              field still present in API/DB for backward-compat with prior imports. */}
           <TableHead>Người dùng</TableHead>
           <SortableHead column="assigned_at">Thời gian giao</SortableHead>
           <SortableHead column="speed_ms">Tốc độ</SortableHead>
@@ -276,7 +277,7 @@ export function ProxyTable({
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={15} className="text-center py-8">
+            <TableCell colSpan={14} className="text-center py-8">
               <p className="text-muted-foreground">Chưa có proxy nào</p>
             </TableCell>
           </TableRow>
@@ -345,9 +346,7 @@ export function ProxyTable({
                 <TableCell className="text-muted-foreground text-sm">
                   {proxy.country || "-"}
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {proxy.isp || "-"}
-                </TableCell>
+                {/* Wave 22Y — ISP cell removed */}
                 <TableCell>
                   {proxy.assigned_to ? (
                     <Link

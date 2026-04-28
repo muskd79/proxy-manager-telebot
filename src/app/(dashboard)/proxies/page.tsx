@@ -21,7 +21,19 @@ import {
   Zap,
   Loader2,
   Pencil,
+  ChevronDown,
+  FileText,
+  FileSpreadsheet,
+  ClipboardPaste,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useRouter } from "next/navigation";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -45,6 +57,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function ProxiesPage() {
   const { t } = useI18n();
   const { canWrite } = useRole();
+  const router = useRouter();
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -75,7 +88,7 @@ export default function ProxiesPage() {
       if (filters.status) params.set("status", filters.status);
       if (filters.country) params.set("country", filters.country);
       // Wave 22C: tags param removed — categories filter via ?category_id=X.
-      if (filters.isp) params.set("isp", filters.isp);
+      // Wave 22Y — isp filter param removed (column dropped from UI)
       params.set("page", String(filters.page || 1));
       params.set("pageSize", String(filters.pageSize || 20));
       params.set("sortBy", filters.sortBy || "created_at");
@@ -314,17 +327,6 @@ export default function ProxiesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canWrite && (
-            // Wave 22W — promote to primary variant + clearer label so admins
-            // hunting for "dán 1000 proxy" actually spot the entry.
-            <Link
-              href="/proxies/import"
-              className={buttonVariants({ variant: "default", size: "sm" })}
-            >
-              <Upload className="size-4 mr-1.5" />
-              Dán / Import proxy
-            </Link>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -342,16 +344,49 @@ export default function ProxiesPage() {
             JSON
           </Button>
           {canWrite && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditProxy(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus className="size-4 mr-1.5" />
-              {t("proxies.addProxy")}
-            </Button>
+            // Wave 22Y — unified "+ Thêm proxy" dropdown replaces the
+            // two separate buttons (Plus + Upload) per user request.
+            // Mirrors the "Thêm Via" pattern from the sibling project:
+            //   - Thêm đơn       → ProxyForm dialog (single create)
+            //   - Nhập hàng loạt → /proxies/import (paste textarea)
+            //   - Nhập file (.txt) / Nhập CSV → /proxies/import (file upload)
+            // The wizard at /proxies/import already supports all three
+            // input modes, so no new route is needed.
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button size="sm" variant="default">
+                    <Plus className="size-4 mr-1.5" />
+                    Thêm proxy
+                    <ChevronDown className="size-3.5 ml-1" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setEditProxy(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  <Plus className="size-4 mr-2" />
+                  Thêm đơn
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push("/proxies/import?mode=paste")}>
+                  <ClipboardPaste className="size-4 mr-2" />
+                  Nhập hàng loạt
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/proxies/import?mode=txt")}>
+                  <FileText className="size-4 mr-2" />
+                  Nhập file (.txt)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/proxies/import?mode=csv")}>
+                  <FileSpreadsheet className="size-4 mr-2" />
+                  Nhập CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
