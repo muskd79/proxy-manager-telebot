@@ -173,6 +173,22 @@ export async function PUT(request: NextRequest) {
 
     if (action === "update_admin_role") {
       const { adminId, role } = parsed.data;
+      // Wave 22D-3 SECURITY FIX: prevent self-demotion lockout. A
+      // super_admin who demotes themselves to viewer cannot reach
+      // the settings UI to undo it. Block the operation explicitly.
+      // The "last super_admin standing" check would also be valid
+      // but is harder to make race-safe; self-target alone covers
+      // the immediate footgun.
+      if (adminId === admin.id) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Cannot change your own role — ask another super_admin to demote you",
+          },
+          { status: 400 },
+        );
+      }
       const { error } = await supabase
         .from("admins")
         .update({ role, updated_at: new Date().toISOString() })
@@ -184,6 +200,20 @@ export async function PUT(request: NextRequest) {
 
     if (action === "toggle_admin_active") {
       const { adminId, is_active } = parsed.data;
+      // Wave 22D-3 SECURITY FIX: prevent self-deactivation lockout.
+      // Same logic as update_admin_role above — blocking is_active=false
+      // on self avoids the footgun where a super_admin disables their
+      // own account and cannot recover.
+      if (adminId === admin.id && is_active === false) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Cannot deactivate your own account — ask another super_admin",
+          },
+          { status: 400 },
+        );
+      }
       const { error } = await supabase
         .from("admins")
         .update({ is_active, updated_at: new Date().toISOString() })

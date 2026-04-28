@@ -15,6 +15,15 @@ export async function GET(
     const { admin, error: authError } = await requireAnyRole(supabase);
     if (authError) return authError;
 
+    // Wave 22D-3 SECURITY FIX: viewer role must NOT see proxy
+    // username/password. The sibling route /api/proxies/[id] already
+    // strips credentials for viewers (Wave 17); this route was missed
+    // and `select("*")` was leaking creds to anyone with viewer role.
+    // Mirror the pattern: fetch full row, strip creds in-app for
+    // viewers. (Runtime column projection breaks Supabase JS's typed
+    // overloads — strip post-fetch instead.)
+    const isViewer = admin.role === "viewer";
+
     const { data, error } = await supabase
       .from("proxies")
       .select("*")
@@ -29,9 +38,19 @@ export async function GET(
       );
     }
 
+    const rows = (data ?? []) as Proxy[];
+    const sanitized = isViewer
+      ? rows.map((p) => {
+          // Strip credentials post-fetch. eslint-disable cosmetic
+          // unused-var rule: we DO want to drop these fields.
+          const { username: _u, password: _pw, ...rest } = p;
+          return rest as Proxy;
+        })
+      : rows;
+
     return NextResponse.json({
       success: true,
-      data: data ?? [],
+      data: sanitized,
     } satisfies ApiResponse<Proxy[]>);
   } catch (err) {
     return NextResponse.json(

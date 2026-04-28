@@ -6,6 +6,7 @@ import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { CreateProxySchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
+import { PROXIES_SORT, safeSort } from "@/lib/sort-allowlist";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -101,7 +102,11 @@ export async function GET(request: NextRequest) {
     const pageSize = filters.pageSize ?? 20;
     // cursorDate already pulled from searchParams above (Wave 21C)
 
-    query = query.order(filters.sortBy ?? "created_at", {
+    // Wave 22D-3 SECURITY FIX: sortBy must be from PROXIES_SORT allowlist;
+    // unvalidated input let attackers reach unintended columns or trigger
+    // schema-leaking 500 responses (raw error.message returned to client).
+    const safeSortBy = safeSort(PROXIES_SORT, filters.sortBy);
+    query = query.order(safeSortBy, {
       ascending: filters.sortOrder === "asc",
     });
 

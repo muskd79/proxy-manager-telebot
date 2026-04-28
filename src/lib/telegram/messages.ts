@@ -181,6 +181,10 @@ export const msg = {
     vi: "[!] Sap het han!",
     en: "[!] Expires soon!",
   },
+  errorOccurred: {
+    vi: "[X] Đã có lỗi xảy ra. Vui lòng thử lại hoặc liên hệ admin.",
+    en: "[X] An error occurred. Please try again or contact an admin.",
+  },
   bulkPartialAssigned: {
     vi: "[OK] {assigned}/{requested} proxy {type} da cap! ({missing} khong kha dung - thu lai sau)",
     en: "[OK] {assigned}/{requested} proxies assigned! ({missing} not available - try again later)",

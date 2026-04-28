@@ -76,6 +76,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Wave 22D-3 SECURITY FIX (defense-in-depth): block admin_* callbacks
+  // from the simulator entirely. The simulator's purpose is to replay a
+  // tele_user's view of the bot — admin callbacks (approve/reject/block)
+  // execute privileged actions and have no business firing under a
+  // simulated user context. The handlers internally re-resolve the admin
+  // via getAdminByTelegramId(ctx.from.id), but if a tele_user happens to
+  // share a telegram_id with an admin, the action would execute as that
+  // admin — a privilege confusion bug. Admins should fire these via the
+  // real bot or the dashboard, not the simulator.
+  if (callback_data && /^admin_(approve|reject|approve_user|block_user|bulk_approve|bulk_reject):/.test(callback_data)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Admin callbacks cannot be simulated — use the dashboard /requests or /users page directly",
+      },
+      { status: 403 }
+    );
+  }
+
   // Fetch the target user
   const { data: user } = await supabaseAdmin
     .from("tele_users")

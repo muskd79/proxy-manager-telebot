@@ -190,7 +190,15 @@ export async function createManualRequest(
 ): Promise<AssignResult> {
   const userId = user.id as string;
 
-  const { data: request } = await supabaseAdmin
+  // Wave 22D-3 BUG FIX: pre-22D-3 ignored the insert error. On a DB
+  // failure (constraint violation, hard-deleted user, transient
+  // outage) the user received a "Request created" message with
+  // id="unknown", we logged a proxy_request_created activity with
+  // resource_id=null, and notifyAdminsNewRequest fired pointing at
+  // a non-existent row. From the user's perspective: "I made a
+  // request"; from the admin's perspective: "no pending request
+  // exists". Now: surface the failure honestly.
+  const { data: request, error: insertError } = await supabaseAdmin
     .from("proxy_requests")
     .insert({
       tele_user_id: userId,
@@ -210,8 +218,16 @@ export async function createManualRequest(
     .select()
     .single();
 
+  if (insertError || !request) {
+    console.error("createManualRequest insert failed:", insertError?.message);
+    return {
+      success: false,
+      text: t("errorOccurred", lang),
+    };
+  }
+
   const text = fillTemplate(t("requestPending", lang), {
-    id: request?.id ?? "unknown",
+    id: request.id,
   });
 
   await logChatMessage(
@@ -227,7 +243,7 @@ export async function createManualRequest(
     actor_id: userId,
     action: "proxy_request_created",
     resource_type: "proxy_request",
-    resource_id: request?.id ?? null,
+    resource_id: request.id,
     details: { proxy_type: proxyType },
     ip_address: null,
     user_agent: null,

@@ -5,6 +5,7 @@ import type { ProxyRequest, RequestStatus, ProxyType } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateRequestSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
+import { REQUESTS_SORT, safeSort } from "@/lib/sort-allowlist";
 
 export async function GET(request: NextRequest) {
   try {
@@ -70,8 +71,10 @@ export async function GET(request: NextRequest) {
       query = query.lte("requested_at", filters.dateTo);
     }
 
+    // Wave 22D-3 SECURITY FIX: sortBy from REQUESTS_SORT allowlist.
+    const safeSortBy = safeSort(REQUESTS_SORT, filters.sortBy);
     query = query
-      .order(filters.sortBy || "requested_at", {
+      .order(safeSortBy, {
         ascending: filters.sortOrder === "asc",
       })
       .range(offset, offset + pageSize - 1);

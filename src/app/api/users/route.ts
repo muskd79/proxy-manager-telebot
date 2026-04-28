@@ -5,6 +5,7 @@ import type { TeleUser, TeleUserStatus } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateUserSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
+import { USERS_SORT, safeSort } from "@/lib/sort-allowlist";
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,8 +44,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", filters.status);
     }
 
+    // Wave 22D-3 SECURITY FIX: sortBy from USERS_SORT allowlist.
+    const safeSortBy = safeSort(USERS_SORT, filters.sortBy);
     query = query
-      .order(filters.sortBy || "created_at", {
+      .order(safeSortBy, {
         ascending: filters.sortOrder === "asc",
       })
       .range(offset, offset + pageSize - 1);

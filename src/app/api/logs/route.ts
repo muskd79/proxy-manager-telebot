@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { LogFilters, PaginatedResponse } from "@/types/api";
 import type { ActivityLog } from "@/types/database";
 import { requireAnyRole } from "@/lib/auth";
+import { LOGS_SORT, safeSort } from "@/lib/sort-allowlist";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -76,8 +77,11 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
+    // Wave 22D-3 SECURITY FIX: sortBy from LOGS_SORT allowlist (see
+    // lib/sort-allowlist.ts for rationale).
+    const safeSortBy = safeSort(LOGS_SORT, filters.sortBy);
     query = query
-      .order(filters.sortBy ?? "created_at", {
+      .order(safeSortBy, {
         ascending: filters.sortOrder === "asc",
       })
       .range(from, to);
