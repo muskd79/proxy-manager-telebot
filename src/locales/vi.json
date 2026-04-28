@@ -4,16 +4,20 @@
     "proxies": "Quản lý proxy",
     "lots": "Lô hàng",
     "categories": "Danh mục",
-    "users": "Người dùng",
-    "requests": "Yêu cầu",
+    "users": "Người dùng Bot",
+    "requests": "Yêu cầu proxy",
     "chat": "Tin nhắn",
+    "bot": "Quản lý Bot",
     "botSimulator": "Bot Simulator",
     "history": "Lịch sử",
     "trash": "Thùng rác",
-    "logs": "Nhật ký",
+    "logs": "Lịch sử & Nhật ký",
     "settings": "Cài đặt",
-    "admins": "Quản trị viên",
+    "admins": "Tài khoản Admin",
     "profile": "Hồ sơ cá nhân",
+    "groupManage": "QUẢN LÝ",
+    "groupVia": "VIA",
+    "groupSystem": "HỆ THỐNG",
     "operations": "VẬN HÀNH",
     "monitoring": "GIÁM SÁT",
     "system": "HỆ THỐNG",
@@ -23,6 +27,15 @@
     "list": "Danh sách proxy",
     "categories": "Danh mục",
     "trash": "Thùng rác"
+  },
+  "userTabs": {
+    "list": "Danh sách",
+    "messages": "Tin nhắn"
+  },
+  "botTabs": {
+    "overview": "Tổng quan",
+    "simulator": "Giả lập",
+    "config": "Cấu hình"
   },
   "dashboard": {
     "title": "Trang chủ",

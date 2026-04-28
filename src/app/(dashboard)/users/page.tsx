@@ -33,6 +33,7 @@ import {
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { UserTable } from "@/components/users/user-table";
+import { UserSubTabs } from "@/components/users/user-sub-tabs";
 import { Pagination } from "@/components/shared/pagination";
 import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
@@ -176,6 +177,8 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
+      {/* Wave 22U — sub-tab of Người dùng Bot. */}
+      <UserSubTabs />
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

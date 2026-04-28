@@ -5,6 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { ChatList } from "@/components/chat/chat-list";
 import { ChatWindow } from "@/components/chat/chat-window";
 import { useChat } from "@/hooks/use-chat";
+import { UserSubTabs } from "@/components/users/user-sub-tabs";
 
 export default function ChatPage() {
   const {
@@ -26,8 +27,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col p-6">
+      {/* Wave 22U — sub-tab of Người dùng Bot. */}
+      <UserSubTabs />
       {/* Page Header */}
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 mt-4 flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
           <MessageCircle className="h-5 w-5 text-primary" />
         </div>

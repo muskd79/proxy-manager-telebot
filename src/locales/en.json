@@ -4,16 +4,20 @@
     "proxies": "Proxy management",
     "lots": "Lots",
     "categories": "Categories",
-    "users": "Users",
-    "requests": "Requests",
-    "chat": "Chat",
+    "users": "Bot users",
+    "requests": "Proxy requests",
+    "chat": "Messages",
+    "bot": "Bot management",
     "botSimulator": "Bot Simulator",
     "history": "History",
     "trash": "Trash",
-    "logs": "Logs",
+    "logs": "History & Logs",
     "settings": "Settings",
-    "admins": "Admins",
+    "admins": "Admin accounts",
     "profile": "My profile",
+    "groupManage": "MANAGE",
+    "groupVia": "VIA",
+    "groupSystem": "SYSTEM",
     "operations": "OPERATIONS",
     "monitoring": "MONITORING",
     "system": "SYSTEM",
@@ -23,6 +27,15 @@
     "list": "Proxy list",
     "categories": "Categories",
     "trash": "Trash"
+  },
+  "userTabs": {
+    "list": "List",
+    "messages": "Messages"
+  },
+  "botTabs": {
+    "overview": "Overview",
+    "simulator": "Simulator",
+    "config": "Config"
   },
   "dashboard": {
     "title": "Dashboard",

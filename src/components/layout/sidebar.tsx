@@ -15,9 +15,8 @@ import {
   Globe,
   Users,
   FileText,
-  MessageSquare,
+  Bot,
   ScrollText,
-  Terminal,
   Shield,
   Settings,
   LogOut,
@@ -42,6 +41,13 @@ interface NavItem {
   badge?: number;
   minRole?: "super_admin" | "admin";
   section?: string;
+  /**
+   * Wave 22U — extra paths that should also light up this sidebar
+   * entry. Used when a parent menu item owns multiple URL routes
+   * (e.g. /users sub-tabs include /chat; /bot owns the legacy
+   * /bot-simulator route too).
+   */
+  altPaths?: readonly string[];
 }
 
 function NavContent({
@@ -58,36 +64,71 @@ function NavContent({
   // Wave 22O — realtime pending count + browser notification.
   const { count: pendingCount } = usePendingRequests();
 
-  // Wave 22T — IA simplified again per user feedback:
-  //   "danh mục và thùng rác cần thật sự mạnh và nên để thành sub-tab
-  //    trong tab proxy, tab proxy đổi thành Quản lý proxy"
-  //   "cần có tab hồ sơ cá nhân"
-  //   "cần tab quản lý admin: super admin có thể thay đổi mọi thứ"
+  // Wave 22U — IA redesign per user feedback (verbatim):
+  //   "QUẢN LÝ
+  //      Dashboard
+  //      Người dùng Bot: tin nhắn chuyển vào trong đây
+  //      Quản lý Bot
+  //    VIA
+  //      Quản lý proxy: danh mục và thùng rác chuyển vào đây
+  //      Yêu cầu proxy
+  //    HỆ THỐNG
+  //      Lịch sử & Nhật ký
+  //      Tài khoản Admin
+  //      Hồ sơ cá nhân
+  //      Cài đặt"
   //
-  // Structure:
-  //   VẬN HÀNH    — Dashboard, Requests, Quản lý proxy, Users, Chat
-  //   GIÁM SÁT    — Logs, Bot Simulator
-  //   TÀI KHOẢN   — Hồ sơ cá nhân (everyone), Quản trị viên (super_admin)
-  //   HỆ THỐNG    — Settings (super_admin)
+  // Two parallel agents (UX + architect) reviewed and confirmed the
+  // structure. UX flagged Tin nhắn discoverability (mitigated by
+  // future unread badge on Người dùng Bot) and Profile-in-system
+  // (kept per user direction — all account mgmt under HỆ THỐNG).
   //
-  // /categories + /trash dropped from top-level; reachable as sub-tabs
-  // inside /proxies via <ProxySubTabs />.
+  // Sub-tab parents:
+  //   /users  ↔ /chat            via <UserSubTabs />
+  //   /bot    ↔ /bot/{simulator,config}  via <BotSubTabs />
+  //   /proxies ↔ /categories ↔ /trash   via <ProxySubTabs />
   const navItems: NavItem[] = [
-    { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
+    // ─── QUẢN LÝ ───
+    { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.groupManage") },
+    {
+      title: t("sidebar.users"),
+      href: "/users",
+      icon: Users,
+      altPaths: ["/chat"], // Tin nhắn = sub-tab
+    },
+    {
+      title: t("sidebar.bot"),
+      href: "/bot",
+      icon: Bot,
+      altPaths: ["/bot-simulator"], // legacy URL, redirected to /bot/simulator
+    },
+
+    // ─── VIA ───
+    {
+      title: t("sidebar.proxies"),
+      href: "/proxies",
+      icon: Globe,
+      section: t("sidebar.groupVia"),
+      altPaths: ["/categories", "/trash"], // Danh mục + Thùng rác sub-tabs
+    },
     {
       title: t("sidebar.requests"),
       href: "/requests",
       icon: FileText,
       badge: pendingCount ?? undefined,
     },
-    { title: t("sidebar.proxies"), href: "/proxies", icon: Globe },
-    { title: t("sidebar.users"), href: "/users", icon: Users },
-    { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare },
-    { title: t("sidebar.logs"), href: "/logs", icon: ScrollText, section: t("sidebar.monitoring") },
-    { title: t("sidebar.botSimulator"), href: "/bot-simulator", icon: Terminal },
-    { title: t("sidebar.profile"), href: "/profile", icon: UserCircle, section: t("sidebar.account") },
+
+    // ─── HỆ THỐNG ───
+    {
+      title: t("sidebar.logs"),
+      href: "/logs",
+      icon: ScrollText,
+      section: t("sidebar.groupSystem"),
+      altPaths: ["/history"], // /history merged into /logs in Wave 22P
+    },
     { title: t("sidebar.admins"), href: "/admins", icon: Shield, minRole: "super_admin" },
-    { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin", section: t("sidebar.system") },
+    { title: t("sidebar.profile"), href: "/profile", icon: UserCircle },
+    { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin" },
   ];
 
   const roleLevel: Record<string, number> = { viewer: 0, admin: 1, super_admin: 2 };
@@ -116,9 +157,16 @@ function NavContent({
       <ScrollArea className="flex-1 px-2 py-3">
         <nav className="flex flex-col gap-0.5">
           {filteredItems.map((item) => {
+            // Wave 22U — sub-tab parents own multiple URL routes.
+            // Match the canonical href + any altPaths declared on
+            // the nav item (e.g. /users also matches /chat).
+            const matchesPath = (target: string): boolean => {
+              if (target === "/dashboard") return pathname === target;
+              return pathname === target || pathname.startsWith(target + "/");
+            };
             const isActive =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              matchesPath(item.href) ||
+              (item.altPaths?.some(matchesPath) ?? false);
             return (
               <div key={item.href}>
                 {item.section && !collapsed && (
