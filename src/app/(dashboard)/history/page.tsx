@@ -138,15 +138,15 @@ export default function HistoryPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "approved":
-        return <Badge variant="default">Approved</Badge>;
+        return <Badge variant="default">Đã duyệt</Badge>;
       case "auto_approved":
         return (
           <Badge variant="default" className="bg-emerald-600">
-            Auto Approved
+            Tự động duyệt
           </Badge>
         );
       case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>;
+        return <Badge variant="destructive">Từ chối</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -157,16 +157,16 @@ export default function HistoryPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Assignment History
+            Lịch sử phân công
           </h1>
           <p className="text-muted-foreground">
-            Read-only archive of all proxy request outcomes
+            Kho lưu trữ chỉ đọc của tất cả kết quả yêu cầu proxy
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="size-4 mr-1.5" />
-            Export CSV
+            Xuất CSV
           </Button>
           <Button
             variant="outline"
@@ -177,7 +177,7 @@ export default function HistoryPage() {
             <RefreshCw
               className={`size-4 mr-1.5 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            Làm mới
           </Button>
         </div>
       </div>
@@ -185,14 +185,14 @@ export default function HistoryPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Filters</CardTitle>
+          <CardTitle className="text-sm font-medium">Bộ lọc</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
-                placeholder="Search by user..."
+                placeholder="Tìm theo người dùng..."
                 value={userSearch}
                 onChange={(e) => {
                   setUserSearch(e.target.value);
@@ -209,13 +209,13 @@ export default function HistoryPage() {
               }}
             >
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Trạng thái" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="auto_approved">Auto Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                <SelectItem value="approved">Đã duyệt</SelectItem>
+                <SelectItem value="auto_approved">Tự động duyệt</SelectItem>
+                <SelectItem value="rejected">Từ chối</SelectItem>
               </SelectContent>
             </Select>
             <Input
@@ -226,7 +226,7 @@ export default function HistoryPage() {
                 setPage(1);
               }}
               className="w-[160px]"
-              placeholder="From date"
+              placeholder="Từ ngày"
             />
             <Input
               type="date"
@@ -236,7 +236,7 @@ export default function HistoryPage() {
                 setPage(1);
               }}
               className="w-[160px]"
-              placeholder="To date"
+              placeholder="Đến ngày"
             />
           </div>
         </CardContent>
@@ -249,11 +249,11 @@ export default function HistoryPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Proxy</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Processed By</TableHead>
-                <TableHead>Requested At</TableHead>
-                <TableHead>Processed At</TableHead>
+                <TableHead>Người dùng</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Xử lý bởi</TableHead>
+                <TableHead>Yêu cầu lúc</TableHead>
+                <TableHead>Xử lý lúc</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,7 +273,7 @@ export default function HistoryPage() {
                     colSpan={6}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No history records found
+                    Không tìm thấy lịch sử
                   </TableCell>
                 </TableRow>
               ) : (
@@ -322,7 +322,7 @@ export default function HistoryPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t">
               <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages} ({total} records)
+                Trang {page} / {totalPages} ({total} bản ghi)
               </span>
               <div className="flex gap-2">
                 <Button
@@ -331,7 +331,7 @@ export default function HistoryPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  Previous
+                  Trước
                 </Button>
                 <Button
                   variant="outline"
@@ -339,7 +339,7 @@ export default function HistoryPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  Next
+                  Sau
                 </Button>
               </div>
             </div>

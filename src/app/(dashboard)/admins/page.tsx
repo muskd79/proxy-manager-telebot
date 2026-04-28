@@ -175,15 +175,15 @@ export default function AdminsPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
         <ShieldOff className="size-12 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">Access Denied</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Không có quyền truy cập</h1>
         <p className="text-muted-foreground">
-          You do not have permission to manage admins. Only super admins can access this page.
+          Bạn không có quyền quản lý quản trị viên. Chỉ super_admin mới truy cập được trang này.
         </p>
         <button
           onClick={() => router.push("/dashboard")}
           className="text-sm text-primary underline hover:no-underline"
         >
-          Go to Dashboard
+          Về trang chủ
         </button>
       </div>
     );
@@ -194,23 +194,23 @@ export default function AdminsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Admin Management
+            Quản trị viên
           </h1>
           <p className="text-muted-foreground">
-            Manage administrators and their roles
+            Quản lý người quản trị + vai trò + 2FA
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
             <DialogTrigger render={<Button size="sm" />}>
                 <Plus className="size-4 mr-1.5" />
-                Add Admin
+                Thêm quản trị viên
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Invite Admin</DialogTitle>
+                <DialogTitle>Mời quản trị viên</DialogTitle>
                 <DialogDescription>
-                  Send an invitation to a new administrator.
+                  Gửi lời mời tới quản trị viên mới qua email.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -225,15 +225,15 @@ export default function AdminsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
+                  <Label htmlFor="role">Vai trò</Label>
                   <Select value={inviteRole} onValueChange={(v) => setInviteRole(v ?? '')}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="super_admin">Super Admin</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="super_admin">Super admin</SelectItem>
+                      <SelectItem value="admin">Quản trị viên</SelectItem>
+                      <SelectItem value="viewer">Xem chỉ</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -243,10 +243,10 @@ export default function AdminsPage() {
                   variant="outline"
                   onClick={() => setInviteOpen(false)}
                 >
-                  Cancel
+                  Huỷ
                 </Button>
                 <Button onClick={handleInvite} disabled={inviteLoading}>
-                  {inviteLoading ? "Inviting..." : "Send Invitation"}
+                  {inviteLoading ? "Đang gửi..." : "Gửi lời mời"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -271,13 +271,13 @@ export default function AdminsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
+                <TableHead>Họ tên</TableHead>
                 <TableHead>Telegram ID</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Vai trò</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Đăng nhập cuối</TableHead>
+                <TableHead>Ngày tham gia</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -297,7 +297,7 @@ export default function AdminsPage() {
                     colSpan={8}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No admins found
+                    Chưa có quản trị viên
                   </TableCell>
                 </TableRow>
               ) : (
@@ -321,13 +321,13 @@ export default function AdminsPage() {
                       <Badge
                         variant={admin.is_active ? "default" : "destructive"}
                       >
-                        {admin.is_active ? "Active" : "Inactive"}
+                        {admin.is_active ? "Hoạt động" : "Tạm khoá"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {admin.last_login_at
                         ? format(new Date(admin.last_login_at), "yyyy-MM-dd HH:mm")
-                        : "Never"}
+                        : "Chưa từng"}
                     </TableCell>
                     <TableCell>
                       {format(new Date(admin.created_at), "yyyy-MM-dd")}
@@ -342,11 +342,9 @@ export default function AdminsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="super_admin">
-                              Super Admin
-                            </SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="viewer">Viewer</SelectItem>
+                            <SelectItem value="super_admin">Super admin</SelectItem>
+                            <SelectItem value="admin">Quản trị viên</SelectItem>
+                            <SelectItem value="viewer">Xem chỉ</SelectItem>
                           </SelectContent>
                         </Select>
                         <Button
@@ -356,12 +354,12 @@ export default function AdminsPage() {
                             handleToggleActive(admin.id, admin.is_active)
                           }
                         >
-                          {admin.is_active ? "Deactivate" : "Activate"}
+                          {admin.is_active ? "Tạm khoá" : "Kích hoạt"}
                         </Button>
                         {/* Wave 22F-D: link to detail page with force-actions */}
                         <Link href={`/admins/${admin.id}`}>
                           <Button variant="outline" size="sm">
-                            Manage
+                            Quản lý
                           </Button>
                         </Link>
                       </div>

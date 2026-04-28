@@ -118,15 +118,15 @@ export default function LogsPage() {
     <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Activity Logs</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Nhật ký hệ thống</h1>
           <p className="text-muted-foreground">
-            System activity and audit trail
+            Xem hành động admin + sự kiện hệ thống
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="size-4 mr-1.5" />
-            Export CSV
+            Xuất CSV
           </Button>
           <Button
             variant="outline"
@@ -137,7 +137,7 @@ export default function LogsPage() {
             <RefreshCw
               className={`size-4 mr-1.5 ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            Làm mới
           </Button>
         </div>
       </div>
@@ -145,14 +145,14 @@ export default function LogsPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Filters</CardTitle>
+          <CardTitle className="text-sm font-medium">Bộ lọc</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
-                placeholder="Search in details..."
+                placeholder="Tìm trong chi tiết..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -169,10 +169,10 @@ export default function LogsPage() {
               }}
             >
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Actor type" />
+                <SelectValue placeholder="Loại người thực hiện" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All actors</SelectItem>
+                <SelectItem value="all">Tất cả</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="tele_user">Tele User</SelectItem>
                 <SelectItem value="system">System</SelectItem>
@@ -196,10 +196,10 @@ export default function LogsPage() {
               }}
             >
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Resource type" />
+                <SelectValue placeholder="Loại tài nguyên" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All resources</SelectItem>
+                <SelectItem value="all">Tất cả tài nguyên</SelectItem>
                 <SelectItem value="proxy">Proxy</SelectItem>
                 <SelectItem value="tele_user">Tele User</SelectItem>
                 <SelectItem value="proxy_request">Request</SelectItem>
@@ -235,13 +235,13 @@ export default function LogsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[170px]">Timestamp</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Actor</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Resource</TableHead>
-                <TableHead>Resource ID</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead className="w-[170px]">Thời điểm</TableHead>
+                <TableHead>Loại</TableHead>
+                <TableHead>Người thực hiện</TableHead>
+                <TableHead>Thao tác</TableHead>
+                <TableHead>Tài nguyên</TableHead>
+                <TableHead>ID tài nguyên</TableHead>
+                <TableHead>Chi tiết</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -260,8 +260,8 @@ export default function LogsPage() {
                   <TableCell colSpan={7}>
                     <EmptyState
                       icon={<Inbox className="h-10 w-10" />}
-                      title="No logs found"
-                      description="No activity logs match the current filters. Try adjusting your search criteria."
+                      title="Không có nhật ký"
+                      description="Không có nhật ký phù hợp với bộ lọc hiện tại. Thử điều chỉnh tiêu chí tìm kiếm."
                     />
                   </TableCell>
                 </TableRow>
@@ -322,7 +322,7 @@ export default function LogsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t">
               <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages} ({total} records)
+                Trang {page} / {totalPages} ({total} bản ghi)
               </span>
               <div className="flex gap-2">
                 <Button
@@ -331,7 +331,7 @@ export default function LogsPage() {
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                 >
-                  Previous
+                  Trước
                 </Button>
                 <Button
                   variant="outline"
@@ -339,7 +339,7 @@ export default function LogsPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  Next
+                  Sau
                 </Button>
               </div>
             </div>

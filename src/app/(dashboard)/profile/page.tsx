@@ -85,7 +85,7 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("Failed to fetch profile:", err);
-      toast.error("Failed to load profile");
+      toast.error("Tải hồ sơ thất bại");
     } finally {
       setLoading(false);
     }
@@ -98,7 +98,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="flex-1 space-y-6 p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Hồ sơ</h1>
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="size-6 animate-spin text-muted-foreground" />
         </div>
@@ -109,8 +109,8 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <div className="flex-1 space-y-6 p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
-        <p className="text-muted-foreground">Failed to load profile data.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Hồ sơ</h1>
+        <p className="text-muted-foreground">Tải hồ sơ thất bại.</p>
       </div>
     );
   }
@@ -118,9 +118,9 @@ export default function ProfilePage() {
   return (
     <div className="flex-1 space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Hồ sơ</h1>
         <p className="text-muted-foreground">
-          Manage your account, security, and 2FA settings
+          Quản lý tài khoản, bảo mật và cài đặt 2FA
         </p>
       </div>
 
@@ -136,23 +136,23 @@ export default function ProfilePage() {
         <CardContent className="flex flex-wrap items-center gap-2 text-sm">
           <Badge variant="default">{profile.role.replace("_", " ")}</Badge>
           <Badge variant={profile.is_active ? "default" : "destructive"}>
-            {profile.is_active ? "Active" : "Inactive"}
+            {profile.is_active ? "Đang hoạt động" : "Không hoạt động"}
           </Badge>
           {profile.totp_enabled_at && (
             <Badge variant="default" className="bg-emerald-600">
               <ShieldCheck className="size-3 mr-1" />
-              2FA enabled
+              Đã bật 2FA
             </Badge>
           )}
           {profile.pending_email && (
             <Badge variant="outline" className="border-orange-500 text-orange-600">
               <Mail className="size-3 mr-1" />
-              Pending: {profile.pending_email}
+              Đang chờ: {profile.pending_email}
             </Badge>
           )}
           {profile.last_login_at && (
             <span className="text-muted-foreground ml-auto">
-              Last login: {new Date(profile.last_login_at).toLocaleString()}
+              Đăng nhập lần cuối: {new Date(profile.last_login_at).toLocaleString()}
               {profile.last_login_ip && ` · ${profile.last_login_ip}`}
             </span>
           )}
@@ -161,10 +161,10 @@ export default function ProfilePage() {
 
       <Tabs defaultValue="profile">
         <TabsList>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="2fa">Two-Factor</TabsTrigger>
-          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="profile">Cá nhân</TabsTrigger>
+          <TabsTrigger value="security">Bảo mật</TabsTrigger>
+          <TabsTrigger value="2fa">Xác thực 2 lớp</TabsTrigger>
+          <TabsTrigger value="sessions">Phiên đăng nhập</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-4">
@@ -214,10 +214,10 @@ function ProfileTab({ profile, onUpdate }: { profile: ProfileData; onUpdate: () 
       });
       const body = await res.json();
       if (res.ok) {
-        toast.success("Profile updated");
+        toast.success("Đã cập nhật hồ sơ");
         onUpdate();
       } else {
-        toast.error(body.error || "Failed to update");
+        toast.error(body.error || "Cập nhật thất bại");
       }
     } finally {
       setSaving(false);
@@ -227,17 +227,17 @@ function ProfileTab({ profile, onUpdate }: { profile: ProfileData; onUpdate: () 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Personal Information</CardTitle>
+        <CardTitle>Thông tin cá nhân</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="full-name">Full Name</Label>
+          <Label htmlFor="full-name">Họ và tên</Label>
           <Input
             id="full-name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             maxLength={100}
-            placeholder="e.g. John Doe"
+            placeholder="VD: Nguyễn Văn A"
           />
         </div>
         <div className="space-y-2">
@@ -247,16 +247,16 @@ function ProfileTab({ profile, onUpdate }: { profile: ProfileData; onUpdate: () 
             type="number"
             value={telegramId}
             onChange={(e) => setTelegramId(e.target.value)}
-            placeholder="e.g. 123456789"
+            placeholder="VD: 123456789"
           />
           <p className="text-xs text-muted-foreground">
-            Use @userinfobot on Telegram to find your ID. Required to receive
-            admin alerts on your phone.
+            Dùng @userinfobot trên Telegram để lấy ID. Cần thiết để nhận
+            thông báo admin trên điện thoại.
           </p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="size-4 mr-1.5" />
-          {saving ? "Saving..." : "Save Changes"}
+          {saving ? "Đang lưu..." : "Lưu thay đổi"}
         </Button>
       </CardContent>
     </Card>
@@ -274,11 +274,11 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
 
   const handleChange = async () => {
     if (newPwd.length < 12) {
-      toast.error("New password must be at least 12 characters");
+      toast.error("Mật khẩu mới tối thiểu 12 ký tự");
       return;
     }
     if (newPwd !== confirmPwd) {
-      toast.error("Passwords don't match");
+      toast.error("Mật khẩu không khớp");
       return;
     }
     setLoading(true);
@@ -293,7 +293,7 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
       });
       const body = await res.json();
       if (res.ok) {
-        toast.success(body.message || "Password changed; other sessions signed out");
+        toast.success(body.message || "Đã đổi mật khẩu; các phiên khác đã đăng xuất");
         setCurrentPwd("");
         setNewPwd("");
         setConfirmPwd("");
@@ -311,16 +311,15 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Lock className="size-5" />
-          Change Password
+          Đổi mật khẩu
         </CardTitle>
         <CardDescription>
-          Server-side change with current-password gate. All other sessions
-          are revoked on success.
+          Đổi mật khẩu phía server với xác thực mật khẩu hiện tại. Tất cả phiên khác sẽ bị thu hồi khi thành công.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Current Password</Label>
+          <Label>Mật khẩu hiện tại</Label>
           <Input
             type="password"
             value={currentPwd}
@@ -329,16 +328,16 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>New Password</Label>
+            <Label>Mật khẩu mới</Label>
             <Input
               type="password"
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
-              placeholder="Min 12 chars"
+              placeholder="Tối thiểu 12 ký tự"
             />
           </div>
           <div className="space-y-2">
-            <Label>Confirm New Password</Label>
+            <Label>Xác nhận mật khẩu mới</Label>
             <Input
               type="password"
               value={confirmPwd}
@@ -352,7 +351,7 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
           ) : (
             <Lock className="size-4 mr-1.5" />
           )}
-          Change Password
+          Đổi mật khẩu
         </Button>
       </CardContent>
     </Card>
@@ -380,7 +379,7 @@ function EmailCard({ currentEmail, onChanged }: { currentEmail: string; onChange
       });
       const body = await res.json();
       if (res.ok) {
-        toast.success(body.message || "Confirmation link sent");
+        toast.success(body.message || "Đã gửi link xác nhận");
         setPwd("");
         setNewEmail("");
         onChanged();
@@ -397,17 +396,15 @@ function EmailCard({ currentEmail, onChanged }: { currentEmail: string; onChange
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Mail className="size-5" />
-          Change Email
+          Đổi email
         </CardTitle>
         <CardDescription>
-          Current: <span className="font-mono">{currentEmail}</span>. We send a
-          confirmation link to the new address; click it to complete the
-          change.
+          Hiện tại: <span className="font-mono">{currentEmail}</span>. Chúng tôi sẽ gửi link xác nhận đến địa chỉ mới; nhấn vào để hoàn tất thay đổi.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Current Password</Label>
+          <Label>Mật khẩu hiện tại</Label>
           <Input
             type="password"
             value={pwd}
@@ -415,7 +412,7 @@ function EmailCard({ currentEmail, onChanged }: { currentEmail: string; onChange
           />
         </div>
         <div className="space-y-2">
-          <Label>New Email</Label>
+          <Label>Email mới</Label>
           <Input
             type="email"
             value={newEmail}
@@ -428,7 +425,7 @@ function EmailCard({ currentEmail, onChanged }: { currentEmail: string; onChange
           ) : (
             <Mail className="size-4 mr-1.5" />
           )}
-          Send Confirmation Link
+          Gửi link xác nhận
         </Button>
       </CardContent>
     </Card>
@@ -473,13 +470,13 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       });
       const body = await res.json();
       if (res.ok) {
-        toast.success("2FA enabled!");
+        toast.success("Đã bật 2FA!");
         setBackupCodes(body.data?.backup_codes ?? []);
         setEnrollData(null);
         setCode("");
         onChanged();
       } else {
-        toast.error(body.error || "Invalid code");
+        toast.error(body.error || "Mã không hợp lệ");
       }
     } finally {
       setLoading(false);
@@ -496,7 +493,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       });
       const body = await res.json();
       if (res.ok) {
-        toast.success("2FA disabled");
+        toast.success("Đã tắt 2FA");
         setShowDisable(false);
         setDisablePwd("");
         onChanged();
@@ -509,7 +506,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
   };
 
   const handleRegenerate = async () => {
-    const pwd = window.prompt("Enter your current password to regenerate codes:");
+    const pwd = window.prompt("Nhập mật khẩu hiện tại để tạo lại mã backup:");
     if (!pwd) return;
     setLoading(true);
     try {
@@ -521,7 +518,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       const body = await res.json();
       if (res.ok) {
         setBackupCodes(body.data?.backup_codes ?? []);
-        toast.success("New backup codes issued");
+        toast.success("Đã cấp mã backup mới");
       } else {
         toast.error(body.error || "Failed");
       }
@@ -536,23 +533,23 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Smartphone className="size-5" />
-            Two-Factor Authentication
+            Xác thực hai lớp (2FA)
             {enabled && (
               <Badge variant="default" className="bg-emerald-600 ml-2">
-                Enabled
+                Đã bật
               </Badge>
             )}
           </CardTitle>
           <CardDescription>
-            TOTP-based 2FA via any authenticator app (Google Authenticator,
-            Authy, 1Password, etc).
+            Xác thực TOTP qua ứng dụng authenticator (Google Authenticator,
+            Authy, 1Password, v.v.).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {!enabled && !enrollData && (
             <Button onClick={handleStart} disabled={loading}>
               <ShieldCheck className="size-4 mr-1.5" />
-              Enable 2FA
+              Bật 2FA
             </Button>
           )}
 
@@ -566,12 +563,12 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
                   className="size-40 border"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Scan with your authenticator, or enter manually:
+                  Quét bằng ứng dụng authenticator, hoặc nhập thủ công:
                 </p>
                 <code className="text-xs bg-muted px-2 py-1 rounded">{enrollData.secret}</code>
               </div>
               <div className="space-y-2">
-                <Label>Enter 6-digit code from app</Label>
+                <Label>Nhập mã 6 chữ số từ ứng dụng</Label>
                 <Input
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
@@ -581,7 +578,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
               </div>
               <Button onClick={handleVerify} disabled={loading || code.length !== 6}>
                 <ShieldCheck className="size-4 mr-1.5" />
-                Verify & Enable
+                Xác nhận & Bật
               </Button>
             </div>
           )}
@@ -589,14 +586,14 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
           {enabled && (
             <div className="flex gap-2">
               <Button variant="outline" onClick={handleRegenerate} disabled={loading}>
-                Regenerate backup codes
+                Tạo lại mã backup
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => setShowDisable(true)}
               >
                 <ShieldOff className="size-4 mr-1.5" />
-                Disable 2FA
+                Tắt 2FA
               </Button>
             </div>
           )}
@@ -607,28 +604,27 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       <Dialog open={showDisable} onOpenChange={setShowDisable}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Disable 2FA</DialogTitle>
+            <DialogTitle>Tắt 2FA</DialogTitle>
             <DialogDescription>
-              Enter your current password to confirm. Your authenticator app
-              will be unenrolled and backup codes deleted.
+              Nhập mật khẩu hiện tại để xác nhận. Ứng dụng authenticator sẽ bị huỷ đăng ký và mã backup sẽ bị xoá.
             </DialogDescription>
           </DialogHeader>
           <Input
             type="password"
-            placeholder="Current password"
+            placeholder="Mật khẩu hiện tại"
             value={disablePwd}
             onChange={(e) => setDisablePwd(e.target.value)}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDisable(false)}>
-              Cancel
+              Huỷ
             </Button>
             <Button
               variant="destructive"
               onClick={handleDisable}
               disabled={loading || !disablePwd}
             >
-              Disable 2FA
+              Tắt 2FA
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -638,11 +634,10 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       <Dialog open={!!backupCodes} onOpenChange={(o) => !o && setBackupCodes(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save your backup codes</DialogTitle>
+            <DialogTitle>Lưu mã backup của bạn</DialogTitle>
             <DialogDescription>
-              Each code works ONCE. Use one to log in if you lose your
-              authenticator device. Store them in a password manager —
-              they will not be shown again.
+              Mỗi mã chỉ dùng được MỘT LẦN. Dùng để đăng nhập nếu mất thiết bị authenticator. Lưu vào trình quản lý mật khẩu —
+              chúng sẽ không được hiển thị lại.
             </DialogDescription>
           </DialogHeader>
           {backupCodes && (
@@ -657,16 +652,16 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
                 size="sm"
                 onClick={() => {
                   navigator.clipboard.writeText(backupCodes.join("\n"));
-                  toast.success("Copied all codes to clipboard");
+                  toast.success("Đã chép toàn bộ mã");
                 }}
               >
                 <ClipboardCopy className="size-4 mr-1.5" />
-                Copy all
+                Sao chép tất cả
               </Button>
             </div>
           )}
           <DialogFooter>
-            <Button onClick={() => setBackupCodes(null)}>I&rsquo;ve saved them</Button>
+            <Button onClick={() => setBackupCodes(null)}>Đã lưu xong</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -700,12 +695,12 @@ function SessionsTab() {
   }, [fetchHistory]);
 
   const handleRevoke = async () => {
-    if (!confirm("Revoke ALL other browser sessions? You'll stay signed in here.")) return;
+    if (!confirm("Thu hồi TẤT CẢ các phiên trình duyệt khác? Bạn vẫn sẽ ở lại trang này.")) return;
     setRevoking(true);
     try {
       const res = await fetch("/api/profile/sessions/revoke", { method: "POST" });
       if (res.ok) {
-        toast.success("Other sessions revoked");
+        toast.success("Đã thu hồi các phiên khác");
         fetchHistory();
       } else {
         const body = await res.json();
@@ -721,10 +716,10 @@ function SessionsTab() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <LogOut className="size-5" />
-          Sessions & Login History
+          Phiên đăng nhập & Lịch sử
         </CardTitle>
         <CardDescription>
-          Last 30 events. Revoke other sessions if you suspect a stolen cookie.
+          30 sự kiện gần nhất. Thu hồi các phiên khác nếu bạn nghi ngờ cookie bị đánh cắp.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -734,24 +729,24 @@ function SessionsTab() {
           ) : (
             <LogOut className="size-4 mr-1.5" />
           )}
-          Sign out all other sessions
+          Đăng xuất tất cả phiên khác
         </Button>
 
         {loading ? (
           <Loader2 className="size-5 animate-spin" />
         ) : history.length === 0 ? (
           <p className="text-sm text-muted-foreground flex items-center gap-2">
-            <AlertCircle className="size-4" /> No history yet — login_logs table
-            may not have any entries before Wave 22F. New events will appear
-            here.
+            <AlertCircle className="size-4" /> Chưa có lịch sử — bảng login_logs
+            có thể chưa có bản ghi trước Wave 22F. Sự kiện mới sẽ hiển thị
+            ở đây.
           </p>
         ) : (
           <div className="rounded-md border">
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-xs">
                 <tr>
-                  <th className="text-left p-2">Time</th>
-                  <th className="text-left p-2">Action</th>
+                  <th className="text-left p-2">Thời gian</th>
+                  <th className="text-left p-2">Thao tác</th>
                   <th className="text-left p-2">IP</th>
                   <th className="text-left p-2">User-Agent</th>
                 </tr>

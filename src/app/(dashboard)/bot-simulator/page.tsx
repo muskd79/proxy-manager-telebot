@@ -32,18 +32,18 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // All bot commands available in the simulator
 const BOT_COMMANDS = [
-  { name: "start", label: "/start", description: "Welcome & register" },
-  { name: "getproxy", label: "/getproxy", description: "Request proxy" },
-  { name: "myproxies", label: "/myproxies", description: "View proxies" },
-  { name: "checkproxy", label: "/checkproxy", description: "Health check" },
-  { name: "status", label: "/status", description: "Account status" },
-  { name: "history", label: "/history", description: "Request history" },
-  { name: "revoke", label: "/revoke", description: "Return proxy" },
-  { name: "cancel", label: "/cancel", description: "Cancel pending" },
-  { name: "language", label: "/language", description: "Change language" },
-  { name: "support", label: "/support", description: "Get support" },
-  { name: "help", label: "/help", description: "Show help" },
-  { name: "requests", label: "/requests", description: "Admin requests" },
+  { name: "start", label: "/start", description: "Chào & đăng ký" },
+  { name: "getproxy", label: "/getproxy", description: "Yêu cầu proxy" },
+  { name: "myproxies", label: "/myproxies", description: "Xem proxy" },
+  { name: "checkproxy", label: "/checkproxy", description: "Kiểm tra" },
+  { name: "status", label: "/status", description: "Trạng thái tài khoản" },
+  { name: "history", label: "/history", description: "Lịch sử yêu cầu" },
+  { name: "revoke", label: "/revoke", description: "Trả proxy" },
+  { name: "cancel", label: "/cancel", description: "Huỷ đang chờ" },
+  { name: "language", label: "/language", description: "Đổi ngôn ngữ" },
+  { name: "support", label: "/support", description: "Hỗ trợ" },
+  { name: "help", label: "/help", description: "Xem trợ giúp" },
+  { name: "requests", label: "/requests", description: "Yêu cầu admin" },
 ];
 
 interface InlineButton {
@@ -76,7 +76,7 @@ export default function BotSimulatorPage() {
         }
       } catch (err) {
         console.error("Failed to fetch users:", err);
-        toast.error("Failed to load users");
+        toast.error("Tải danh sách người dùng thất bại");
       } finally {
         setIsLoadingUsers(false);
       }
@@ -158,7 +158,7 @@ export default function BotSimulatorPage() {
   // Send a command to the simulator API
   const sendCommand = async (command: string) => {
     if (!selectedUserId) {
-      toast.error("Please select a user first");
+      toast.error("Hãy chọn người dùng trước");
       return;
     }
     setIsSending(true);
@@ -170,11 +170,11 @@ export default function BotSimulatorPage() {
       });
       const json = await res.json();
       if (!json.success) {
-        toast.error(json.error || "Command failed");
+        toast.error(json.error || "Lệnh thất bại");
       }
     } catch (err) {
       console.error("Command error:", err);
-      toast.error("Failed to send command");
+      toast.error("Gửi lệnh thất bại");
     } finally {
       setIsSending(false);
     }
@@ -195,11 +195,11 @@ export default function BotSimulatorPage() {
       });
       const json = await res.json();
       if (!json.success) {
-        toast.error(json.error || "Callback failed");
+        toast.error(json.error || "Callback thất bại");
       }
     } catch (err) {
       console.error("Callback error:", err);
-      toast.error("Failed to send callback");
+      toast.error("Gửi callback thất bại");
     } finally {
       setIsSending(false);
     }
@@ -220,9 +220,9 @@ export default function BotSimulatorPage() {
     try {
       // We just clear local state; messages stay in DB for auditing
       setMessages([]);
-      toast.success("Chat view cleared");
+      toast.success("Đã xoá lượt xem hội thoại");
     } catch {
-      toast.error("Failed to clear history");
+      toast.error("Xoá lịch sử thất bại");
     }
   };
 
@@ -249,9 +249,9 @@ export default function BotSimulatorPage() {
           <Terminal className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Bot Simulator</h1>
+          <h1 className="text-2xl font-bold">Test bot (giả lập)</h1>
           <p className="text-sm text-muted-foreground">
-            Test bot commands without sending real Telegram messages
+            Kiểm tra lệnh bot mà không gửi tin nhắn Telegram thật
           </p>
         </div>
       </div>
@@ -263,7 +263,7 @@ export default function BotSimulatorPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium">
-                Select User
+                Chọn người dùng
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -275,7 +275,7 @@ export default function BotSimulatorPage() {
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
-                      isLoadingUsers ? "Loading users..." : "Choose a user..."
+                      isLoadingUsers ? "Đang tải..." : "Chọn người dùng..."
                     }
                   />
                 </SelectTrigger>
@@ -315,7 +315,7 @@ export default function BotSimulatorPage() {
           {/* Command Buttons */}
           <Card className="flex-1 overflow-hidden">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Commands</CardTitle>
+              <CardTitle className="text-sm font-medium">Lệnh</CardTitle>
             </CardHeader>
             <CardContent className="p-3 pt-0">
               <ScrollArea className="h-[calc(100vh-28rem)]">
@@ -374,9 +374,9 @@ export default function BotSimulatorPage() {
           {!selectedUserId ? (
             <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
               <Bot className="mb-3 h-12 w-12 opacity-30" />
-              <p className="text-lg font-medium">Select a user</p>
+              <p className="text-lg font-medium">Chọn người dùng</p>
               <p className="text-sm">
-                Choose a user from the sidebar to start simulating
+                Chọn người dùng từ thanh bên để bắt đầu giả lập
               </p>
             </div>
           ) : (
@@ -394,7 +394,7 @@ export default function BotSimulatorPage() {
                         : selectedUser?.first_name || "Unknown User"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Simulator Mode
+                      Chế độ giả lập
                     </p>
                   </div>
                   <Badge variant="outline" className="text-[10px]">
@@ -425,7 +425,7 @@ export default function BotSimulatorPage() {
                 ) : messages.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center text-muted-foreground">
                     <p className="text-sm">
-                      No messages yet. Send a command to start.
+                      Chưa có tin nhắn. Gửi lệnh để bắt đầu.
                     </p>
                   </div>
                 ) : (

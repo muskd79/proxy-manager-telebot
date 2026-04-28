@@ -32,9 +32,9 @@ export default function ChatPage() {
           <MessageCircle className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Chat Monitor</h1>
+          <h1 className="text-2xl font-bold">Hộp thoại bot</h1>
           <p className="text-sm text-muted-foreground">
-            View conversations between the bot and Telegram users
+            Xem hội thoại giữa bot và người dùng Telegram
           </p>
         </div>
       </div>

@@ -145,7 +145,7 @@ export default function SettingsPage() {
         }),
       });
       if (res.ok) {
-        toast.success("Settings saved successfully");
+        toast.success("Đã lưu cài đặt");
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to save settings");
@@ -175,12 +175,12 @@ export default function SettingsPage() {
         );
       } else {
         setBotConnected(false);
-        toast.error("Bot connection test failed");
+        toast.error("Kết nối bot thất bại");
       }
     } catch (err) {
       console.error("Bot connection test failed:", err);
       setBotConnected(false);
-      toast.error("Bot connection test failed");
+      toast.error("Kết nối bot thất bại");
     } finally {
       setTestingBot(false);
     }
@@ -194,7 +194,7 @@ export default function SettingsPage() {
   const copyWebhookUrl = () => {
     if (settings.webhook_url) {
       navigator.clipboard.writeText(settings.webhook_url);
-      toast.success("Webhook URL copied");
+      toast.success("Đã chép URL webhook");
     }
   };
 
@@ -202,7 +202,7 @@ export default function SettingsPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
         <ShieldOff className="size-12 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">Access Denied</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Không có quyền truy cập</h1>
         <p className="text-muted-foreground">
           You do not have permission to manage settings. Only super admins can access this page.
         </p>
@@ -219,7 +219,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex-1 space-y-6 p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Cài đặt</h1>
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="size-6 animate-spin text-muted-foreground" />
         </div>
@@ -231,21 +231,21 @@ export default function SettingsPage() {
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Cài đặt</h1>
           <p className="text-muted-foreground">
             System configuration and preferences
           </p>
         </div>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="size-4 mr-1.5" />
-          {saving ? "Saving..." : "Save Settings"}
+          {saving ? "Saving..." : "Save Cài đặt"}
         </Button>
       </div>
 
-      {/* Default Rate Limits */}
+      {/* Giới hạn mặc định */}
       <Card>
         <CardHeader>
-          <CardTitle>Default Rate Limits</CardTitle>
+          <CardTitle>Giới hạn mặc định</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -253,7 +253,7 @@ export default function SettingsPage() {
           </p>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor="hourly">Hourly Limit</Label>
+              <Label htmlFor="hourly">Giới hạn / giờ</Label>
               <Input
                 id="hourly"
                 type="number"
@@ -268,7 +268,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="daily">Daily Limit</Label>
+              <Label htmlFor="daily">Giới hạn / ngày</Label>
               <Input
                 id="daily"
                 type="number"
@@ -283,7 +283,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="total">Total Limit</Label>
+              <Label htmlFor="total">Tổng giới hạn</Label>
               <Input
                 id="total"
                 type="number"
@@ -301,10 +301,10 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Global Limits */}
+      {/* Giới hạn toàn cục */}
       <Card>
         <CardHeader>
-          <CardTitle>Global Limits</CardTitle>
+          <CardTitle>Giới hạn toàn cục</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -353,7 +353,7 @@ export default function SettingsPage() {
       {/* Approval Mode */}
       <Card>
         <CardHeader>
-          <CardTitle>Default Approval Mode</CardTitle>
+          <CardTitle>Chế độ duyệt mặc định</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -383,10 +383,10 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Trash Settings */}
+      {/* Cài đặt thùng rác */}
       <Card>
         <CardHeader>
-          <CardTitle>Trash Settings</CardTitle>
+          <CardTitle>Trash Cài đặt</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -423,7 +423,7 @@ export default function SettingsPage() {
               }
             />
             <Label htmlFor="apply-existing" className="cursor-pointer">
-              Apply default limits to all existing users when saving
+              Áp dụng giới hạn mặc định cho mọi người dùng đã có when saving
             </Label>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -471,11 +471,11 @@ export default function SettingsPage() {
 
       <Separator />
 
-      {/* Telegram Bot Settings */}
+      {/* Cài đặt Bot Telegram */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Telegram Bot</CardTitle>
+            <CardTitle>Bot Telegram</CardTitle>
             <div className="flex items-center gap-2">
               {botConnected !== null && (
                 <Badge

@@ -15,10 +15,10 @@ export default function TrashPage() {
     <div className="flex-1 space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Trash</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Thùng rác</h1>
           <p className="text-muted-foreground">
-            Manage soft-deleted items. Items are permanently removed after 30
-            days.
+            Quản lý các mục đã xoá mềm. Các mục sẽ bị xoá vĩnh viễn sau 30
+            ngày.
           </p>
         </div>
       </div>
@@ -28,17 +28,17 @@ export default function TrashPage() {
         <CardContent className="flex items-center gap-3 py-3">
           <AlertTriangle className="size-5 text-amber-600" />
           <p className="text-sm text-amber-700 dark:text-amber-400">
-            Items in trash are automatically permanently deleted after 30 days.
-            Restore items before then to keep them.
+            Các mục trong thùng rác sẽ tự động bị xoá vĩnh viễn sau 30 ngày.
+            Hãy khôi phục trước đó nếu muốn giữ lại.
           </p>
         </CardContent>
       </Card>
 
       <Tabs defaultValue="proxies">
         <TabsList>
-          <TabsTrigger value="proxies">Proxies</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="requests">Requests</TabsTrigger>
+          <TabsTrigger value="proxies">Proxy</TabsTrigger>
+          <TabsTrigger value="users">Người dùng</TabsTrigger>
+          <TabsTrigger value="requests">Yêu cầu</TabsTrigger>
         </TabsList>
         <TabsContent value="proxies">
           <TrashProxies canWrite={canWrite} />
