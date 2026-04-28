@@ -92,6 +92,10 @@ export default function LogsPage() {
     const csv = buildCsv<ActivityLog>(logs, [
       { header: "Timestamp", value: (l) => format(new Date(l.created_at), "yyyy-MM-dd HH:mm:ss") },
       { header: "Actor Type", value: (l) => l.actor_type },
+      // Wave 22D-2: include both display name AND raw ID — incidents
+      // sometimes need the immutable UUID even when the human-readable
+      // name has been edited.
+      { header: "Actor", value: (l) => l.actor_display_name ?? "" },
       { header: "Actor ID", value: (l) => l.actor_id ?? "" },
       { header: "Action", value: (l) => l.action },
       { header: "Resource Type", value: (l) => l.resource_type ?? "" },
@@ -232,8 +236,8 @@ export default function LogsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[170px]">Timestamp</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Actor</TableHead>
-                <TableHead>Actor ID</TableHead>
                 <TableHead>Action</TableHead>
                 <TableHead>Resource</TableHead>
                 <TableHead>Resource ID</TableHead>
@@ -276,8 +280,21 @@ export default function LogsPage() {
                         {log.actor_type}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {log.actor_id ? log.actor_id.slice(0, 8) + "..." : "-"}
+                    {/* Wave 22D-2: prefer actor_display_name (point-in-time
+                        snapshot from logger.ts / mig 034 backfill). Falls
+                        back to truncated UUID for old rows that escaped the
+                        backfill (e.g. orphaned actor_id pointing at a row
+                        that no longer exists). */}
+                    <TableCell className="text-xs">
+                      {log.actor_display_name ? (
+                        <span className="font-medium">{log.actor_display_name}</span>
+                      ) : log.actor_id ? (
+                        <span className="font-mono text-muted-foreground">
+                          {log.actor_id.slice(0, 8)}...
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="font-medium">{log.action}</TableCell>
                     <TableCell>

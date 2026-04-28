@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { CreateCategorySchema } from "@/lib/validations";
@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "category.create",
       resourceType: "proxy_category",
       resourceId: data.id,

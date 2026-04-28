@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminOrAbove } from "@/lib/auth";
+import { requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { AssignProxiesToCategorySchema } from "@/lib/validations";
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "category.bulk_assign",
       resourceType: "proxy_category",
       resourceId: parsed.data.category_id ?? undefined,

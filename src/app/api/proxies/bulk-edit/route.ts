@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminOrAbove } from "@/lib/auth";
+import { requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "proxy.bulk_edit",
       resourceType: "proxy",
       details: {

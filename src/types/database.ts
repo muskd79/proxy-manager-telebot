@@ -253,6 +253,16 @@ export interface ActivityLog {
   id: string;
   actor_type: "admin" | "tele_user" | "system" | "bot";
   actor_id: string | null;
+  /**
+   * Wave 22D point-in-time snapshot of the actor's display name.
+   * Captured at insert time by lib/logger.ts; backfilled for old
+   * rows by mig 034. Optional because:
+   *   - Pre-Wave-22D rows might have NULL if backfill couldn't find
+   *     a matching admin/tele_user (orphaned actor_id).
+   *   - Selective fetches may not project the column.
+   * UI fallback: when null, /logs shows the truncated UUID.
+   */
+  actor_display_name?: string | null;
   action: string;
   resource_type: string | null;
   resource_id: string | null;

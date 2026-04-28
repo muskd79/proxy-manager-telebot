@@ -186,6 +186,20 @@ export function canManageSettings(role: Role): boolean {
 }
 
 /**
+ * Wave 22D-2: derive a human-readable actor label from an AdminInfo.
+ *
+ * Used by API routes when calling lib/logger.ts:logActivity so the
+ * /logs UI shows "Bob Admin" instead of an 8-char UUID slice.
+ *
+ * Falls through full_name → email → "Admin" so even malformed admin
+ * rows produce something sensible. The result is stored on the log
+ * row at insert time (point-in-time snapshot — see mig 032 + 034).
+ */
+export function actorLabel(admin: Pick<AdminInfo, "full_name" | "email">): string {
+  return admin.full_name || admin.email || "Admin";
+}
+
+/**
  * Verify cron secret using timing-safe comparison to prevent timing attacks.
  * Returns null if valid, or a NextResponse error if invalid.
  */

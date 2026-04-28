@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { Proxy, ProxyUpdate } from "@/types/database";
 import { ProxyStatus } from "@/types/database";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { UpdateProxySchema } from "@/lib/validations";
 import { proxyMachine } from "@/lib/state-machine/proxy";
@@ -146,6 +146,7 @@ export async function PUT(
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "proxy.update",
       resourceType: "proxy",
       resourceId: id,
@@ -224,6 +225,7 @@ export async function DELETE(
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "proxy.delete",
       resourceType: "proxy",
       resourceId: id,

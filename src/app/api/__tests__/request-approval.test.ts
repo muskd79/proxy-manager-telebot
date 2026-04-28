@@ -37,6 +37,9 @@ const mockAdmin = {
 vi.mock("@/lib/auth", () => ({
   requireAnyRole: vi.fn(async () => ({ admin: mockAdmin, error: null })),
   requireAdminOrAbove: vi.fn(async () => ({ admin: mockAdmin, error: null })),
+  // Wave 22D-2: routes call actorLabel(admin) when writing logs.
+  actorLabel: (a: { full_name?: string | null; email?: string | null }) =>
+    a?.full_name || a?.email || "Admin",
 }));
 
 vi.mock("@/lib/logger", () => ({

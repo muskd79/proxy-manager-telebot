@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { ImportProxyResult } from "@/types/api";
 import type { ProxyType } from "@/types/database";
-import { requireAdminOrAbove } from "@/lib/auth";
+import { requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "proxy.import",
       resourceType: "proxy",
       details: {

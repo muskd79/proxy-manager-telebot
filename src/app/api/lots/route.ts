@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminOrAbove, requireAnyRole } from "@/lib/auth";
+import { requireAdminOrAbove, requireAnyRole, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { ImportLotPayloadSchema, type ImportLotResult } from "@/lib/lots/import-payload";
@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: result.deduplicated ? "lot.import.dedup" : "lot.import.create",
       resourceType: "purchase_lot",
       resourceId: result.lot_id,

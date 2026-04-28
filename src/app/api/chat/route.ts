@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { ChatMessage, TeleUser } from "@/types/database";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { SendChatMessageSchema } from "@/lib/validations";
 
@@ -199,6 +199,7 @@ export async function POST(request: NextRequest) {
   logActivity({
     actorType: "admin",
     actorId: admin.id,
+    actorDisplayName: actorLabel(admin),
     action: "chat.reply",
     resourceType: "tele_user",
     resourceId: tele_user_id,

@@ -54,6 +54,9 @@ const mockRequireAdminOrAbove = vi.fn();
 vi.mock("@/lib/auth", () => ({
   requireAnyRole: (...args: any[]) => mockRequireAnyRole(...args),
   requireAdminOrAbove: (...args: any[]) => mockRequireAdminOrAbove(...args),
+  // Wave 22D-2: routes call actorLabel(admin) when writing logs.
+  actorLabel: (a: { full_name?: string | null; email?: string | null }) =>
+    a?.full_name || a?.email || "Admin",
 }));
 
 // Import route handlers after mocks

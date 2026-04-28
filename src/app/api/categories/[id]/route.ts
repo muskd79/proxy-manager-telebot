@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { UpdateCategorySchema } from "@/lib/validations";
@@ -92,6 +92,7 @@ export async function PATCH(
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "category.update",
       resourceType: "proxy_category",
       resourceId: id,
@@ -157,6 +158,7 @@ export async function DELETE(
   logActivity({
     actorType: "admin",
     actorId: admin.id,
+    actorDisplayName: actorLabel(admin),
     action: "category.delete",
     resourceType: "proxy_category",
     resourceId: id,

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import type { ProxyFilters, PaginatedResponse } from "@/types/api";
 import type { Proxy } from "@/types/database";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { CreateProxySchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "proxy.create",
       resourceType: "proxy",
       resourceId: data.id,

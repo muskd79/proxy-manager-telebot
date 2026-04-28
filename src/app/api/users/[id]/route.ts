@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { ApiResponse } from "@/types/api";
 import type { TeleUser } from "@/types/database";
-import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
+import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { UpdateUserSchema } from "@/lib/validations";
 
@@ -154,6 +154,7 @@ export async function PUT(
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "user.update",
       resourceType: "user",
       resourceId: id,
@@ -231,6 +232,7 @@ export async function DELETE(
       logActivity({
         actorType: "admin",
         actorId: admin.id,
+        actorDisplayName: actorLabel(admin),
         action: "user.delete",
         resourceType: "user",
         resourceId: id,
@@ -265,6 +267,7 @@ export async function DELETE(
     logActivity({
       actorType: "admin",
       actorId: admin.id,
+      actorDisplayName: actorLabel(admin),
       action: "user.delete",
       resourceType: "user",
       resourceId: id,

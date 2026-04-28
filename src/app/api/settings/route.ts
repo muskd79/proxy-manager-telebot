@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/lib/auth";
+import { requireSuperAdmin, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { SettingsPutSchema, SettingsPostSchema } from "@/lib/validations";
 
@@ -161,6 +161,7 @@ export async function PUT(request: NextRequest) {
       logActivity({
         actorType: "admin",
         actorId: admin.id,
+        actorDisplayName: actorLabel(admin),
         action: "settings.update",
         resourceType: "settings",
         details: { keys: Object.keys(settings), applyToExisting: !!applyToExisting },
