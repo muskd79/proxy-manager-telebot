@@ -13,9 +13,12 @@ export default function ProxiesImportPage() {
           <ArrowLeft className="size-4" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Import Proxies</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Dán / Import proxy</h1>
           <p className="text-muted-foreground">
-            Bulk import proxies from TXT or CSV files
+            Dán tới 1000 dòng <code className="rounded bg-muted px-1 text-xs">host:port</code>{" "}
+            hoặc <code className="rounded bg-muted px-1 text-xs">host:port:user:pass</code>,
+            hoặc upload file TXT/CSV. Hệ thống sẽ tự kiểm tra trước khi
+            thêm vào kho.
           </p>
         </div>
       </div>

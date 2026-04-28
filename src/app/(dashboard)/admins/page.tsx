@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 interface AdminData {
   id: string;
@@ -73,6 +74,20 @@ export default function AdminsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("admin");
   const [inviteLoading, setInviteLoading] = useState(false);
+  // Wave 22X — confirmation dialogs for destructive admin actions.
+  // Pre-fix: one-click role change or deactivate had ZERO undo path.
+  // Misclick on a super_admin row demoted them to viewer silently.
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    adminId: string;
+    email: string;
+    fromRole: string;
+    toRole: string;
+  } | null>(null);
+  const [pendingActiveToggle, setPendingActiveToggle] = useState<{
+    adminId: string;
+    email: string;
+    isActive: boolean;
+  } | null>(null);
 
   const fetchAdmins = useCallback(async () => {
     setLoading(true);
@@ -123,51 +138,87 @@ export default function AdminsPage() {
     }
   };
 
-  const handleRoleChange = async (adminId: string, newRole: string) => {
+  // Wave 22X — confirm-then-execute pattern. The Select onValueChange
+  // queues the change; user must confirm in ConfirmDialog before
+  // server is called. Demoting yourself from super_admin is server-
+  // side blocked already (Wave 22F-C), but the UX warning here keeps
+  // accidental misclicks from happening.
+  const handleRoleChange = (
+    admin: AdminData,
+    newRole: string,
+  ) => {
+    if (admin.role === newRole) return;
+    setPendingRoleChange({
+      adminId: admin.id,
+      email: admin.email,
+      fromRole: admin.role,
+      toRole: newRole,
+    });
+  };
+
+  const confirmRoleChange = async () => {
+    if (!pendingRoleChange) return;
     try {
       const res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update_admin_role",
-          adminId,
-          role: newRole,
+          adminId: pendingRoleChange.adminId,
+          role: pendingRoleChange.toRole,
         }),
       });
       if (res.ok) {
-        toast.success("Role updated");
+        toast.success(`Đã đổi vai trò: ${pendingRoleChange.email} → ${pendingRoleChange.toRole}`);
         fetchAdmins();
       } else {
         const err = await res.json();
-        toast.error(err.error || "Failed to update role");
+        toast.error(err.error || "Đổi vai trò thất bại");
       }
     } catch (err) {
       console.error("Failed to update role:", err);
-      toast.error("Failed to update role");
+      toast.error("Đổi vai trò thất bại");
+    } finally {
+      setPendingRoleChange(null);
     }
   };
 
-  const handleToggleActive = async (adminId: string, isActive: boolean) => {
+  const handleToggleActive = (admin: AdminData) => {
+    setPendingActiveToggle({
+      adminId: admin.id,
+      email: admin.email,
+      isActive: admin.is_active,
+    });
+  };
+
+  const confirmToggleActive = async () => {
+    if (!pendingActiveToggle) return;
     try {
       const res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "toggle_admin_active",
-          adminId,
-          is_active: !isActive,
+          adminId: pendingActiveToggle.adminId,
+          is_active: !pendingActiveToggle.isActive,
         }),
       });
       if (res.ok) {
-        toast.success(isActive ? "Admin deactivated" : "Admin activated");
+        toast.success(
+          pendingActiveToggle.isActive
+            ? `Đã tạm khoá ${pendingActiveToggle.email}`
+            : `Đã kích hoạt ${pendingActiveToggle.email}`,
+        );
         fetchAdmins();
       } else {
         const err = await res.json();
-        toast.error(err.error || "Failed to update admin");
+        toast.error(err.error || "Cập nhật thất bại");
       }
     } catch (err) {
       console.error("Failed to update admin:", err);
-      toast.error("Failed to update admin");
+      toast.error("Cập nhật thất bại");
+    } finally {
+      setPendingActiveToggle(null);
     }
   };
 
@@ -341,7 +392,7 @@ export default function AdminsPage() {
                       <div className="flex justify-end gap-2">
                         <Select
                           value={admin.role}
-                          onValueChange={(v) => handleRoleChange(admin.id, v ?? '')}
+                          onValueChange={(v) => handleRoleChange(admin, v ?? '')}
                         >
                           <SelectTrigger className="w-[130px] h-8 text-xs">
                             <SelectValue />
@@ -355,9 +406,7 @@ export default function AdminsPage() {
                         <Button
                           variant={admin.is_active ? "destructive" : "outline"}
                           size="sm"
-                          onClick={() =>
-                            handleToggleActive(admin.id, admin.is_active)
-                          }
+                          onClick={() => handleToggleActive(admin)}
                         >
                           {admin.is_active ? "Tạm khoá" : "Kích hoạt"}
                         </Button>
@@ -377,6 +426,45 @@ export default function AdminsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Wave 22X — confirm dialog for role change */}
+      <ConfirmDialog
+        open={pendingRoleChange !== null}
+        onOpenChange={(open) => !open && setPendingRoleChange(null)}
+        variant="destructive"
+        title="Đổi vai trò?"
+        description={
+          pendingRoleChange
+            ? `Đổi vai trò của ${pendingRoleChange.email} từ "${pendingRoleChange.fromRole}" sang "${pendingRoleChange.toRole}". ` +
+              (pendingRoleChange.toRole === "viewer"
+                ? "Tài khoản này sẽ mất khả năng ghi/sửa."
+                : pendingRoleChange.fromRole === "super_admin"
+                  ? "Tài khoản này sẽ mất quyền quản lý admin và cài đặt."
+                  : "")
+            : ""
+        }
+        confirmText="Đổi vai trò"
+        cancelText="Huỷ"
+        onConfirm={confirmRoleChange}
+      />
+
+      {/* Wave 22X — confirm dialog for activate / deactivate */}
+      <ConfirmDialog
+        open={pendingActiveToggle !== null}
+        onOpenChange={(open) => !open && setPendingActiveToggle(null)}
+        variant={pendingActiveToggle?.isActive ? "destructive" : "default"}
+        title={pendingActiveToggle?.isActive ? "Tạm khoá tài khoản?" : "Kích hoạt lại tài khoản?"}
+        description={
+          pendingActiveToggle
+            ? pendingActiveToggle.isActive
+              ? `${pendingActiveToggle.email} sẽ không thể đăng nhập cho đến khi được kích hoạt lại. Phiên hiện tại của họ vẫn còn — dùng "Quản lý → Thu hồi phiên" để buộc đăng xuất.`
+              : `${pendingActiveToggle.email} có thể đăng nhập trở lại sau khi xác nhận.`
+            : ""
+        }
+        confirmText={pendingActiveToggle?.isActive ? "Tạm khoá" : "Kích hoạt"}
+        cancelText="Huỷ"
+        onConfirm={confirmToggleActive}
+      />
     </div>
   );
 }

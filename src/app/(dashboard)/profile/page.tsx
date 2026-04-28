@@ -30,6 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 /**
  * Wave 22F-D — /profile page rebuild.
@@ -446,6 +447,11 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [disablePwd, setDisablePwd] = useState("");
   const [showDisable, setShowDisable] = useState(false);
+  // Wave 22X — replace window.prompt() with a real Dialog. Pre-fix
+  // typed the password into native prompt which leaks plaintext to
+  // clipboard managers and password managers can't fill it.
+  const [showRegenerate, setShowRegenerate] = useState(false);
+  const [regeneratePwd, setRegeneratePwd] = useState("");
 
   const handleStart = async () => {
     setLoading(true);
@@ -506,19 +512,20 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
   };
 
   const handleRegenerate = async () => {
-    const pwd = window.prompt("Nhập mật khẩu hiện tại để tạo lại mã backup:");
-    if (!pwd) return;
+    if (!regeneratePwd) return;
     setLoading(true);
     try {
       const res = await fetch("/api/profile/2fa/backup-codes/regenerate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_password: pwd }),
+        body: JSON.stringify({ current_password: regeneratePwd }),
       });
       const body = await res.json();
       if (res.ok) {
         setBackupCodes(body.data?.backup_codes ?? []);
         toast.success("Đã cấp mã backup mới");
+        setShowRegenerate(false);
+        setRegeneratePwd("");
       } else {
         toast.error(body.error || "Failed");
       }
@@ -585,7 +592,11 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
 
           {enabled && (
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleRegenerate} disabled={loading}>
+              <Button
+                variant="outline"
+                onClick={() => setShowRegenerate(true)}
+                disabled={loading}
+              >
                 Tạo lại mã backup
               </Button>
               <Button
@@ -625,6 +636,37 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
               disabled={loading || !disablePwd}
             >
               Tắt 2FA
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wave 22X — Regenerate backup-codes dialog (replaces window.prompt) */}
+      <Dialog open={showRegenerate} onOpenChange={setShowRegenerate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tạo lại mã backup 2FA</DialogTitle>
+            <DialogDescription>
+              Mã backup cũ sẽ bị thu hồi NGAY khi bạn bấm xác nhận. Nhập
+              mật khẩu hiện tại để xác minh.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="password"
+            placeholder="Mật khẩu hiện tại"
+            value={regeneratePwd}
+            onChange={(e) => setRegeneratePwd(e.target.value)}
+            autoComplete="current-password"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRegenerate(false)}>
+              Huỷ
+            </Button>
+            <Button
+              onClick={handleRegenerate}
+              disabled={loading || !regeneratePwd}
+            >
+              Tạo mã mới
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -676,6 +718,9 @@ function SessionsTab() {
   const [history, setHistory] = useState<LoginLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState(false);
+  // Wave 22X — replace native confirm() with ConfirmDialog. Pre-fix
+  // blocked UI on iOS, ignored theme, and could be popup-throttled.
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -695,7 +740,6 @@ function SessionsTab() {
   }, [fetchHistory]);
 
   const handleRevoke = async () => {
-    if (!confirm("Thu hồi TẤT CẢ các phiên trình duyệt khác? Bạn vẫn sẽ ở lại trang này.")) return;
     setRevoking(true);
     try {
       const res = await fetch("/api/profile/sessions/revoke", { method: "POST" });
@@ -708,6 +752,7 @@ function SessionsTab() {
       }
     } finally {
       setRevoking(false);
+      setShowRevokeConfirm(false);
     }
   };
 
@@ -723,7 +768,22 @@ function SessionsTab() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button variant="outline" onClick={handleRevoke} disabled={revoking}>
+        <ConfirmDialog
+          open={showRevokeConfirm}
+          onOpenChange={setShowRevokeConfirm}
+          variant="destructive"
+          title="Thu hồi các phiên khác?"
+          description="TẤT CẢ phiên trình duyệt khác sẽ bị đăng xuất ngay. Bạn vẫn sẽ ở lại trang này. Dùng tính năng này nếu bạn nghi ngờ cookie bị đánh cắp."
+          confirmText="Thu hồi"
+          cancelText="Huỷ"
+          loading={revoking}
+          onConfirm={handleRevoke}
+        />
+        <Button
+          variant="outline"
+          onClick={() => setShowRevokeConfirm(true)}
+          disabled={revoking}
+        >
           {revoking ? (
             <Loader2 className="size-4 mr-1.5 animate-spin" />
           ) : (

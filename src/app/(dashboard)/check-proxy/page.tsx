@@ -36,8 +36,11 @@ import {
   Loader2,
   Play,
   ShieldAlert,
+  ShieldOff,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -111,6 +114,10 @@ function parseLine(raw: string, idx: number): ParsedRow {
 }
 
 export default function CheckProxyPage() {
+  // Wave 22X — role gate. probe-batch endpoint is admin-gated server-side;
+  // this prevents viewers from even seeing the form.
+  const { canWrite } = useRole();
+  const router = useRouter();
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [results, setResults] = useState<ProbeResult[]>([]);
@@ -193,6 +200,28 @@ export default function CheckProxyPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // Wave 22X — role gate (after all hooks). Viewer should not be able
+  // to spawn 1000-host probe waves (resource abuse vector flagged by
+  // UX agent review).
+  if (!canWrite) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+        <ShieldOff className="size-12 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Không có quyền truy cập</h1>
+        <p className="max-w-md text-center text-muted-foreground">
+          Chỉ admin và super_admin mới có thể chạy kiểm tra proxy. Tính
+          năng này gọi sửa đổi tài nguyên hệ thống nên cần quyền ghi.
+        </p>
+        <button
+          onClick={() => router.push("/proxies")}
+          className="text-sm text-primary underline hover:no-underline"
+        >
+          Về Quản lý proxy
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 space-y-6 p-6">

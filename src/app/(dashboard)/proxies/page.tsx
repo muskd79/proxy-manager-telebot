@@ -219,9 +219,30 @@ export default function ProxiesPage() {
     }
   }
 
+  // Wave 22X — bulk delete with error tally + summary toast.
+  // Pre-fix: silent for-loop; if request #50 of 100 failed the user
+  // saw nothing and the list desynced. Now run all in parallel via
+  // allSettled and report exact counts.
   async function handleBulkDelete() {
-    for (const id of selectedIds) {
-      await fetch(`/api/proxies/${id}`, { method: "DELETE" });
+    if (selectedIds.length === 0) return;
+    const results = await Promise.allSettled(
+      selectedIds.map((id) =>
+        fetch(`/api/proxies/${id}`, { method: "DELETE" }).then(async (r) => {
+          if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+          }
+        }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.length - ok;
+    if (failed === 0) {
+      toast.success(`Đã chuyển ${ok} proxy vào Thùng rác`);
+    } else if (ok === 0) {
+      toast.error(`Xoá thất bại cho cả ${failed} proxy`);
+    } else {
+      toast.warning(`Xoá thành công ${ok}/${results.length} (${failed} lỗi)`);
     }
     setSelectedIds([]);
     fetchProxies();

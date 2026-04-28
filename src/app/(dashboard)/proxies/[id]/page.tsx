@@ -7,7 +7,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import type { Proxy, ProxyRequest } from "@/types/database";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 export default function ProxyDetailPage({
   params,
@@ -20,6 +22,9 @@ export default function ProxyDetailPage({
   const [history, setHistory] = useState<ProxyRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
+  // Wave 22X — confirm before single-proxy delete (HIGH #17 from review)
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchProxy = useCallback(async () => {
     setLoading(true);
@@ -75,10 +80,29 @@ export default function ProxyDetailPage({
     fetchProxy();
   }
 
-  async function handleDelete() {
-    const res = await fetch(`/api/proxies/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      router.push("/proxies");
+  // Wave 22X — confirm-then-delete + toast feedback. Pre-fix: 1 click
+  // soft-deleted the proxy with NO confirm and NO toast.
+  function requestDelete() {
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/proxies/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Đã chuyển proxy vào thùng rác");
+        router.push("/proxies");
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || "Xoá proxy thất bại");
+      }
+    } catch (err) {
+      console.error("Failed to delete proxy:", err);
+      toast.error("Xoá proxy thất bại");
+    } finally {
+      setDeleting(false);
+      setDeleteOpen(false);
     }
   }
 
@@ -102,10 +126,10 @@ export default function ProxyDetailPage({
   if (!proxy) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
-        <p className="text-muted-foreground">Proxy not found</p>
+        <p className="text-muted-foreground">Không tìm thấy proxy</p>
         <Link href="/proxies" className={buttonVariants({ variant: "outline" })}>
           <ArrowLeft className="size-4 mr-1.5" />
-          Back to Proxies
+          Quay lại danh sách
         </Link>
       </div>
     );
@@ -118,7 +142,7 @@ export default function ProxyDetailPage({
           <ArrowLeft className="size-4" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Proxy Details</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Chi tiết proxy</h1>
           <p className="text-muted-foreground font-mono">
             {proxy.host}:{proxy.port}
           </p>
@@ -129,7 +153,7 @@ export default function ProxyDetailPage({
         proxy={proxy}
         assignmentHistory={history}
         onEdit={() => setFormOpen(true)}
-        onDelete={handleDelete}
+        onDelete={requestDelete}
         onHealthCheck={handleHealthCheck}
       />
 
@@ -138,6 +162,18 @@ export default function ProxyDetailPage({
         onOpenChange={setFormOpen}
         proxy={proxy}
         onSave={handleSave}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        variant="destructive"
+        title="Xoá proxy này?"
+        description={`${proxy.host}:${proxy.port} sẽ được chuyển vào Thùng rác. Bạn có 30 ngày để khôi phục trước khi hệ thống xoá vĩnh viễn.`}
+        confirmText="Xoá"
+        cancelText="Huỷ"
+        loading={deleting}
+        onConfirm={confirmDelete}
       />
     </div>
   );

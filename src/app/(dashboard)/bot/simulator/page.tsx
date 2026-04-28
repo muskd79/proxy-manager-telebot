@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { BotSubTabs } from "@/components/bot/bot-sub-tabs";
+import { useRole } from "@/lib/role-context";
+import { ShieldOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   Bot,
   User,
@@ -53,6 +56,12 @@ interface InlineButton {
 }
 
 export default function BotSimulatorPage() {
+  // Wave 22X — role gate. Pre-fix any viewer could fire commands as
+  // any tele_user via /api/bot-simulator/command. UX-agent flagged this
+  // as a BLOCKER (impersonation surface). Server still enforces, this
+  // is the client-side affordance.
+  const { canWrite } = useRole();
+  const router = useRouter();
   const [users, setUsers] = useState<TeleUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -241,6 +250,30 @@ export default function BotSimulatorPage() {
       | undefined;
     if (!inlineKeyboard || !Array.isArray(inlineKeyboard)) return null;
     return inlineKeyboard;
+  }
+
+  // Wave 22X — role gate (after all hooks, before JSX). Pre-fix any
+  // viewer could fire commands as any tele_user via
+  // /api/bot-simulator/command. Server still enforces; this hides
+  // the affordance for viewers + adds explicit "no access" message.
+  if (!canWrite) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] flex-col items-center justify-center gap-4 p-6">
+        <BotSubTabs />
+        <ShieldOff className="size-12 text-muted-foreground" />
+        <h1 className="text-2xl font-bold tracking-tight">Không có quyền truy cập</h1>
+        <p className="max-w-md text-center text-muted-foreground">
+          Chỉ admin và super_admin mới có thể giả lập lệnh bot. Trang này
+          có thể giả mạo hành động của người dùng Telegram nên cần quyền ghi.
+        </p>
+        <button
+          onClick={() => router.push("/bot")}
+          className="text-sm text-primary underline hover:no-underline"
+        >
+          Về Quản lý Bot
+        </button>
+      </div>
+    );
   }
 
   return (

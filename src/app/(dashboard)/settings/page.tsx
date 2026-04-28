@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Select,
   SelectContent,
@@ -53,6 +54,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [applyToExisting, setApplyToExisting] = useState(false);
+  // Wave 22X — confirm-before-save when applying to existing users.
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
   const [botConnected, setBotConnected] = useState<boolean | null>(null);
 
@@ -122,8 +125,20 @@ export default function SettingsPage() {
     fetchSettings();
   }, [fetchSettings]);
 
+  // Wave 22X — confirm-then-save when applyToExisting is checked.
+  // Pre-fix: one click silently mutated rate limits for EVERY existing
+  // bot user (could be thousands). Now show DangerousConfirmDialog.
+  const requestSave = () => {
+    if (applyToExisting) {
+      setShowApplyConfirm(true);
+    } else {
+      handleSave();
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
+    setShowApplyConfirm(false);
     try {
       // Transform admin_telegram_ids from comma-separated string to number array
       const settingsToSave = {
@@ -236,9 +251,9 @@ export default function SettingsPage() {
             System configuration and preferences
           </p>
         </div>
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={requestSave} disabled={saving}>
           <Save className="size-4 mr-1.5" />
-          {saving ? "Saving..." : "Save Cài đặt"}
+          {saving ? "Đang lưu..." : "Lưu cài đặt"}
         </Button>
       </div>
 
@@ -562,6 +577,27 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Wave 22X — confirm before broadcasting rate-limit changes to
+          every existing bot user. The api/settings handler iterates
+          tele_users and resets max_proxies; one slip and thousands
+          of accounts get a different limit silently. */}
+      <ConfirmDialog
+        open={showApplyConfirm}
+        onOpenChange={setShowApplyConfirm}
+        variant="destructive"
+        title="Áp dụng cho TẤT CẢ user hiện có?"
+        description={
+          `Bạn đã đánh dấu "Áp dụng cho user đã có". Khi xác nhận, ` +
+          `rate-limit và max_proxies mới sẽ ghi đè cấu hình hiện tại của ` +
+          `MỌI bot user (bao gồm các user đã được override thủ công). ` +
+          `Hành động này không thể undo. Hãy chắc chắn trước khi tiếp tục.`
+        }
+        confirmText="Áp dụng cho mọi user"
+        cancelText="Huỷ"
+        loading={saving}
+        onConfirm={handleSave}
+      />
     </div>
   );
 }
