@@ -168,7 +168,7 @@ export function useImportWizard() {
           password: r.password ?? null,
           country,
           isp: null,
-          tags: null,
+          // Wave 22C: tags removed; categories assigned post-import.
           notes: null,
           expires_at: null,
         };

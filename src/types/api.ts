@@ -39,7 +39,8 @@ export interface ProxyFilters {
   status?: ProxyStatus;
   country?: string;
   assignedTo?: string;
-  tags?: string[];
+  // Wave 22C: tags filter removed (use category_id instead).
+  categoryId?: string;
   isp?: string;
   isDeleted?: boolean;
   page?: number;

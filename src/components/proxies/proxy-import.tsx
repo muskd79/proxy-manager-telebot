@@ -26,9 +26,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+// Wave 22C: Badge removed with the tags input.
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, FileText, CheckCircle, XCircle, Loader2, X } from "lucide-react";
+import { Upload, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
@@ -48,7 +48,7 @@ export function ProxyImport() {
   const [parsedProxies, setParsedProxies] = useState<ParsedProxy[]>([]);
   const [proxyType, setProxyType] = useState<ProxyType>(ProxyType.HTTP);
   const [country, setCountry] = useState("");
-  const [tags, setTags] = useState("");
+  // Wave 22C: tags state removed. Use /categories admin page for groupings.
   const [notes, setNotes] = useState("");
   const [isp, setIsp] = useState("");
   const [importing, setImporting] = useState(false);
@@ -178,9 +178,6 @@ export function ProxyImport() {
           proxies: validProxies,
           type: proxyType,
           country: country || undefined,
-          tags: tags
-            ? tags.split(",").map((t) => t.trim()).filter(Boolean)
-            : undefined,
           notes: notes || undefined,
           isp: isp || undefined,
         }),
@@ -281,69 +278,8 @@ export function ProxyImport() {
                 onChange={(e) => setIsp(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="import-tags">Tags</Label>
-              <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 min-h-[38px]">
-                {tags
-                  .split(",")
-                  .map((t) => t.trim())
-                  .filter(Boolean)
-                  .map((tag, idx) => (
-                    <Badge key={`${tag}-${idx}`} variant="secondary" className="gap-1 text-xs">
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tagList = tags
-                            .split(",")
-                            .map((t) => t.trim())
-                            .filter(Boolean)
-                            .filter((_, i) => i !== idx);
-                          setTags(tagList.join(", "));
-                        }}
-                        className="ml-0.5 rounded-full hover:bg-foreground/20 p-0.5"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                <Input
-                  id="import-tags"
-                  placeholder={
-                    tags.split(",").filter((t) => t.trim()).length > 0
-                      ? "Add more..."
-                      : "Type a tag and press Enter"
-                  }
-                  className="flex-1 min-w-[120px] border-0 bg-transparent p-0 h-auto shadow-none focus-visible:ring-0"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === ",") {
-                      e.preventDefault();
-                      const val = e.currentTarget.value.trim();
-                      if (val) {
-                        const existing = tags
-                          .split(",")
-                          .map((t) => t.trim())
-                          .filter(Boolean);
-                        if (!existing.includes(val)) {
-                          setTags([...existing, val].join(", "));
-                        }
-                        e.currentTarget.value = "";
-                      }
-                    }
-                    if (e.key === "Backspace" && !e.currentTarget.value) {
-                      const existing = tags
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean);
-                      if (existing.length > 0) {
-                        setTags(existing.slice(0, -1).join(", "));
-                      }
-                    }
-                  }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">Press Enter or comma to add a tag</p>
-            </div>
+            {/* Wave 22C: tags input removed. Categories assigned post-import
+                via /categories or the bulk-assign dropdown on /proxies. */}
           </div>
 
           <div className="space-y-2">

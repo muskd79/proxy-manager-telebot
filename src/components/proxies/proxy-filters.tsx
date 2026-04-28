@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -11,11 +9,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X, Tag } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { ProxyType, ProxyStatus } from "@/types/database";
 import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 
-const POPULAR_TAGS = ["residential", "datacenter", "premium", "fast", "rotating", "static", "mobile"];
+/**
+ * Filter bar for the proxies list page.
+ *
+ * Wave 22C: tag inputs + chips removed in favour of strong categories.
+ * Use the dedicated /categories page to manage groupings; the filter
+ * here drops down to standard fields (search, type, status, country, ISP).
+ *
+ * The category filter chip is rendered as a separate component on
+ * /proxies?category_id=X — kept out of this component to keep the
+ * filter bar simple and avoid coupling categories fetch to filter UI.
+ */
 
 interface ProxyFiltersProps {
   filters: ProxyFiltersType;
@@ -28,9 +36,6 @@ export function ProxyFilters({
   onFiltersChange,
   countries,
 }: ProxyFiltersProps) {
-  const [tagInput, setTagInput] = useState("");
-  const tagInputRef = useRef<HTMLInputElement>(null);
-
   function updateFilter(key: keyof ProxyFiltersType, value: unknown) {
     onFiltersChange({ ...filters, [key]: value || undefined, page: 1 });
   }
@@ -42,35 +47,6 @@ export function ProxyFilters({
       sortBy: filters.sortBy,
       sortOrder: filters.sortOrder,
     });
-    setTagInput("");
-  }
-
-  const addTag = useCallback(
-    (tag: string) => {
-      const trimmed = tag.trim().toLowerCase();
-      if (!trimmed) return;
-      const currentTags = filters.tags || [];
-      if (currentTags.includes(trimmed)) return;
-      updateFilter("tags", [...currentTags, trimmed]);
-      setTagInput("");
-    },
-    [filters.tags]
-  );
-
-  function removeTag(tag: string) {
-    const currentTags = filters.tags || [];
-    const newTags = currentTags.filter((t) => t !== tag);
-    updateFilter("tags", newTags.length > 0 ? newTags : undefined);
-  }
-
-  function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTag(tagInput);
-    }
-    if (e.key === "Backspace" && !tagInput && filters.tags?.length) {
-      removeTag(filters.tags[filters.tags.length - 1]);
-    }
   }
 
   const hasActiveFilters =
@@ -79,7 +55,7 @@ export function ProxyFilters({
     filters.status ||
     filters.country ||
     filters.isp ||
-    (filters.tags && filters.tags.length > 0);
+    filters.categoryId;
 
   return (
     <div className="space-y-3">
@@ -157,20 +133,6 @@ export function ProxyFilters({
           className="w-32"
         />
 
-        {/* Tags filter input */}
-        <div className="relative min-w-[200px] max-w-sm">
-          <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            ref={tagInputRef}
-            placeholder="Filter by tags..."
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={handleTagKeyDown}
-            onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
-            className="pl-8"
-          />
-        </div>
-
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="size-4 mr-1" />
@@ -178,45 +140,6 @@ export function ProxyFilters({
           </Button>
         )}
       </div>
-
-      {/* Selected tags and popular tag chips */}
-      {(filters.tags?.length || !filters.tags?.length) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Active tag filters */}
-          {filters.tags?.map((tag) => (
-            <Badge key={tag} variant="default" className="gap-1 text-xs">
-              {tag}
-              <button
-                type="button"
-                onClick={() => removeTag(tag)}
-                className="ml-0.5 rounded-full hover:bg-foreground/20 p-0.5"
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
-
-          {/* Popular tags as quick-filter chips */}
-          {POPULAR_TAGS.filter((t) => !filters.tags?.includes(t)).length > 0 && (
-            <>
-              {filters.tags && filters.tags.length > 0 && (
-                <span className="text-xs text-muted-foreground mx-1">|</span>
-              )}
-              <span className="text-xs text-muted-foreground">Quick:</span>
-              {POPULAR_TAGS.filter((t) => !filters.tags?.includes(t)).map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="outline"
-                  className="cursor-pointer text-xs hover:bg-accent transition-colors"
-                  onClick={() => addTag(tag)}
-                >
-                  {tag}
-                </Badge>
-              ))}
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

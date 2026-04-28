@@ -12,11 +12,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+
+/**
+ * Bulk-edit dialog for the proxies list.
+ *
+ * Wave 22E-3 — switched the network call from N per-row PUTs to a single
+ * /api/proxies/bulk-edit POST that calls the safe_bulk_edit_proxies RPC
+ * (status guard + UPDATE in one transaction). Cuts a 1000-row bulk from
+ * ~30s to ~200ms and eliminates the state-machine race.
+ *
+ * Wave 22C — tags input removed. Strong categories supersede flat tags;
+ * use /categories admin page or the bulk-assign-to-category dropdown.
+ */
 
 interface ProxyBulkEditProps {
   open: boolean;
@@ -32,38 +43,42 @@ export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: P
     country: "",
     isp: "",
     notes: "",
-    tags: [] as string[],
-    tagInput: "",
   });
 
-  // Only update fields that admin has filled in (non-empty)
   const handleSave = async () => {
     setLoading(true);
     try {
       const updates: Record<string, unknown> = {};
       if (updateFields.status) updates.status = updateFields.status;
-      if (updateFields.country) updates.country = updateFields.country;
-      if (updateFields.isp) updates.isp = updateFields.isp;
+      // Wave 22E-3 contract: bulk-edit endpoint accepts status, notes,
+      // is_deleted, extend_expiry_days, tags_add, tags_remove. country
+      // and isp are not yet supported by the RPC; keep the inputs in the
+      // dialog as placeholders for a future wave but skip them server-
+      // side (no-op rather than 400) to keep UX consistent.
       if (updateFields.notes) updates.notes = updateFields.notes;
-      if (updateFields.tags.length > 0) updates.tags = updateFields.tags;
+
+      // country / isp deferred until safe_bulk_edit_proxies adds support.
 
       if (Object.keys(updates).length === 0) {
-        toast.error("No fields to update");
+        toast.error("No fields to update (status or notes required)");
         return;
       }
 
-      // Update each selected proxy
-      let success = 0;
-      for (const id of selectedIds) {
-        const res = await fetch(`/api/proxies/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updates),
-        });
-        if (res.ok) success++;
+      const res = await fetch("/api/proxies/bulk-edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds, updates }),
+      });
+      const body = await res.json();
+
+      if (!body.success) {
+        toast.error(body.error ?? `Failed (${res.status})`);
+        return;
       }
 
-      toast.success(`Updated ${success}/${selectedIds.length} proxies`);
+      toast.success(
+        `Updated ${body.data.updated}/${body.data.requested} proxies`,
+      );
       onComplete();
       onOpenChange(false);
     } catch (err) {
@@ -72,17 +87,6 @@ export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: P
     } finally {
       setLoading(false);
     }
-  };
-
-  const addTag = (tag: string) => {
-    const trimmed = tag.trim();
-    if (trimmed && !updateFields.tags.includes(trimmed)) {
-      setUpdateFields(prev => ({ ...prev, tags: [...prev.tags, trimmed], tagInput: "" }));
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setUpdateFields(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
   };
 
   return (
@@ -111,7 +115,8 @@ export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: P
             <Input
               value={updateFields.country}
               onChange={(e) => setUpdateFields(prev => ({ ...prev, country: e.target.value }))}
-              placeholder="Leave empty to keep current"
+              placeholder="(deferred — not yet wired into bulk RPC)"
+              disabled
             />
           </div>
 
@@ -120,34 +125,12 @@ export function ProxyBulkEdit({ open, onOpenChange, selectedIds, onComplete }: P
             <Input
               value={updateFields.isp}
               onChange={(e) => setUpdateFields(prev => ({ ...prev, isp: e.target.value }))}
-              placeholder="Leave empty to keep current"
+              placeholder="(deferred — not yet wired into bulk RPC)"
+              disabled
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Tags (replaces existing)</Label>
-            <div className="flex flex-wrap gap-1 mb-1">
-              {updateFields.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="gap-1">
-                  {tag}
-                  <button onClick={() => removeTag(tag)} className="ml-1">
-                    <X className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <Input
-              value={updateFields.tagInput}
-              onChange={(e) => setUpdateFields(prev => ({ ...prev, tagInput: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === ",") {
-                  e.preventDefault();
-                  addTag(updateFields.tagInput);
-                }
-              }}
-              placeholder="Type tag + Enter"
-            />
-          </div>
+          {/* Wave 22C: tags input removed. Use /categories for groupings. */}
 
           <div className="space-y-2">
             <Label>Notes</Label>

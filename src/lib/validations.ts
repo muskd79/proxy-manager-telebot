@@ -23,7 +23,7 @@ export const CreateProxySchema = z.object({
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
-  tags: z.array(z.string().max(50)).max(20).nullable().optional(),
+  // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
 });
@@ -38,7 +38,7 @@ export const UpdateProxySchema = z.object({
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
   status: z.enum(["available", "assigned", "maintenance"]).optional(),
-  tags: z.array(z.string().max(50)).max(20).nullable().optional(),
+  // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
   expires_at: z.string().datetime().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
@@ -63,7 +63,7 @@ export const ImportProxiesSchema = z.object({
   proxies: z.array(ImportProxyRowSchema).min(1, "proxies array must not be empty").max(10000, "Maximum 10,000 proxies per import"),
   type: z.enum(["http", "https", "socks5"]).optional(),
   country: z.string().max(100).optional(),
-  tags: z.array(z.string().max(50)).max(20).optional(),
+  // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).optional(),
   isp: z.string().max(255).optional(),
 });

@@ -6,7 +6,9 @@ import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
 import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
-import { ProxyTagManager } from "@/components/proxies/proxy-tag-manager";
+// Wave 22C: ProxyTagManager removed — strong categories replace flat tags.
+// Use /categories admin page to manage groupings; the proxies list now
+// filters by ?category_id=X (mig 028 + Wave 22A/B).
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Plus,
@@ -71,7 +73,7 @@ export default function ProxiesPage() {
       if (filters.type) params.set("type", filters.type);
       if (filters.status) params.set("status", filters.status);
       if (filters.country) params.set("country", filters.country);
-      if (filters.tags) params.set("tags", filters.tags.join(","));
+      // Wave 22C: tags param removed — categories filter via ?category_id=X.
       if (filters.isp) params.set("isp", filters.isp);
       params.set("page", String(filters.page || 1));
       params.set("pageSize", String(filters.pageSize || 20));
@@ -347,10 +349,7 @@ export default function ProxiesPage() {
         </Button>
       </div>
 
-      {/* Tag Management */}
-      <div className="flex items-center gap-2">
-        <ProxyTagManager />
-      </div>
+      {/* Wave 22C: tag manager removed — see /categories for groupings */}
 
       <ProxyFilters
         filters={filters}

@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { proxies, type, country, tags, notes, isp } = parsed.data;
+    // Wave 22C: tags removed from ImportProxiesSchema.
+    const { proxies, type, country, notes, isp } = parsed.data;
 
     const importId = crypto.randomUUID();
 
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
         username: proxy.username || null,
         password: proxy.password || null,
         country: proxy.country || country || null,
-        tags: tags || null,
+        // Wave 22C: tags removed.
         notes: notes || null,
         isp: isp || null,
         status: "available",

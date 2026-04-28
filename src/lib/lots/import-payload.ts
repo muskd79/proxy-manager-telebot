@@ -30,7 +30,7 @@ export const ProxyImportRowSchema = z.object({
   password: z.string().max(255).optional().nullable(),
   country: z.string().max(100).optional().nullable(),
   isp: z.string().max(255).optional().nullable(),
-  tags: z.array(z.string().max(50)).max(20).optional().nullable(),
+  // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).optional().nullable(),
   /** Per-row override; falls back to lot.expiry_date in the RPC. */
   expires_at: z.string().datetime().optional().nullable(),

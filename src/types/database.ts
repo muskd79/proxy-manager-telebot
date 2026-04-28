@@ -162,7 +162,13 @@ export interface Proxy {
   assigned_to: string | null;
   assigned_at: string | null;
   expires_at: string | null;
-  tags: string[] | null;
+  /**
+   * @deprecated Wave 22A — replaced by category_id (FK to proxy_categories).
+   * Wave 22C stripped all UI/API references; column is read-only and will
+   * be dropped in a future wave once admins confirm migration. New code
+   * MUST NOT write to this field.
+   */
+  tags?: string[] | null;
   notes: string | null;
   is_deleted: boolean;
   deleted_at: string | null;

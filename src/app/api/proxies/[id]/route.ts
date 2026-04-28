@@ -75,7 +75,7 @@ export async function PUT(
       city,
       isp,
       status,
-      tags,
+      // Wave 22C: tags removed.
       notes,
       expires_at,
       assigned_to,
@@ -124,7 +124,7 @@ export async function PUT(
     if (city !== undefined) updateData.city = city || null;
     if (isp !== undefined) updateData.isp = isp || null;
     if (status !== undefined) updateData.status = status;
-    if (tags !== undefined) updateData.tags = tags;
+    // Wave 22C: tags update removed.
     if (notes !== undefined) updateData.notes = notes || null;
     if (expires_at !== undefined) updateData.expires_at = expires_at || null;
     if (assigned_to !== undefined) {

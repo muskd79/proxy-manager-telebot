@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       status:
         (searchParams.get("status") as ProxyFilters["status"]) || undefined,
       country: searchParams.get("country") || undefined,
-      tags: searchParams.get("tags")?.split(",") || undefined,
+      // Wave 22C: tags filter removed. Use ?category_id=X (Wave 22A).
       page: Math.max(1, parseInt(searchParams.get("page") || "1") || 1),
       pageSize: Math.max(1, Math.min(parseInt(searchParams.get("pageSize") || "20") || 20, 500)),
       sortBy: searchParams.get("sortBy") || "created_at",
@@ -38,13 +38,14 @@ export async function GET(request: NextRequest) {
     // is meaningful. Cursor-paginated requests skip count entirely.
     const cursorDate = searchParams.get("cursor");
     const lotId = searchParams.get("lot_id");
+    const categoryId = searchParams.get("category_id"); // Wave 22A
     const expiringWithin = searchParams.get("expiring_within"); // hours
     const vendorLabel = searchParams.get("vendor_label");
 
     const hasFilter =
       !!(filters.search || filters.type || filters.status || filters.country
-        || (filters.tags && filters.tags.length > 0)
-        || lotId || expiringWithin || vendorLabel || searchParams.get("isp"));
+        || lotId || categoryId || expiringWithin || vendorLabel
+        || searchParams.get("isp"));
     const countMode: "exact" | "estimated" | undefined = cursorDate
       ? undefined
       : hasFilter
@@ -68,13 +69,16 @@ export async function GET(request: NextRequest) {
     if (filters.country) {
       query = query.eq("country", filters.country);
     }
-    if (filters.tags && filters.tags.length > 0) {
-      query = query.overlaps("tags", filters.tags);
-    }
+    // Wave 22C: tags filter removed (Wave 22A categories supersede it).
     // Wave 21C: filter by lot — drives `/proxies?lot_id=X` from the
     // /lots page. Uses idx_proxies_purchase_lot (Wave 21A index).
     if (lotId) {
       query = query.eq("purchase_lot_id", lotId);
+    }
+    // Wave 22A: filter by category — drives `/proxies?category_id=X` from
+    // /categories. Uses idx_proxies_category_id (mig 028).
+    if (categoryId) {
+      query = query.eq("category_id", categoryId);
     }
     // Wave 21C: filter by free-text vendor label.
     if (vendorLabel) {
@@ -169,7 +173,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { host, port, type, username, password, country, city, isp, tags, notes, expires_at } = parsed.data;
+    // Wave 22C: tags removed.
+    const { host, port, type, username, password, country, city, isp, notes, expires_at } = parsed.data;
 
     const insertData = {
       host,
@@ -181,7 +186,7 @@ export async function POST(request: NextRequest) {
       city: city || null,
       isp: isp || null,
       status: "available" as const,
-      tags: tags || null,
+      // Wave 22C: tags removed; field stays in DB but the API stops writing it.
       notes: notes || null,
       expires_at: expires_at || null,
       is_deleted: false,

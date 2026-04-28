@@ -133,15 +133,27 @@ describe("CreateProxySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects tags array with more than 20 items", () => {
-    const tags = Array.from({ length: 21 }, (_, i) => `tag${i}`);
-    const result = CreateProxySchema.safeParse({ ...validProxy, tags });
-    expect(result.success).toBe(false);
+  // Wave 22C regression: tags removed from CreateProxySchema. The two
+  // tests below originally pinned the (max 20 / 50-char-each) bounds on
+  // the tags array; now those rules don't exist because tags don't
+  // exist. Schema with strip-unknown semantics quietly drops the field,
+  // so previous "rejects" assertions are no longer valid. Replaced with
+  // a positive test pinning that the schema accepts requests WITHOUT
+  // tags (regression: ensure we didn't accidentally make tags required).
+  it("Wave 22C: schema accepts payload without tags (categories replace tags)", () => {
+    const result = CreateProxySchema.safeParse({ ...validProxy });
+    expect(result.success).toBe(true);
   });
 
-  it("rejects tag string longer than 50 chars", () => {
-    const result = CreateProxySchema.safeParse({ ...validProxy, tags: ["a".repeat(51)] });
-    expect(result.success).toBe(false);
+  it("Wave 22C: extra tags field is ignored, not rejected", () => {
+    const result = CreateProxySchema.safeParse({
+      ...validProxy,
+      tags: ["legacy"],
+    });
+    // Zod default behaviour is to strip unknown keys silently.
+    // The assertion is that the schema doesn't throw 400 on legacy
+    // payloads from old clients still sending tags.
+    expect(result.success).toBe(true);
   });
 
   it("rejects notes longer than 1000 chars", () => {
