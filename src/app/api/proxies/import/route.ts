@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Wave 22C: tags removed from ImportProxiesSchema.
-    const { proxies, type, country, notes, isp } = parsed.data;
+    // Wave 22C: tags removed. Wave 22G/I: category_id added.
+    const { proxies, type, country, notes, isp, category_id } = parsed.data;
 
     const importId = crypto.randomUUID();
 
@@ -81,8 +81,13 @@ export async function POST(request: NextRequest) {
         password: proxy.password || null,
         country: proxy.country || country || null,
         // Wave 22C: tags removed.
+        // Wave 22I: per-row ISP override from probe / category prefill.
+        isp: proxy.isp || isp || null,
         notes: notes || null,
-        isp: isp || null,
+        // Wave 22G/I: bulk category assignment. Trigger
+        // fn_proxy_inherit_hidden_on_reassign auto-sets `hidden`
+        // from the category's is_hidden state (mig 036).
+        category_id: category_id ?? null,
         status: "available",
         is_deleted: false,
         created_by: admin.id,

@@ -26,12 +26,44 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-// Wave 22C: Badge removed with the tags input.
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import {
+  Upload,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  Radar,
+  AlertCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
+
+/**
+ * Wave 22I — Smart proxy import wizard.
+ *
+ * Workflow for "tao có 1000 proxy chưa phân loại":
+ *   1. Paste / drop a TXT file with host:port:user:pass per line.
+ *   2. Click "Auto-detect" → batch-probes via /api/proxies/probe-batch
+ *      with concurrency 50. Each row is updated with detected type +
+ *      alive flag + speed.
+ *   3. Pick a category (optional) so all imported proxies inherit
+ *      the category's defaults (loại / quốc gia / ISP per Wave 22G).
+ *   4. Click Import → POST to /api/proxies/import with per-row
+ *      detected type + bulk category_id.
+ *
+ * Privacy: probe path is fully self-built (TCP-only), no external
+ * services touched. See Wave 22H notes in /lib/proxy-detect.ts.
+ */
+
+interface ProxyCategoryOption {
+  id: string;
+  name: string;
+  default_country: string | null;
+  default_proxy_type: ProxyType | null;
+  default_isp: string | null;
+}
 
 interface ParsedProxy {
   line: number;
@@ -42,19 +74,27 @@ interface ParsedProxy {
   password?: string;
   valid: boolean;
   error?: string;
+  // Wave 22I — populated by /api/proxies/probe-batch.
+  detected_type?: ProxyType | null;
+  alive?: boolean;
+  speed_ms?: number;
 }
 
 export function ProxyImport() {
   const [parsedProxies, setParsedProxies] = useState<ParsedProxy[]>([]);
   const [proxyType, setProxyType] = useState<ProxyType>(ProxyType.HTTP);
   const [country, setCountry] = useState("");
-  // Wave 22C: tags state removed. Use /categories admin page for groupings.
   const [notes, setNotes] = useState("");
   const [isp, setIsp] = useState("");
+  const [categoryId, setCategoryId] = useState<string>("");
   const [importing, setImporting] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeProgress, setProbeProgress] = useState(0);
+  const [dropDead, setDropDead] = useState(true);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
+  const [categories, setCategories] = useState<ProxyCategoryOption[]>([]);
 
   useEffect(() => {
     fetch("/api/proxies/stats")
@@ -63,61 +103,53 @@ export function ProxyImport() {
         if (d.data?.countries) setCountries(d.data.countries);
       })
       .catch(() => {});
+
+    fetch("/api/categories")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.data)) {
+          setCategories(
+            (d.data as ProxyCategoryOption[]).map((c) => ({
+              id: c.id,
+              name: c.name,
+              default_country: c.default_country,
+              default_proxy_type: c.default_proxy_type,
+              default_isp: c.default_isp,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // When admin picks a category, auto-fill the bulk fields with its
+  // defaults (admin can still override per-form).
+  useEffect(() => {
+    if (!categoryId) return;
+    const cat = categories.find((c) => c.id === categoryId);
+    if (!cat) return;
+    if (cat.default_country) setCountry(cat.default_country);
+    if (cat.default_proxy_type) setProxyType(cat.default_proxy_type);
+    if (cat.default_isp) setIsp(cat.default_isp);
+  }, [categoryId, categories]);
 
   function parseProxyLine(line: string, lineNum: number): ParsedProxy {
     const trimmed = line.trim();
     if (!trimmed) {
-      return {
-        line: lineNum,
-        raw: line,
-        host: "",
-        port: 0,
-        valid: false,
-        error: "Empty line",
-      };
+      return { line: lineNum, raw: line, host: "", port: 0, valid: false, error: "Empty line" };
     }
-
     const parts = trimmed.split(/[:\t,;]/);
-
     if (parts.length < 2) {
-      return {
-        line: lineNum,
-        raw: trimmed,
-        host: "",
-        port: 0,
-        valid: false,
-        error: "Invalid format (expected host:port)",
-      };
+      return { line: lineNum, raw: trimmed, host: "", port: 0, valid: false, error: "Invalid format (expected host:port)" };
     }
-
     const host = parts[0].trim();
     const port = parseInt(parts[1].trim());
     const username = parts[2]?.trim() || undefined;
     const password = parts[3]?.trim() || undefined;
-
-    if (!host) {
-      return {
-        line: lineNum,
-        raw: trimmed,
-        host: "",
-        port: 0,
-        valid: false,
-        error: "Missing host",
-      };
-    }
-
+    if (!host) return { line: lineNum, raw: trimmed, host: "", port: 0, valid: false, error: "Missing host" };
     if (isNaN(port) || port < 1 || port > 65535) {
-      return {
-        line: lineNum,
-        raw: trimmed,
-        host,
-        port: 0,
-        valid: false,
-        error: "Invalid port",
-      };
+      return { line: lineNum, raw: trimmed, host, port: 0, valid: false, error: "Invalid port" };
     }
-
     return { line: lineNum, raw: trimmed, host, port, username, password, valid: true };
   }
 
@@ -126,66 +158,141 @@ export function ProxyImport() {
     const parsed = lines.map((line, i) => parseProxyLine(line, i + 1));
     setParsedProxies(parsed);
     setResult(null);
+    setProbeProgress(0);
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      parseContent(text);
-    };
+    reader.onload = (ev) => parseContent(ev.target?.result as string);
     reader.readAsText(file);
   }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      parseContent(text);
-    };
+    reader.onload = (ev) => parseContent(ev.target?.result as string);
     reader.readAsText(file);
   }, []);
 
+  /**
+   * Wave 22I — batch-probe all valid rows. Calls /api/proxies/probe-batch
+   * in chunks of 200 so the UI can show progress instead of one big spinner.
+   * Each chunk concurrency is server-side (50 parallel).
+   */
+  async function handleProbe() {
+    const valid = parsedProxies.filter((p) => p.valid);
+    if (valid.length === 0) return;
+    setProbing(true);
+    setProbeProgress(0);
+    try {
+      const CHUNK = 200;
+      const updates = new Map<number, Partial<ParsedProxy>>();
+      for (let i = 0; i < valid.length; i += CHUNK) {
+        const chunk = valid.slice(i, i + CHUNK);
+        const res = await fetch("/api/proxies/probe-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            proxies: chunk.map((p) => ({
+              host: p.host,
+              port: p.port,
+              ref: String(p.line),
+            })),
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.json();
+          toast.error(body.error || `Probe failed at chunk ${i}`);
+          break;
+        }
+        const body = await res.json();
+        type ProbeRow = {
+          ref?: string;
+          alive: boolean;
+          type: ProxyType | null;
+          speed_ms: number;
+        };
+        for (const r of body.data.results as ProbeRow[]) {
+          const lineNum = Number(r.ref);
+          if (Number.isFinite(lineNum)) {
+            updates.set(lineNum, {
+              detected_type: r.type,
+              alive: r.alive,
+              speed_ms: r.speed_ms,
+            });
+          }
+        }
+        setProbeProgress(Math.min(100, Math.round(((i + chunk.length) / valid.length) * 100)));
+      }
+
+      // Apply all updates in one setState pass to avoid re-renders.
+      setParsedProxies((rows) =>
+        rows.map((r) => {
+          const u = updates.get(r.line);
+          return u ? { ...r, ...u } : r;
+        }),
+      );
+      const aliveCount = Array.from(updates.values()).filter((u) => u.alive).length;
+      const deadCount = updates.size - aliveCount;
+      toast.success(
+        `Probed ${updates.size} — ${aliveCount} alive, ${deadCount} dead. Loại đã detect tự fill mỗi row.`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Probe failed");
+    } finally {
+      setProbing(false);
+    }
+  }
+
   async function handleImport() {
-    const validProxies = parsedProxies
-      .filter((p) => p.valid)
-      .map((p) => ({
+    const valid = parsedProxies.filter((p) => p.valid);
+    // If user probed + opted to drop dead, exclude dead rows.
+    const target = dropDead && valid.some((p) => p.alive !== undefined)
+      ? valid.filter((p) => p.alive !== false)
+      : valid;
+
+    if (target.length === 0) {
+      toast.error("No proxies to import");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const payloadProxies = target.map((p) => ({
         host: p.host,
         port: p.port,
         username: p.username,
         password: p.password,
+        // Wave 22I: per-row detected type wins over the batch type.
+        type: p.detected_type ?? proxyType,
         line: p.line,
         raw: p.raw,
       }));
 
-    if (validProxies.length === 0) return;
-
-    setImporting(true);
-    try {
       const res = await fetch("/api/proxies/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proxies: validProxies,
+          proxies: payloadProxies,
           type: proxyType,
           country: country || undefined,
           notes: notes || undefined,
           isp: isp || undefined,
+          category_id: categoryId || null,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
         setResult(data.data);
+      } else {
+        const body = await res.json();
+        toast.error(body.error || "Import failed");
       }
     } catch (err) {
       console.error("Failed to import proxies:", err);
@@ -197,23 +304,34 @@ export function ProxyImport() {
 
   const validCount = parsedProxies.filter((p) => p.valid).length;
   const invalidCount = parsedProxies.filter((p) => !p.valid).length;
+  const probedCount = parsedProxies.filter((p) => p.alive !== undefined).length;
+  const aliveCount = parsedProxies.filter((p) => p.alive === true).length;
+  const deadCount = parsedProxies.filter((p) => p.alive === false).length;
+  const probedSummary = parsedProxies.reduce(
+    (acc, p) => {
+      if (p.alive && p.detected_type) {
+        acc[p.detected_type] = (acc[p.detected_type] || 0) + 1;
+      }
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 
   return (
     <div className="space-y-6">
-      {/* Upload Area */}
+      {/* Step 1: Upload */}
       <Card>
         <CardHeader>
-          <CardTitle>Upload Proxies</CardTitle>
+          <CardTitle>1. Tải proxy lên</CardTitle>
           <CardDescription>
-            Supported formats: TXT (host:port:user:pass per line), CSV
+            Hỗ trợ: TXT (mỗi dòng 1 proxy theo dạng host:port:user:pass), CSV.
+            Tối đa 10.000 proxy mỗi lần import.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
             className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              dragOver
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/25 hover:border-muted-foreground/50"
+              dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -223,70 +341,81 @@ export function ProxyImport() {
             onDrop={handleDrop}
           >
             <Upload className="size-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mb-3">
-              Drag and drop a file here, or click to select
-            </p>
-            <Input
-              type="file"
-              accept=".txt,.csv"
-              onChange={handleFileChange}
-              className="max-w-xs mx-auto"
-            />
+            <p className="text-sm text-muted-foreground mb-3">Kéo thả file vào đây, hoặc click để chọn</p>
+            <Input type="file" accept=".txt,.csv" onChange={handleFileChange} className="max-w-xs mx-auto" />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Proxy Type</Label>
+              <Label>Danh mục</Label>
               <Select
-                value={proxyType}
-                onValueChange={(val: string | null) => { if (val) setProxyType(val as ProxyType); }}
+                value={categoryId || "_none"}
+                onValueChange={(v: string | null) => setCategoryId(v === "_none" ? "" : v ?? "")}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
+                <SelectTrigger>
+                  <SelectValue placeholder="Không phân loại" />
                 </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Không phân loại</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.default_proxy_type ? ` · ${c.default_proxy_type.toUpperCase()}` : ""}
+                      {c.default_country ? ` · ${c.default_country}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Nếu chọn danh mục, các trường loại/quốc gia/ISP dưới sẽ tự fill từ default. Sửa nếu cần.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Loại proxy mặc định</Label>
+              <Select value={proxyType} onValueChange={(v: string | null) => v && setProxyType(v as ProxyType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ProxyType.HTTP}>HTTP</SelectItem>
                   <SelectItem value={ProxyType.HTTPS}>HTTPS</SelectItem>
                   <SelectItem value={ProxyType.SOCKS5}>SOCKS5</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="import-country">Country</Label>
-              <Input
-                id="import-country"
-                list="import-country-list"
-                placeholder="e.g. US, VN, JP"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              />
-              <datalist id="import-country-list">
-                {countries.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Auto-detect ưu tiên hơn — nếu probe ra loại khác, dùng loại detect.
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
+              <Label htmlFor="import-country">Quốc gia</Label>
+              <Input
+                id="import-country"
+                list="import-country-list"
+                placeholder="VD: US, VN, JP"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+              />
+              <datalist id="import-country-list">
+                {countries.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="import-isp">ISP</Label>
               <Input
                 id="import-isp"
-                placeholder="e.g. Viettel, AWS"
+                placeholder="VD: Viettel, AWS"
                 value={isp}
                 onChange={(e) => setIsp(e.target.value)}
               />
             </div>
-            {/* Wave 22C: tags input removed. Categories assigned post-import
-                via /categories or the bulk-assign dropdown on /proxies. */}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="import-notes">Notes</Label>
+            <Label htmlFor="import-notes">Ghi chú</Label>
             <Textarea
               id="import-notes"
-              placeholder="Notes to apply to all imported proxies..."
+              placeholder="Áp dụng cho mọi proxy được import"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
@@ -294,81 +423,109 @@ export function ProxyImport() {
         </CardContent>
       </Card>
 
-      {/* Preview */}
+      {/* Step 2: Probe + Preview */}
       {parsedProxies.length > 0 && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>Preview ({parsedProxies.length} lines)</CardTitle>
+                <CardTitle>2. Xem trước & auto-detect ({parsedProxies.length} dòng)</CardTitle>
                 <CardDescription>
-                  <span className="text-emerald-500">{validCount} valid</span>
+                  <span className="text-emerald-500">{validCount} hợp lệ</span>
                   {invalidCount > 0 && (
-                    <>
-                      {" / "}
-                      <span className="text-red-500">
-                        {invalidCount} invalid
-                      </span>
-                    </>
+                    <> {" / "}<span className="text-red-500">{invalidCount} lỗi</span></>
+                  )}
+                  {probedCount > 0 && (
+                    <> {" · đã probe "}{probedCount} — <span className="text-emerald-500">{aliveCount} alive</span> / <span className="text-red-500">{deadCount} dead</span></>
                   )}
                 </CardDescription>
               </div>
-              <Button
-                onClick={handleImport}
-                disabled={importing || validCount === 0}
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="size-4 mr-1.5 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="size-4 mr-1.5" />
-                    Import {validCount} Proxies
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={handleProbe} disabled={probing || importing || validCount === 0}>
+                  {probing ? (
+                    <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang probe ({probeProgress}%)</>
+                  ) : (
+                    <><Radar className="size-4 mr-1.5" />Auto-detect loại + alive</>
+                  )}
+                </Button>
+                <Button onClick={handleImport} disabled={importing || probing || validCount === 0}>
+                  {importing ? (
+                    <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang import...</>
+                  ) : (
+                    <><Upload className="size-4 mr-1.5" />Import {dropDead && probedCount > 0 ? aliveCount : validCount}</>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
+            {/* Probe summary */}
+            {probedCount > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 p-3 text-sm">
+                <span className="font-medium">Đã detect:</span>
+                {Object.entries(probedSummary).map(([t, n]) => (
+                  <Badge key={t} variant="outline" className="font-mono">
+                    {t.toUpperCase()}: {n}
+                  </Badge>
+                ))}
+                {deadCount > 0 && (
+                  <>
+                    <Badge variant="destructive" className="ml-auto">{deadCount} dead</Badge>
+                    <label className="flex items-center gap-1.5 text-xs">
+                      <input type="checkbox" checked={dropDead} onChange={(e) => setDropDead(e.target.checked)} />
+                      Bỏ qua proxy chết khi import
+                    </label>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="max-h-[400px] overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16">#</TableHead>
+                    <TableHead className="w-12">#</TableHead>
                     <TableHead>Host</TableHead>
-                    <TableHead>Port</TableHead>
-                    <TableHead>Username</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="w-20">Port</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead className="w-24">Loại detect</TableHead>
+                    <TableHead className="w-20">Tốc độ</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {parsedProxies.map((proxy) => (
-                    <TableRow key={proxy.line}>
-                      <TableCell className="text-muted-foreground">
-                        {proxy.line}
+                  {parsedProxies.slice(0, 200).map((proxy) => (
+                    <TableRow key={proxy.line} className={proxy.alive === false ? "opacity-50" : undefined}>
+                      <TableCell className="text-muted-foreground">{proxy.line}</TableCell>
+                      <TableCell className="font-mono text-xs">{proxy.host || "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">{proxy.port || "-"}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{proxy.username || "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {proxy.detected_type ? (
+                          <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {proxy.host || "-"}
-                      </TableCell>
-                      <TableCell>{proxy.port || "-"}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {proxy.username || "-"}
+                      <TableCell className="font-mono text-xs">
+                        {proxy.speed_ms != null ? `${proxy.speed_ms}ms` : "-"}
                       </TableCell>
                       <TableCell>
-                        {proxy.valid ? (
-                          <span className="flex items-center gap-1 text-emerald-500 text-sm">
-                            <CheckCircle className="size-3.5" />
-                            Valid
+                        {!proxy.valid ? (
+                          <span className="flex items-center gap-1 text-red-500 text-xs" title={proxy.error}>
+                            <XCircle className="size-3.5" />{proxy.error}
+                          </span>
+                        ) : proxy.alive === false ? (
+                          <span className="flex items-center gap-1 text-red-500 text-xs">
+                            <AlertCircle className="size-3.5" />Dead
+                          </span>
+                        ) : proxy.alive === true ? (
+                          <span className="flex items-center gap-1 text-emerald-500 text-xs">
+                            <CheckCircle className="size-3.5" />Alive
                           </span>
                         ) : (
-                          <span
-                            className="flex items-center gap-1 text-red-500 text-sm"
-                            title={proxy.error}
-                          >
-                            <XCircle className="size-3.5" />
-                            {proxy.error}
+                          <span className="flex items-center gap-1 text-emerald-500 text-xs">
+                            <CheckCircle className="size-3.5" />Hợp lệ
                           </span>
                         )}
                       </TableCell>
@@ -376,46 +533,46 @@ export function ProxyImport() {
                   ))}
                 </TableBody>
               </Table>
+              {parsedProxies.length > 200 && (
+                <p className="border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Đang hiển thị 200/{parsedProxies.length} dòng. Tất cả sẽ được import / probe.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Result */}
+      {/* Step 3: Result */}
       {result && (
         <Card>
           <CardHeader>
-            <CardTitle>Import Result</CardTitle>
+            <CardTitle>3. Kết quả import</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-2xl font-bold text-emerald-500">
-                  {result.imported}
-                </p>
-                <p className="text-sm text-muted-foreground">Imported</p>
+                <p className="text-2xl font-bold text-emerald-500">{result.imported}</p>
+                <p className="text-sm text-muted-foreground">Đã import</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-yellow-500">
-                  {result.skipped}
-                </p>
-                <p className="text-sm text-muted-foreground">Skipped</p>
+                <p className="text-2xl font-bold text-yellow-500">{result.skipped}</p>
+                <p className="text-sm text-muted-foreground">Bỏ qua (trùng)</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-red-500">
-                  {result.failed}
-                </p>
-                <p className="text-sm text-muted-foreground">Failed</p>
+                <p className="text-2xl font-bold text-red-500">{result.failed}</p>
+                <p className="text-sm text-muted-foreground">Lỗi</p>
               </div>
             </div>
             {result.errors.length > 0 && (
               <div className="mt-4 space-y-1">
-                <p className="text-sm font-medium">Errors:</p>
-                {result.errors.map((err, i) => (
-                  <p key={i} className="text-xs text-red-400">
-                    Line {err.line}: {err.reason}
-                  </p>
+                <p className="text-sm font-medium">Lỗi chi tiết:</p>
+                {result.errors.slice(0, 20).map((err, i) => (
+                  <p key={i} className="text-xs text-red-400">Dòng {err.line}: {err.reason}</p>
                 ))}
+                {result.errors.length > 20 && (
+                  <p className="text-xs text-muted-foreground">... và {result.errors.length - 20} lỗi khác</p>
+                )}
               </div>
             )}
           </CardContent>

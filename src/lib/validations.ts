@@ -55,6 +55,9 @@ const ImportProxyRowSchema = z.object({
   username: z.string().max(255).optional(),
   password: z.string().max(255).optional(),
   country: z.string().max(100).optional(),
+  // Wave 22I — per-row override from auto-detect probe (overrides
+  // batch type/country if present).
+  isp: z.string().max(255).optional(),
   line: z.number().int().optional(),
   raw: z.string().optional(),
 });
@@ -64,6 +67,10 @@ export const ImportProxiesSchema = z.object({
   type: z.enum(["http", "https", "socks5"]).optional(),
   country: z.string().max(100).optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
+  // Wave 22G/I: assign all imported proxies to one category. Each
+  // proxy inherits the category's defaults via Wave 22G snapshot
+  // semantics (filled at row level by the wizard before submit).
+  category_id: z.string().uuid().nullable().optional(),
   notes: z.string().max(1000).optional(),
   isp: z.string().max(255).optional(),
 });
