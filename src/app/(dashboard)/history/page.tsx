@@ -24,6 +24,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildCsv } from "@/lib/csv";
+import { LogsSubTabs } from "@/components/logs/logs-sub-tabs";
 
 interface HistoryRecord {
   id: string;
@@ -154,6 +155,8 @@ export default function HistoryPage() {
 
   return (
     <div className="flex-1 space-y-6 p-6">
+      {/* Wave 22V — sub-tab of Lịch sử & Nhật ký. */}
+      <LogsSubTabs />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">

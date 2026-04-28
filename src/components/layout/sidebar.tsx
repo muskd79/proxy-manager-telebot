@@ -23,6 +23,7 @@ import {
   Menu,
   ChevronLeft,
   UserCircle,
+  Activity,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { usePendingRequests } from "@/hooks/use-pending-requests";
@@ -103,7 +104,7 @@ function NavContent({
       altPaths: ["/bot-simulator"], // legacy URL, redirected to /bot/simulator
     },
 
-    // ─── VIA ───
+    // ─── PROXY (Wave 22V — group renamed VIA → PROXY) ───
     {
       title: t("sidebar.proxies"),
       href: "/proxies",
@@ -116,6 +117,13 @@ function NavContent({
       href: "/requests",
       icon: FileText,
       badge: pendingCount ?? undefined,
+    },
+    {
+      // Wave 22V — ad-hoc proxy probe tool (sibling to /proxies, not
+      // a sub-tab; admin asked for it as a top-level Proxy entry).
+      title: t("sidebar.checkProxy"),
+      href: "/check-proxy",
+      icon: Activity,
     },
 
     // ─── HỆ THỐNG ───

@@ -1,7 +1,8 @@
 {
   "sidebar": {
-    "dashboard": "Trang chủ",
+    "dashboard": "Dashboard",
     "proxies": "Quản lý proxy",
+    "checkProxy": "Check proxy",
     "lots": "Lô hàng",
     "categories": "Danh mục",
     "users": "Người dùng Bot",
@@ -16,7 +17,7 @@
     "admins": "Tài khoản Admin",
     "profile": "Hồ sơ cá nhân",
     "groupManage": "QUẢN LÝ",
-    "groupVia": "VIA",
+    "groupVia": "PROXY",
     "groupSystem": "HỆ THỐNG",
     "operations": "VẬN HÀNH",
     "monitoring": "GIÁM SÁT",
@@ -36,6 +37,10 @@
     "overview": "Tổng quan",
     "simulator": "Giả lập",
     "config": "Cấu hình"
+  },
+  "logsTabs": {
+    "history": "Lịch sử",
+    "audit": "Nhật ký"
   },
   "dashboard": {
     "title": "Trang chủ",

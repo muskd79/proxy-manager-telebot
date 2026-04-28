@@ -2,6 +2,7 @@
   "sidebar": {
     "dashboard": "Dashboard",
     "proxies": "Proxy management",
+    "checkProxy": "Check proxy",
     "lots": "Lots",
     "categories": "Categories",
     "users": "Bot users",
@@ -16,7 +17,7 @@
     "admins": "Admin accounts",
     "profile": "My profile",
     "groupManage": "MANAGE",
-    "groupVia": "VIA",
+    "groupVia": "PROXY",
     "groupSystem": "SYSTEM",
     "operations": "OPERATIONS",
     "monitoring": "MONITORING",
@@ -36,6 +37,10 @@
     "overview": "Overview",
     "simulator": "Simulator",
     "config": "Config"
+  },
+  "logsTabs": {
+    "history": "History",
+    "audit": "Audit log"
   },
   "dashboard": {
     "title": "Dashboard",

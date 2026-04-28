@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Inbox } from "lucide-react";
 import type { ActivityLog } from "@/types/database";
 import { buildCsv } from "@/lib/csv";
+import { LogsSubTabs } from "@/components/logs/logs-sub-tabs";
 
 const actorTypeBadgeVariant: Record<
   string,
@@ -116,6 +117,8 @@ export default function LogsPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
+      {/* Wave 22V — sub-tab of Lịch sử & Nhật ký. */}
+      <LogsSubTabs />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nhật ký hệ thống</h1>
