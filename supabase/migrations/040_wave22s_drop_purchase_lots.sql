@@ -48,17 +48,43 @@ DROP INDEX IF EXISTS idx_proxies_purchase_lot_id;
 
 -- ------------------------------------------------------------
 -- Audit log row so the drop is visible in /logs going forward.
+-- Defensive: only INSERT if actor_display_name column exists
+-- (mig 032 may not have been applied on every environment).
 -- ------------------------------------------------------------
-INSERT INTO activity_logs (
-  actor_type, actor_id, actor_display_name,
-  action, resource_type, details
-) VALUES (
-  'system', NULL, 'System (mig 040)',
-  'schema.drop_purchase_lots',
-  'migration',
-  jsonb_build_object(
-    'wave', '22S Phase 8',
-    'reason',
-    'User chose path A: drop. Wave 22K denormed metadata onto proxies; lots UI removed; cron + API layer scheduled for code-side deletion in same wave.'
-  )
-);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'activity_logs'
+      AND column_name = 'actor_display_name'
+  ) THEN
+    EXECUTE $sql$
+      INSERT INTO activity_logs (
+        actor_type, actor_id, actor_display_name,
+        action, resource_type, details
+      ) VALUES (
+        'system', NULL, 'System (mig 040)',
+        'schema.drop_purchase_lots',
+        'migration',
+        jsonb_build_object(
+          'wave', '22S Phase 8',
+          'reason', 'Path A: drop. Wave 22K denormed metadata onto proxies.'
+        )
+      )
+    $sql$;
+  ELSE
+    EXECUTE $sql$
+      INSERT INTO activity_logs (
+        actor_type, actor_id, action, resource_type, details
+      ) VALUES (
+        'system', NULL,
+        'schema.drop_purchase_lots',
+        'migration',
+        jsonb_build_object(
+          'wave', '22S Phase 8',
+          'reason', 'Path A: drop. Wave 22K denormed metadata onto proxies.'
+        )
+      )
+    $sql$;
+  END IF;
+END $$;
