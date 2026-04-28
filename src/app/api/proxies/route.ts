@@ -63,17 +63,26 @@ export async function GET(request: NextRequest) {
     if (filters.type) {
       query = query.eq("type", filters.type);
     }
-    // Wave 22Z — synthetic "hidden" status. The user-facing filter
-    // collapses status to 4 buckets: available / assigned / banned /
-    // hidden. Real DB status enum is { available, assigned, expired,
-    // banned, maintenance } — "hidden" is NOT a status, it's the
-    // boolean column `hidden` (which the cascade trigger keeps in
-    // sync with category.is_hidden, so this single check covers both
-    // manual hide AND cascade hide). We branch here BEFORE the
-    // default-hide guard below so the cascade-default doesn't
-    // contradict the explicit user choice.
+    // Wave 22Z + 22AB — synthetic statuses overlay the DB enum.
+    //   "hidden":         filter-only; matches proxies.hidden=true
+    //                     (cascade trigger keeps this in sync with
+    //                     category.is_hidden, so one column covers
+    //                     manual + cascade hide).
+    //   "expiring_soon":  derived; expires_at in (NOW, NOW+3d].
+    //                     Excludes banned + hidden so the bucket is
+    //                     actionable (admin sees only proxies they
+    //                     can renew or reassign).
+    //   real enum:        normal status equality + default hide guard.
     if (filters.status === "hidden") {
       query = query.eq("hidden", true);
+    } else if (filters.status === "expiring_soon") {
+      const now = new Date().toISOString();
+      const threeDays = new Date(Date.now() + 3 * 86_400_000).toISOString();
+      query = query
+        .not("expires_at", "is", null)
+        .gt("expires_at", now)
+        .lte("expires_at", threeDays)
+        .neq("status", "banned");
     } else if (filters.status) {
       query = query.eq("status", filters.status);
     }
@@ -117,12 +126,19 @@ export async function GET(request: NextRequest) {
 
     // Wave 22G — cascade hide (default off; admin explicitly opts in
     // to see hidden rows from /proxies?include_hidden=true).
-    // Wave 22Z — when status="hidden" is selected we already applied
-    // .eq("hidden", true) above; skip the default-hide guard so we
-    // don't end up with a contradictory `hidden=true AND hidden=false`.
+    // Wave 22Z + 22AB — when status branches to a synthetic value
+    // ("hidden" or "expiring_soon") that already enforces hidden
+    // explicitly, skip this default guard so we don't emit a
+    // contradictory predicate.
     const includeHidden = searchParams.get("include_hidden") === "true";
-    const showingHiddenOnly = filters.status === "hidden";
-    if (!includeHidden && !showingHiddenOnly) {
+    const skipDefaultHideGuard =
+      filters.status === "hidden" || filters.status === "expiring_soon";
+    if (!includeHidden && !skipDefaultHideGuard) {
+      query = query.eq("hidden", false);
+    }
+    // expiring_soon also needs to exclude hidden rows (they're not
+    // actionable). Apply explicitly here so the bucket is clean.
+    if (filters.status === "expiring_soon") {
       query = query.eq("hidden", false);
     }
 

@@ -39,7 +39,9 @@ export const BOT_COMMANDS = [
 // own window). Add back here only when a caller needs them.
 
 // Timing thresholds (all values in milliseconds)
-export const EXPIRING_SOON_THRESHOLD_MS = 7 * 24 * 3600 * 1000;    // 7 days
+// Wave 22AB — threshold dropped from 7 days to 3 days per user spec:
+// "nếu còn 3 ngày thì sẽ được chuyển sang trạng thái sắp hết hạn"
+export const EXPIRING_SOON_THRESHOLD_MS = 3 * 24 * 3600 * 1000;    // 3 days
 export const DEFAULT_PROXY_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
 export const RECENT_MESSAGE_WINDOW_MS = 30 * 60 * 1000;            // 30 minutes
 export const DASHBOARD_POLL_INTERVAL_MS = 30_000;                   // 30 seconds

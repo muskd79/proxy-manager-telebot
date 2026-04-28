@@ -151,26 +151,49 @@ export interface StatusBadge {
   tone?: "muted";
 }
 
-export function proxyStatusBadges(p: Pick<Proxy, "status" | "expires_at" | "hidden">): StatusBadge[] {
-  const out: StatusBadge[] = [];
-
-  // Hidden takes priority — admin should know the proxy is invisible
-  // to bot/users right now.
+/**
+ * Wave 22AB — single-badge model per user spec.
+ *
+ * Pre-22AB returned an array (lifecycle + expiry + hidden each as
+ * own badge) which produced confusing rows like "Bảo trì + Sắp hết
+ * hạn + ...". User explicitly said: "trạng thái cần có: sẵn sàng,
+ * đã giao, báo lỗi, đã ẩn, sắp hết hạn — chỉ có 5 loại này thôi".
+ *
+ * Priority order (highest first wins; only ONE badge rendered):
+ *   1. hidden=true          → "Đã ẩn"        (cascade trigger keeps
+ *                                              proxies.hidden in sync
+ *                                              with category.is_hidden,
+ *                                              so this covers both)
+ *   2. status="banned"      → "Báo lỗi"
+ *   3. expires_at within 3d → "Sắp hết hạn"  (NOT yet expired)
+ *   4. status="assigned"    → "Đã giao"
+ *   5. else                 → "Sẵn sàng"
+ *
+ * `maintenance` and `expired` enum values still exist server-side
+ * for legacy data; they fall through to "Sẵn sàng" in the UI. If
+ * an admin needs to see them surgically they can sort by status
+ * column — the filter dropdown stops exposing them.
+ *
+ * Returns array (length 1 or 0) so the table cell map stays the
+ * same — one less call site to update.
+ */
+export function proxyStatusBadges(
+  p: Pick<Proxy, "status" | "expires_at" | "hidden">,
+): StatusBadge[] {
   if (p.hidden) {
-    out.push({ label: "Đã ẩn", variant: "outline", tone: "muted" });
+    return [{ label: "Đã ẩn", variant: "outline", tone: "muted" }];
   }
-
-  // Lifecycle status.
-  const lifecycle = p.status as ProxyStatusValue;
-  if (lifecycle && lifecycle !== "expired") {
-    out.push({ label: statusLabel(lifecycle), variant: STATUS_BADGE[lifecycle] });
+  if (p.status === "banned") {
+    return [{ label: "Báo lỗi", variant: "destructive" }];
   }
-
-  // Expiry status — separate badge per the user's design.
+  // expiring_soon overrides assigned/available so admin sees the
+  // urgency BEFORE the lifecycle status.
   const exp = deriveExpiryStatus(p.expires_at);
-  if (exp !== "never") {
-    out.push({ label: EXPIRY_LABEL[exp], variant: EXPIRY_BADGE[exp] });
+  if (exp === "expiring_soon") {
+    return [{ label: "Sắp hết hạn", variant: "outline" }];
   }
-
-  return out;
+  if (p.status === "assigned") {
+    return [{ label: "Đã giao", variant: "secondary" }];
+  }
+  return [{ label: "Sẵn sàng", variant: "default" }];
 }

@@ -2,33 +2,34 @@ import { describe, it, expect } from "vitest";
 import { deriveExpiryStatus } from "@/lib/proxy-labels";
 
 /**
- * Wave 22L (Phase 1 — C3 fix) regression test for the expiryStatus
- * filter on /api/proxies.
+ * Wave 22L → Wave 22AB — expiryStatus tests, threshold updated.
  *
- * Pre-22L bug at src/app/api/proxies/route.ts:93:
- *   `expiryStatus === "valid"` mapped to `expires_at > NOW()+7d` —
- *   silently excluding proxies expiring within the next 6 days from
- *   the "Còn hạn" filter. Comment ghi đúng "valid = NULL OR > NOW()"
- *   nhưng code SAI.
+ * Wave 22AB lowered the "expiring_soon" threshold from 7 days to
+ * 3 days per user spec: "nếu còn 3 ngày thì sẽ được chuyển sang
+ * trạng thái sắp hết hạn".
  *
- * Wave 22L semantics (matches deriveExpiryStatus in proxy-labels):
- *   never          : expires_at IS NULL (vĩnh viễn — counts as valid)
+ * Wave 22L's C3 fix (consistency between badge derivation and the
+ * /api/proxies expiryStatus filter) still holds — we just shifted
+ * the threshold constant; the predicate shape is unchanged.
+ *
+ * Semantics (current):
+ *   never          : expires_at IS NULL
  *   expired        : expires_at <= NOW() AND non-null
- *   expiring_soon  : NOW() < expires_at <= NOW()+7d
- *   valid          : expires_at > NOW()+7d  OR  expires_at IS NULL
+ *   expiring_soon  : NOW() < expires_at < NOW()+3d
+ *   valid          : expires_at >= NOW()+3d  OR  expires_at IS NULL
  */
 
-describe("expiryStatus filter — Wave 22L C3 fix consistency", () => {
+describe("expiryStatus filter — Wave 22AB threshold = 3 days", () => {
   const NOW = new Date("2025-06-15T12:00:00Z");
 
-  it("a proxy expiring 6 days from now is 'expiring_soon', NOT 'valid'", () => {
-    const sixDays = new Date(NOW.getTime() + 6 * 86_400_000).toISOString();
-    expect(deriveExpiryStatus(sixDays, NOW)).toBe("expiring_soon");
+  it("expiring 2 days from now is 'expiring_soon'", () => {
+    const twoDays = new Date(NOW.getTime() + 2 * 86_400_000).toISOString();
+    expect(deriveExpiryStatus(twoDays, NOW)).toBe("expiring_soon");
   });
 
-  it("a proxy expiring 8 days from now is 'valid'", () => {
-    const eightDays = new Date(NOW.getTime() + 8 * 86_400_000).toISOString();
-    expect(deriveExpiryStatus(eightDays, NOW)).toBe("valid");
+  it("expiring 4 days from now is 'valid' (outside 3-day window)", () => {
+    const fourDays = new Date(NOW.getTime() + 4 * 86_400_000).toISOString();
+    expect(deriveExpiryStatus(fourDays, NOW)).toBe("valid");
   });
 
   it("NULL expires_at is 'never' (vĩnh viễn — counts as valid in filter)", () => {
@@ -40,16 +41,15 @@ describe("expiryStatus filter — Wave 22L C3 fix consistency", () => {
     expect(deriveExpiryStatus(oneHourAgo, NOW)).toBe("expired");
   });
 
-  it("boundary: 7 days minus 1 second → 'expiring_soon'", () => {
-    const justUnder7d = new Date(NOW.getTime() + 7 * 86_400_000 - 1000).toISOString();
-    expect(deriveExpiryStatus(justUnder7d, NOW)).toBe("expiring_soon");
+  it("boundary: 3 days minus 1 second → 'expiring_soon'", () => {
+    const justUnder3d = new Date(NOW.getTime() + 3 * 86_400_000 - 1000).toISOString();
+    expect(deriveExpiryStatus(justUnder3d, NOW)).toBe("expiring_soon");
   });
 
-  it("boundary: exactly 7 days → 'valid' (implementation uses strict <)", () => {
-    // Note: deriveExpiryStatus uses `t - now < 7d` (strict). The
-    // exact-7-day boundary lands on "valid", not "expiring_soon".
-    // If product wants inclusive, change `<` to `<=` in proxy-labels.
-    const exactly7d = new Date(NOW.getTime() + 7 * 86_400_000).toISOString();
-    expect(deriveExpiryStatus(exactly7d, NOW)).toBe("valid");
+  it("boundary: exactly 3 days → 'valid' (implementation uses strict <)", () => {
+    // deriveExpiryStatus uses `t - now < 3d` (strict). The
+    // exact-3-day boundary lands on "valid", not "expiring_soon".
+    const exactly3d = new Date(NOW.getTime() + 3 * 86_400_000).toISOString();
+    expect(deriveExpiryStatus(exactly3d, NOW)).toBe("valid");
   });
 });

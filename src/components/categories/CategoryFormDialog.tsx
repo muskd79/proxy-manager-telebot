@@ -300,7 +300,8 @@ export function CategoryFormDialog({
                 <p className="text-[10px] text-muted-foreground">HTTP / HTTPS / SOCKS5</p>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="def-network-type">Phân loại</Label>
+                {/* Wave 22AB — Phân loại → Loại mạng */}
+                <Label htmlFor="def-network-type">Loại mạng</Label>
                 <select
                   id="def-network-type"
                   value={defaultNetworkType}

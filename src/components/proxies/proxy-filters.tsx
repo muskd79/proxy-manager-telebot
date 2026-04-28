@@ -15,7 +15,6 @@ import type { ProxyFilters as ProxyFiltersType } from "@/types/api";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
-  EXPIRY_LABEL,
   type NetworkType,
 } from "@/lib/proxy-labels";
 
@@ -54,15 +53,11 @@ const STATUS_LABELS_FILTER = {
   available: "Sẵn sàng",
   assigned: "Đã giao",
   banned: "Báo lỗi",
-  hidden: "Đã ẩn",
-} as const;
-
-const EXPIRY_LABELS_FILTER = {
-  all: "Mọi hạn dùng",
-  valid: "Còn hạn",
+  // Wave 22AB — Sắp hết hạn promoted from the standalone Hạn dùng
+  // filter into the main status filter. Server treats it as a
+  // synthetic status (where now < expires_at <= now+3d).
   expiring_soon: "Sắp hết hạn",
-  expired: "Hết hạn",
-  never: "Vĩnh viễn",
+  hidden: "Đã ẩn",
 } as const;
 
 interface ProxyFiltersProps {
@@ -101,7 +96,7 @@ export function ProxyFilters({
     filters.type ||
     filters.networkType ||
     filters.status ||
-    filters.expiryStatus ||
+    // Wave 22AB — expiryStatus filter removed (folded into status)
     filters.country ||
     // Wave 22Y — isp filter removed (column dropped from UI)
     filters.categoryId;
@@ -145,10 +140,16 @@ export function ProxyFilters({
           }
         >
           <SelectTrigger className="w-[180px]">
+            {/* Wave 22AB — renamed "Phân loại" → "Loại mạng" so it
+                doesn't sound like "Danh mục" (category). User
+                feedback: "phân loại với danh mục là cùng 1 à". They
+                are NOT — network_type is a fixed taxonomy of network
+                medium (ISP/Datacenter/Mobile/...), categories are
+                user-managed groupings on /categories. */}
             <SelectValue
-              placeholder="Phân loại"
+              placeholder="Loại mạng"
               labels={{
-                all: "Mọi phân loại",
+                all: "Mọi loại mạng",
                 ...Object.fromEntries(
                   NETWORK_TYPE_VALUES.map((nt) => [nt, NETWORK_TYPE_LABEL[nt as NetworkType]]),
                 ),
@@ -156,7 +157,7 @@ export function ProxyFilters({
             />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Mọi phân loại</SelectItem>
+            <SelectItem value="all">Mọi loại mạng</SelectItem>
             {NETWORK_TYPE_VALUES.map((nt) => (
               <SelectItem key={nt} value={nt}>
                 {NETWORK_TYPE_LABEL[nt as NetworkType]}
@@ -187,28 +188,14 @@ export function ProxyFilters({
             <SelectItem value={ProxyStatus.Available}>{STATUS_LABELS_FILTER.available}</SelectItem>
             <SelectItem value={ProxyStatus.Assigned}>{STATUS_LABELS_FILTER.assigned}</SelectItem>
             <SelectItem value={ProxyStatus.Banned}>{STATUS_LABELS_FILTER.banned}</SelectItem>
+            <SelectItem value="expiring_soon">{STATUS_LABELS_FILTER.expiring_soon}</SelectItem>
             <SelectItem value="hidden">{STATUS_LABELS_FILTER.hidden}</SelectItem>
           </SelectContent>
         </Select>
 
-        {/* Wave 22J — Hạn dùng (derived) */}
-        <Select
-          value={filters.expiryStatus || "all"}
-          onValueChange={(val: string | null) =>
-            updateFilter("expiryStatus", !val || val === "all" ? undefined : val)
-          }
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Hạn dùng" labels={EXPIRY_LABELS_FILTER} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{EXPIRY_LABELS_FILTER.all}</SelectItem>
-            <SelectItem value="valid">{EXPIRY_LABEL.valid}</SelectItem>
-            <SelectItem value="expiring_soon">{EXPIRY_LABEL.expiring_soon}</SelectItem>
-            <SelectItem value="expired">{EXPIRY_LABEL.expired}</SelectItem>
-            <SelectItem value="never">{EXPIRY_LABEL.never}</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Wave 22AB — standalone Hạn dùng dropdown removed.
+            "Sắp hết hạn" folded into the main Trạng thái filter
+            per user spec (only one status concept). */}
 
         <Select
           value={filters.country || "all"}

@@ -261,7 +261,8 @@ export function ProxyTable({
           <TableHead>Username</TableHead>
           <TableHead>Mật khẩu</TableHead>
           <SortableHead column="type">Giao thức</SortableHead>
-          <TableHead>Phân loại</TableHead>
+          {/* Wave 22AB — column renamed Phân loại → Loại mạng */}
+          <TableHead>Loại mạng</TableHead>
           <TableHead>Trạng thái</TableHead>
           <SortableHead column="country">Quốc gia</SortableHead>
           {/* Wave 22Y — ISP column removed (per user); column hidden from UI but

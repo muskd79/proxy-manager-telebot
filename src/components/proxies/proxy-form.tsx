@@ -213,7 +213,9 @@ export function ProxyForm({
               <p className="text-xs text-muted-foreground">Giao thức truyền tải: HTTP/HTTPS/SOCKS5</p>
             </div>
             <div className="space-y-2">
-              <Label>Phân loại</Label>
+              {/* Wave 22AB — Phân loại → Loại mạng (rename to disambiguate
+                  from "Danh mục" / category, which is user-managed). */}
+              <Label>Loại mạng</Label>
               <Select
                 value={formData.network_type || "_none"}
                 onValueChange={(val) =>
@@ -221,10 +223,21 @@ export function ProxyForm({
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Chưa phân loại" />
+                  <SelectValue
+                    placeholder="Chưa chọn"
+                    labels={{
+                      _none: "Chưa chọn",
+                      ...Object.fromEntries(
+                        NETWORK_TYPE_VALUES.map((nt) => [
+                          nt,
+                          NETWORK_TYPE_LABEL[nt as NetworkType],
+                        ]),
+                      ),
+                    }}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_none">Chưa phân loại</SelectItem>
+                  <SelectItem value="_none">Chưa chọn</SelectItem>
                   {NETWORK_TYPE_VALUES.map((nt) => (
                     <SelectItem key={nt} value={nt}>
                       {NETWORK_TYPE_LABEL[nt as NetworkType]}
@@ -232,7 +245,11 @@ export function ProxyForm({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">Phân loại proxy: ISP / Datacenter / Dân cư / Mobile</p>
+              <p className="text-xs text-muted-foreground">
+                Hạ tầng mạng: ISP / Datacenter / Dân cư / Mobile (giá trị
+                cố định). Cần nhóm tuỳ chỉnh? Tạo "Danh mục" trên tab
+                Quản lý proxy → Danh mục.
+              </p>
             </div>
           </div>
 

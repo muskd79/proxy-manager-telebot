@@ -45,14 +45,19 @@ export interface ProxyFilters {
     | "mobile"
     | "static_residential";
   /**
-   * Wave 22Z — accept the synthetic value "hidden" in addition to
-   * the DB enum. The server interprets "hidden" as a filter-only
-   * value: show only proxies where hidden=true (cascade trigger
-   * already mirrors category.is_hidden into proxies.hidden, so this
-   * one column covers both manual + cascade hides). Other values
-   * keep their existing semantics + the default hidden=false guard.
+   * Wave 22Z + 22AB — accepts DB enum + 2 synthetic filter-only
+   * values:
+   *   "hidden"        → server: WHERE hidden = true (cascade trigger
+   *                     mirrors category.is_hidden into proxies.hidden,
+   *                     so this single column covers both manual and
+   *                     cascade hides).
+   *   "expiring_soon" → server: WHERE NOW < expires_at <= NOW + 3d
+   *                     AND hidden = false AND status NOT IN ('banned').
+   *
+   * Real DB enum values still pass through with the default
+   * hidden=false guard.
    */
-  status?: ProxyStatus | "hidden";
+  status?: ProxyStatus | "hidden" | "expiring_soon";
   /** Wave 22J — separate filter for "Còn hạn / Hết hạn / Sắp hết hạn". */
   expiryStatus?: "valid" | "expiring_soon" | "expired" | "never";
   country?: string;

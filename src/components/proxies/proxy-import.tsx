@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -35,6 +36,7 @@ import {
   Loader2,
   Radar,
   AlertCircle,
+  ClipboardPaste,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
@@ -102,8 +104,27 @@ export function ProxyImport() {
   const [proxyType, setProxyType] = useState<ProxyType>(ProxyType.HTTP);
   const [country, setCountry] = useState("");
   const [notes, setNotes] = useState("");
-  const [isp, setIsp] = useState("");
+  // Wave 22Y → 22AB — ISP state kept ONLY so the category-default
+  // useEffect doesn't crash when default_isp is set on legacy
+  // categories. Field NOT exposed in UI; ALWAYS sent as null.
+  const [isp] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
+  // Wave 22AB — paste textarea state. Pre-fix: only file-upload
+  // input existed; users couldn't paste 1000 lines directly.
+  const [pasteText, setPasteText] = useState("");
+  const pasteRef = useRef<HTMLTextAreaElement>(null);
+  // Wave 22AB — auto-focus paste textarea when admin lands here
+  // via the "Nhập hàng loạt" item of the Thêm proxy dropdown
+  // (which routes to /proxies/import?mode=paste). The wizard
+  // serves all 4 entry modes, but we hint with the URL so the
+  // textarea/file-input gets immediate attention.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("mode") === "paste") {
+      pasteRef.current?.focus();
+      pasteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [searchParams]);
   // Wave 22K — new fields user requested.
   const [networkType, setNetworkType] = useState("");
   const [vendorSource, setVendorSource] = useState("");
@@ -161,7 +182,7 @@ export function ProxyImport() {
     if (!cat) return;
     if (cat.default_country) setCountry(cat.default_country);
     if (cat.default_proxy_type) setProxyType(cat.default_proxy_type);
-    if (cat.default_isp) setIsp(cat.default_isp);
+    // Wave 22AB — default_isp prefill removed (column dropped from UI)
     if (cat.default_network_type) setNetworkType(cat.default_network_type);
     if (cat.default_vendor_source) setVendorSource(cat.default_vendor_source);
     if (cat.default_purchase_price_usd != null)
@@ -375,8 +396,50 @@ export function ProxyImport() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Wave 22AB — paste textarea is the PRIMARY input. User
+              feedback "vẫn chưa có chỗ dán 1000 proxy" confirmed the
+              file-only UI was wrong. Now: paste OR file, both routed
+              through the same parseContent() pipeline. */}
+          <div className="space-y-2">
+            <Label htmlFor="paste-area" className="flex items-center gap-2">
+              <ClipboardPaste className="size-4" />
+              Dán danh sách proxy
+            </Label>
+            <Textarea
+              id="paste-area"
+              ref={pasteRef}
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={`209.101.202.62:49155:cad2s12342:WZGqzAc5d6\n89.19.58.220:50100:cad2s12342:WZGqzAc5d6\n...`}
+              rows={8}
+              className="font-mono text-xs"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Mỗi dòng 1 proxy theo dạng{" "}
+                <code className="rounded bg-muted px-1 text-[11px]">host:port</code> hoặc{" "}
+                <code className="rounded bg-muted px-1 text-[11px]">host:port:user:pass</code>.
+                Tối đa 10.000 dòng / lần.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => parseContent(pasteText)}
+                disabled={!pasteText.trim()}
+              >
+                <ClipboardPaste className="size-4 mr-1.5" />
+                Phân tích
+              </Button>
+            </div>
+          </div>
+
+          <div className="relative my-3 flex items-center">
+            <div className="flex-1 border-t border-border/50" />
+            <span className="px-3 text-xs uppercase text-muted-foreground">hoặc</span>
+            <div className="flex-1 border-t border-border/50" />
+          </div>
+
           <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
               dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
             }`}
             onDragOver={(e) => {
@@ -386,8 +449,8 @@ export function ProxyImport() {
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
           >
-            <Upload className="size-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mb-3">Kéo thả file vào đây, hoặc click để chọn</p>
+            <Upload className="size-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mb-2">Kéo thả file vào đây, hoặc click để chọn</p>
             <Input type="file" accept=".txt,.csv" onChange={handleFileChange} className="max-w-xs mx-auto" />
           </div>
 
@@ -413,7 +476,7 @@ export function ProxyImport() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Nếu chọn danh mục, các trường loại/quốc gia/ISP dưới sẽ tự fill từ default. Sửa nếu cần.
+                Nếu chọn danh mục, các trường loại/quốc gia dưới sẽ tự fill từ default. Sửa nếu cần.
               </p>
             </div>
             <div className="space-y-2">
@@ -529,15 +592,7 @@ export function ProxyImport() {
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="import-isp">ISP (nhà mạng)</Label>
-              <Input
-                id="import-isp"
-                placeholder="VD: Viettel, AWS"
-                value={isp}
-                onChange={(e) => setIsp(e.target.value)}
-              />
-            </div>
+            {/* Wave 22AB — ISP input removed (column dropped from UI in Wave 22Y) */}
           </div>
 
           <div className="space-y-2">
