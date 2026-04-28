@@ -77,21 +77,29 @@ export async function GET(request: NextRequest) {
       query = query.eq("network_type", networkType);
     }
 
-    // Wave 22J — Hạn dùng filter (derived from expires_at).
-    // valid          : expires_at IS NULL OR > NOW()  (treat NULL as valid)
-    // expiring_soon  : expires_at BETWEEN NOW() AND NOW()+7d
-    // expired        : expires_at <= NOW()
-    // never          : expires_at IS NULL
+    // Wave 22J → 22L (CRITICAL FIX C3) — Hạn dùng filter (derived).
+    //
+    // Pre-22L bug: `valid` mapped to `> NOW()+7d` — proxy còn 6 ngày
+    // bị ẩn khỏi list. Comment ghi đúng "valid = NULL OR > NOW()"
+    // nhưng code sai. User filter "Còn hạn" thấy ít proxy hơn thực
+    // tế → đếm sai inventory → có nguy cơ giao thiếu proxy.
+    //
+    // Wave 22L correct semantics (matches the badge logic in
+    // lib/proxy-labels.ts:deriveExpiryStatus):
+    //   never          : expires_at IS NULL
+    //   expired        : expires_at <= NOW()  (must be non-null)
+    //   expiring_soon  : NOW() < expires_at <= NOW()+7d
+    //   valid          : expires_at > NOW()+7d  OR  expires_at IS NULL
     const expiryStatus = searchParams.get("expiryStatus") || searchParams.get("expiry_status");
     if (expiryStatus) {
       const now = new Date().toISOString();
       const sevenD = new Date(Date.now() + 7 * 86_400_000).toISOString();
       if (expiryStatus === "expired") {
-        query = query.lte("expires_at", now);
+        query = query.not("expires_at", "is", null).lte("expires_at", now);
       } else if (expiryStatus === "expiring_soon") {
-        query = query.gte("expires_at", now).lte("expires_at", sevenD);
+        query = query.gt("expires_at", now).lte("expires_at", sevenD);
       } else if (expiryStatus === "valid") {
-        query = query.gt("expires_at", sevenD);
+        query = query.or(`expires_at.is.null,expires_at.gt.${sevenD}`);
       } else if (expiryStatus === "never") {
         query = query.is("expires_at", null);
       }

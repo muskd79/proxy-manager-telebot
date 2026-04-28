@@ -89,12 +89,21 @@ export default function LoginPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
-              <Link
-                href="/forgot-password"
-                className="text-sm text-muted-foreground hover:underline"
-              >
-                Forgot password?
-              </Link>
+              <div className="flex gap-3 text-sm">
+                <Link
+                  href="/forgot-password"
+                  className="text-muted-foreground hover:underline"
+                >
+                  Quên mật khẩu?
+                </Link>
+                {/* Wave 22L (C2 fix) — entry point for 2FA emergency recovery */}
+                <Link
+                  href="/auth/recover-2fa"
+                  className="text-muted-foreground hover:underline"
+                >
+                  Mất 2FA?
+                </Link>
+              </div>
             </div>
             <Input
               id="password"

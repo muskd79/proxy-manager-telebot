@@ -232,9 +232,11 @@ export async function PUT(request: NextRequest) {
             .single();
 
           if (adminRecord?.email) {
-            const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-            const authUser = users?.find((u: { email?: string }) => u.email === adminRecord.email);
-
+            // Wave 22L (C1 fix) — paginated lookup; pre-22L returned only
+            // 50 users so deactivation didn't kill sessions for admins
+            // on page 2+.
+            const { findAuthUserByEmail } = await import("@/lib/auth-helpers");
+            const authUser = await findAuthUserByEmail(adminRecord.email);
             if (authUser) {
               await supabaseAdmin.auth.admin.signOut(authUser.id, "global");
             }

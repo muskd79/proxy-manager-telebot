@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, actorLabel } from "@/lib/auth";
+import { findAuthUserByEmail } from "@/lib/auth-helpers";
 import { logActivity } from "@/lib/logger";
 import { z } from "zod";
 
@@ -204,11 +205,10 @@ export async function DELETE(
     }
   }
 
-  // Look up auth.users id by email so we can also delete the auth
-  // record. admins.id is NOT the same as auth.users.id; admins
-  // joins on email.
-  const { data: usersList } = await supabaseAdmin.auth.admin.listUsers();
-  const authUser = usersList?.users.find((u) => u.email === target.email);
+  // Wave 22L (C1 fix) — paginated lookup. Pre-22L silently returned
+  // only first 50 users; admin emails on page 2+ would land here as
+  // authUser=undefined.
+  const authUser = await findAuthUserByEmail(target.email);
 
   // Delete admins row first (DB cascade hits admin_backup_codes; sets
   // admin_login_logs.admin_id = NULL). Auth deletion is best-effort

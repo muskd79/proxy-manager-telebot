@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, actorLabel } from "@/lib/auth";
+import { findAuthUserByEmail } from "@/lib/auth-helpers";
 import { logActivity } from "@/lib/logger";
 
 /**
@@ -46,8 +47,8 @@ export async function POST(
     );
   }
 
-  const { data: usersList } = await supabaseAdmin.auth.admin.listUsers();
-  const authUser = usersList?.users.find((u) => u.email === target.email);
+  // Wave 22L (C1 fix) — paginated lookup.
+  const authUser = await findAuthUserByEmail(target.email);
   if (!authUser) {
     return NextResponse.json(
       {
