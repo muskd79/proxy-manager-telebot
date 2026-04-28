@@ -1,7 +1,7 @@
 {
   "sidebar": {
     "dashboard": "Dashboard",
-    "proxies": "Proxies",
+    "proxies": "Proxy management",
     "lots": "Lots",
     "categories": "Categories",
     "users": "Users",
@@ -13,9 +13,16 @@
     "logs": "Logs",
     "settings": "Settings",
     "admins": "Admins",
+    "profile": "My profile",
     "operations": "OPERATIONS",
     "monitoring": "MONITORING",
-    "system": "SYSTEM"
+    "system": "SYSTEM",
+    "account": "ACCOUNT"
+  },
+  "proxyTabs": {
+    "list": "Proxy list",
+    "categories": "Categories",
+    "trash": "Trash"
   },
   "dashboard": {
     "title": "Dashboard",

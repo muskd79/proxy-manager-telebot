@@ -16,8 +16,6 @@ import {
   Users,
   FileText,
   MessageSquare,
-  History,
-  Trash2,
   ScrollText,
   Terminal,
   Shield,
@@ -25,6 +23,7 @@ import {
   LogOut,
   Menu,
   ChevronLeft,
+  UserCircle,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { usePendingRequests } from "@/hooks/use-pending-requests";
@@ -59,10 +58,20 @@ function NavContent({
   // Wave 22O — realtime pending count + browser notification.
   const { count: pendingCount } = usePendingRequests();
 
-  // Wave 22P — IA reorder per UI/UX agent feedback:
-  //   Requests #2 (badge — daily admin attention)
-  //   Categories → System group (rare config, was wrongly at #3)
-  //   /history merged INTO /logs page as sub-tabs
+  // Wave 22T — IA simplified again per user feedback:
+  //   "danh mục và thùng rác cần thật sự mạnh và nên để thành sub-tab
+  //    trong tab proxy, tab proxy đổi thành Quản lý proxy"
+  //   "cần có tab hồ sơ cá nhân"
+  //   "cần tab quản lý admin: super admin có thể thay đổi mọi thứ"
+  //
+  // Structure:
+  //   VẬN HÀNH    — Dashboard, Requests, Quản lý proxy, Users, Chat
+  //   GIÁM SÁT    — Logs, Bot Simulator
+  //   TÀI KHOẢN   — Hồ sơ cá nhân (everyone), Quản trị viên (super_admin)
+  //   HỆ THỐNG    — Settings (super_admin)
+  //
+  // /categories + /trash dropped from top-level; reachable as sub-tabs
+  // inside /proxies via <ProxySubTabs />.
   const navItems: NavItem[] = [
     { title: t("sidebar.dashboard"), href: "/dashboard", icon: LayoutDashboard, section: t("sidebar.operations") },
     {
@@ -76,12 +85,9 @@ function NavContent({
     { title: t("sidebar.chat"), href: "/chat", icon: MessageSquare },
     { title: t("sidebar.logs"), href: "/logs", icon: ScrollText, section: t("sidebar.monitoring") },
     { title: t("sidebar.botSimulator"), href: "/bot-simulator", icon: Terminal },
-    { title: t("sidebar.categories"), href: "/categories", icon: Shield, section: t("sidebar.system") },
-    { title: t("sidebar.trash"), href: "/trash", icon: Trash2 },
+    { title: t("sidebar.profile"), href: "/profile", icon: UserCircle, section: t("sidebar.account") },
     { title: t("sidebar.admins"), href: "/admins", icon: Shield, minRole: "super_admin" },
-    { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin" },
-    // /history now redirects to /logs?tab=history — entry kept for
-    // backward-compat URLs; sidebar link removed.
+    { title: t("sidebar.settings"), href: "/settings", icon: Settings, minRole: "super_admin", section: t("sidebar.system") },
   ];
 
   const roleLevel: Record<string, number> = { viewer: 0, admin: 1, super_admin: 2 };

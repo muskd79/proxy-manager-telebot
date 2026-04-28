@@ -6,6 +6,7 @@ import { ProxyFilters } from "@/components/proxies/proxy-filters";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
 import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
+import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 // Wave 22C: ProxyTagManager removed — strong categories replace flat tags.
 // Use /categories admin page to manage groupings; the proxies list now
 // filters by ?category_id=X (mig 028 + Wave 22A/B).
@@ -282,6 +283,8 @@ export default function ProxiesPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 sm:space-y-6 sm:p-6">
+      {/* Wave 22T — sub-tabs nested under Quản lý proxy. */}
+      <ProxySubTabs />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("sidebar.proxies")}</h1>

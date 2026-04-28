@@ -1,7 +1,7 @@
 {
   "sidebar": {
     "dashboard": "Trang chủ",
-    "proxies": "Proxy",
+    "proxies": "Quản lý proxy",
     "lots": "Lô hàng",
     "categories": "Danh mục",
     "users": "Người dùng",
@@ -13,9 +13,16 @@
     "logs": "Nhật ký",
     "settings": "Cài đặt",
     "admins": "Quản trị viên",
+    "profile": "Hồ sơ cá nhân",
     "operations": "VẬN HÀNH",
     "monitoring": "GIÁM SÁT",
-    "system": "HỆ THỐNG"
+    "system": "HỆ THỐNG",
+    "account": "TÀI KHOẢN"
+  },
+  "proxyTabs": {
+    "list": "Danh sách proxy",
+    "categories": "Danh mục",
+    "trash": "Thùng rác"
   },
   "dashboard": {
     "title": "Trang chủ",

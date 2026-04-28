@@ -7,12 +7,15 @@ import { TrashProxies } from "@/components/trash/trash-proxies";
 import { TrashUsers } from "@/components/trash/trash-users";
 import { TrashRequests } from "@/components/trash/trash-requests";
 import { useRole } from "@/lib/role-context";
+import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 
 export default function TrashPage() {
   const { canWrite } = useRole();
 
   return (
     <div className="flex-1 space-y-6 p-6">
+      {/* Wave 22T — sub-tab of Quản lý proxy. */}
+      <ProxySubTabs />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Thùng rác</h1>

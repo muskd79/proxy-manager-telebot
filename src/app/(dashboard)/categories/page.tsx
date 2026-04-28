@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CategoryFormDialog } from "@/components/categories/CategoryFormDialog";
+import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 import {
   ArrowDown,
   ArrowUp,
@@ -160,6 +161,8 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-4 p-4 md:p-6">
+      {/* Wave 22T — sub-tab of Quản lý proxy. */}
+      <ProxySubTabs />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Danh mục</h1>
