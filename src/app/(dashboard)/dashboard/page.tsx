@@ -10,6 +10,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
+import { DASHBOARD_POLL_INTERVAL_MS } from "@/lib/constants";
 
 export default function DashboardPage() {
   const { t } = useI18n();
@@ -36,7 +37,7 @@ export default function DashboardPage() {
     fetchStats();
 
     // Auto-refresh every 30 seconds (fallback)
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchStats, DASHBOARD_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchStats]);
 
@@ -52,8 +53,11 @@ export default function DashboardPage() {
     };
     const channel = supabase
       .channel("dashboard-changes")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, debouncedFetch)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, debouncedFetch)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, debouncedFetch)
       .subscribe();
 

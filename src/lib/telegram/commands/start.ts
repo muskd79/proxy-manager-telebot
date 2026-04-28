@@ -25,8 +25,8 @@ export async function handleStart(ctx: Context) {
   // AUP gate: required by every proxy vendor's reseller ToS. User must
   // explicitly accept before we distribute any proxy. Re-prompt if the
   // stored acceptance is for an older AUP version than the current one.
-  const aupAcceptedAt = (user as unknown as { aup_accepted_at: string | null }).aup_accepted_at;
-  const aupVersion = (user as unknown as { aup_version: string | null }).aup_version;
+  const aupAcceptedAt = user.aup_accepted_at;
+  const aupVersion = user.aup_version;
   if (!aupAcceptedAt || aupVersion !== AUP_VERSION) {
     await sendAupPrompt(ctx, lang, user.id);
     return;

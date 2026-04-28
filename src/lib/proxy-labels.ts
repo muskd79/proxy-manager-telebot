@@ -11,6 +11,7 @@
  */
 
 import type { Proxy } from "@/types/database";
+import { EXPIRING_SOON_THRESHOLD_MS } from "@/lib/constants";
 
 // ============================================================
 // Network type — proxy classification
@@ -124,7 +125,7 @@ export function deriveExpiryStatus(
   const t = new Date(expires_at).getTime();
   const nowMs = now.getTime();
   if (t <= nowMs) return "expired";
-  if (t - nowMs < 7 * 24 * 3600 * 1000) return "expiring_soon";
+  if (t - nowMs < EXPIRING_SOON_THRESHOLD_MS) return "expiring_soon";
   return "valid";
 }
 

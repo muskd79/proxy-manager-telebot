@@ -39,9 +39,11 @@ export async function GET(
       );
     }
 
+    // Supabase returns a wider JOIN type; cast to ProxyRequest which is the
+    // canonical response shape (extra join fields are stripped by the client).
     return NextResponse.json({
       success: true,
-      data: data as unknown as ProxyRequest,
+      data: data as ProxyRequest,
     } satisfies ApiResponse<ProxyRequest>);
   } catch (err) {
     return NextResponse.json(

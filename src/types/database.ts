@@ -112,6 +112,10 @@ export interface TeleUser {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  /** AUP gate — set when the user explicitly accepts the Acceptable Use Policy. */
+  aup_accepted_at: string | null;
+  /** Version token of the AUP the user accepted (matches AUP_VERSION constant). */
+  aup_version: string | null;
 }
 
 export interface ProxyCategory {

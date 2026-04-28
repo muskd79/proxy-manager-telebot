@@ -109,6 +109,7 @@ export default function RequestsPage() {
     const supabase = createClient();
     const channel = supabase
       .channel("requests-changes")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
         clearTimeout(requestsDebounceRef.current);
         requestsDebounceRef.current = setTimeout(() => {

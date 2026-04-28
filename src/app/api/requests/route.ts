@@ -92,7 +92,8 @@ export async function GET(request: NextRequest) {
     const response: ApiResponse<PaginatedResponse<ProxyRequest>> = {
       success: true,
       data: {
-        data: (data as unknown as ProxyRequest[]) ?? [],
+        // Supabase JOIN widens the type; cast to ProxyRequest[] for the API response.
+        data: (data as ProxyRequest[]) ?? [],
         total,
         page,
         pageSize,

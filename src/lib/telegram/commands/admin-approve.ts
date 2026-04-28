@@ -3,6 +3,15 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
+import { DEFAULT_PROXY_EXPIRY_MS } from "@/lib/constants";
+
+/** Minimal tele_users shape returned by the JOIN in .select(...tele_users(...)). */
+type JoinedTeleUser = {
+  username?: string;
+  first_name?: string;
+  telegram_id: number;
+  language?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Admin check helper (uses centralized getAdminByTelegramId)
@@ -45,11 +54,8 @@ export async function handleAdminRequests(ctx: Context) {
   const lines: string[] = ["*Pending Requests:*", ""];
 
   for (const req of requests) {
-    const user = req.tele_users as unknown as {
-      username?: string;
-      first_name?: string;
-      telegram_id: number;
-    };
+    // Supabase returns the joined relation as array for one-to-many FKs.
+    const user = (req.tele_users as unknown) as JoinedTeleUser;
     const name = user?.username
       ? `@${user.username}`
       : user?.first_name || "Unknown";
@@ -118,7 +124,7 @@ export async function handleAdminApproveCallback(
 
   // Assign the proxy
   const expiresAt = new Date(
-    Date.now() + 30 * 24 * 60 * 60 * 1000
+    Date.now() + DEFAULT_PROXY_EXPIRY_MS
   ).toISOString();
 
   await supabaseAdmin
@@ -207,10 +213,8 @@ export async function handleAdminRejectCallback(
     .single();
 
   if (request) {
-    const user = request.tele_users as unknown as {
-      telegram_id: number;
-      language?: string;
-    };
+    // Supabase returns the joined relation as array for one-to-many FKs.
+    const user = (request.tele_users as unknown) as JoinedTeleUser;
     if (user) {
       const lang = (user.language === "vi" || user.language === "en") ? user.language : "en";
       const text =

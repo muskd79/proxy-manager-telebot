@@ -161,6 +161,7 @@ export default function ProxiesPage() {
     const supabase = createClient();
     const channel = supabase
       .channel("proxies-changes")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, () => {
         // Debounce: only re-fetch after 2s of no changes
         clearTimeout(proxiesDebounceRef.current);
@@ -239,8 +240,9 @@ export default function ProxiesPage() {
     setChecking(true);
     setCheckProgress(0);
     try {
-      // Get all proxy IDs
-      const res = await fetch("/api/proxies?pageSize=10000");
+      // Get all proxy IDs — capped at 500 to avoid unbounded memory/DB load.
+      // For fleets >500 proxies use the cron health-check endpoint instead.
+      const res = await fetch("/api/proxies?pageSize=500");
       const result = await res.json();
       const rawData = result?.data?.data || result?.data || [];
       const allIds = (Array.isArray(rawData) ? rawData : []).map((p: any) => p.id);

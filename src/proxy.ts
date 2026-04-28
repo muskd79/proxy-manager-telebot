@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { checkApiRateLimit } from "@/lib/rate-limiter";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { user, supabaseResponse } = await updateSession(request);
 
   const { pathname } = request.nextUrl;

@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
 import { captureError } from "@/lib/error-tracking";
-import { BOT_COMMANDS } from "@/lib/constants";
+import { BOT_COMMANDS, RECENT_MESSAGE_WINDOW_MS } from "@/lib/constants";
 import {
   handleStart,
   handleHelp,
@@ -229,7 +229,7 @@ bot.on("message:text", async (ctx) => {
     .limit(1)
     .single();
 
-  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const thirtyMinAgo = new Date(Date.now() - RECENT_MESSAGE_WINDOW_MS).toISOString();
   const isSupportMode = lastSupportCmd && lastSupportCmd.created_at > thirtyMinAgo;
 
   // Reply with appropriate response

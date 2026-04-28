@@ -63,6 +63,7 @@ export default function UsersPage() {
     const supabase = createClient();
     const channel = supabase
       .channel("users-changes")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, () => {
         clearTimeout(usersDebounceRef.current);
         usersDebounceRef.current = setTimeout(() => {
@@ -132,7 +133,8 @@ export default function UsersPage() {
           params.set(key, String(value));
         }
       });
-      params.set("pageSize", "10000");
+      // Capped at 500 to avoid unbounded memory/DB load during export.
+      params.set("pageSize", "500");
       params.set("page", "1");
 
       const res = await fetch(`/api/users?${params.toString()}`);

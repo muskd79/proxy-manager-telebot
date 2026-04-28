@@ -38,6 +38,12 @@ export const BOT_COMMANDS = [
 // directly), and ANALYTICS_DAYS (analytics route hard-codes its
 // own window). Add back here only when a caller needs them.
 
+// Timing thresholds (all values in milliseconds)
+export const EXPIRING_SOON_THRESHOLD_MS = 7 * 24 * 3600 * 1000;    // 7 days
+export const DEFAULT_PROXY_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
+export const RECENT_MESSAGE_WINDOW_MS = 30 * 60 * 1000;            // 30 minutes
+export const DASHBOARD_POLL_INTERVAL_MS = 30_000;                   // 30 seconds
+
 // Proxy Types
 export const PROXY_TYPES = ["http", "https", "socks5"] as const;
 

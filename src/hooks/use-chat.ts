@@ -106,6 +106,7 @@ export function useChat(): UseChatReturn {
     const channel = supabase
       .channel(`chat-${selectedUserId}`)
       .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
         "postgres_changes" as any,
         {
           event: "INSERT",

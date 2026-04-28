@@ -115,7 +115,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = data as unknown as ImportLotResult;
+    // import_lot RPC returns Supabase's opaque Json type; narrow via unknown.
+    const result = (data as unknown) as ImportLotResult;
 
     logActivity({
       actorType: "admin",
