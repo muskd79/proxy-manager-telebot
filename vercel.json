@@ -19,10 +19,6 @@
     {
       "path": "/api/cron/expire-requests",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/lot-expiry-alert",
-      "schedule": "0 * * * *"
     }
   ]
 }

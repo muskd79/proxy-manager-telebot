@@ -38,14 +38,14 @@ export async function GET(request: NextRequest) {
     // unfiltered top-of-funnel "list everything" query where the badge
     // is meaningful. Cursor-paginated requests skip count entirely.
     const cursorDate = searchParams.get("cursor");
-    const lotId = searchParams.get("lot_id");
+    // Wave 22S — lot_id removed (purchase_lots dropped in mig 040).
     const categoryId = searchParams.get("category_id"); // Wave 22A
     const expiringWithin = searchParams.get("expiring_within"); // hours
     const vendorLabel = searchParams.get("vendor_label");
 
     const hasFilter =
       !!(filters.search || filters.type || filters.status || filters.country
-        || lotId || categoryId || expiringWithin || vendorLabel
+        || categoryId || expiringWithin || vendorLabel
         || searchParams.get("isp"));
     const countMode: "exact" | "estimated" | undefined = cursorDate
       ? undefined
@@ -113,11 +113,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Wave 22C: tags filter removed (Wave 22A categories supersede it).
-    // Wave 21C: filter by lot — drives `/proxies?lot_id=X` from the
-    // /lots page. Uses idx_proxies_purchase_lot (Wave 21A index).
-    if (lotId) {
-      query = query.eq("purchase_lot_id", lotId);
-    }
+    // Wave 22S: lot_id filter removed (purchase_lots dropped in mig 040).
     // Wave 22A: filter by category — drives `/proxies?category_id=X` from
     // /categories. Uses idx_proxies_category_id (mig 028).
     if (categoryId) {

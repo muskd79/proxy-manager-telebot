@@ -230,8 +230,10 @@ export interface Proxy {
    * Per-proxy cost paid. UI labels this as "Giá mua".
    */
   cost_usd: number | null;
-  /** FK to purchase_lots — groups proxies bought together. */
-  purchase_lot_id: string | null;
+  // Wave 22S (Phase 8) — purchase_lot_id column dropped in mig 040.
+  // purchase_lots stack removed entirely; per-proxy fields above
+  // (purchase_date, vendor_label, cost_usd, sale_price_usd) are
+  // the canonical source of truth.
   /** ISO 3166-1 alpha-2 from GeoIP at import time (vs `country` = vendor label). */
   geo_country_iso: string | null;
   /** How many times this proxy has been distributed (fair-rotation tie-breaker). */
@@ -240,30 +242,10 @@ export interface Proxy {
   last_distributed_at: string | null;
 }
 
-/**
- * One purchase batch — typically one CSV upload from a vendor portal.
- * Aggregates cost for spend-by-vendor reporting and groups proxies for
- * bulk-renew operations.
- */
-export interface PurchaseLot {
-  id: string;
-  vendor_label: string;
-  purchase_date: string;
-  expiry_date: string | null;
-  total_cost_usd: number | null;
-  currency: string;
-  source_file_name: string | null;
-  batch_reference: string | null;
-  notes: string | null;
-  proxy_count: number;
-  parent_lot_id: string | null;
-  last_alert_24h_at: string | null;
-  last_alert_7d_at: string | null;
-  last_alert_30d_at: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
+// Wave 22S (Phase 8) — PurchaseLot interface removed.
+// Mig 040 dropped purchase_lots table. Per-proxy purchase metadata
+// (purchase_date, vendor_label as nguồn, cost_usd as giá mua,
+// sale_price_usd) is the canonical source of truth.
 
 export interface ProxyRequest {
   id: string;
@@ -369,21 +351,7 @@ export type ProxyUpdate = Partial<Omit<Proxy, "id" | "created_at">> & {
   updated_at?: string;
 };
 
-// ─── Wave 21A — purchase_lots Insert/Update ───
-export type PurchaseLotInsert = Omit<
-  PurchaseLot,
-  "id" | "created_at" | "updated_at" | "proxy_count"
-> & {
-  id?: string;
-  created_at?: string;
-  updated_at?: string;
-  proxy_count?: number;
-  currency?: string;
-};
-
-export type PurchaseLotUpdate = Partial<Omit<PurchaseLot, "id" | "created_at">> & {
-  updated_at?: string;
-};
+// Wave 22S — PurchaseLotInsert / PurchaseLotUpdate removed.
 
 export type ProxyRequestInsert = Omit<ProxyRequest, "id" | "created_at"> & {
   id?: string;
@@ -513,21 +481,7 @@ export interface Database {
           },
         ];
       };
-      // ─── Wave 21A inventory tables ───
-      purchase_lots: {
-        Row: PurchaseLot;
-        Insert: PurchaseLotInsert;
-        Update: PurchaseLotUpdate;
-        Relationships: [
-          {
-            foreignKeyName: "purchase_lots_created_by_fkey";
-            columns: ["created_by"];
-            isOneToOne: false;
-            referencedRelation: "admins";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
+      // Wave 22S — purchase_lots dropped (mig 040).
       // ─── Wave 22A categories ───
       proxy_categories: {
         Row: ProxyCategory;
@@ -544,24 +498,9 @@ export interface Database {
         ];
       };
     };
-    Views: {
-      // Wave 21C — feeds the dashboard cost-by-vendor card.
-      dashboard_cost_by_vendor: {
-        Row: {
-          vendor_label: string;
-          month: string;
-          lot_count: number;
-          proxy_total: number;
-          spend_usd: number | null;
-        };
-      };
-      // Wave 21C — feeds the lot-expiry-alert cron.
-      expiring_soon_lots: {
-        Row: PurchaseLot & {
-          alert_window: "24h" | "7d" | "30d" | null;
-        };
-      };
-    };
+    Views: Record<string, never>;
+    // Wave 22S — dashboard_cost_by_vendor + expiring_soon_lots views
+    // dropped in mig 040 (depended on purchase_lots).
     Functions: Record<string, never>;
     Enums: {
       admin_role: "super_admin" | "admin" | "viewer";

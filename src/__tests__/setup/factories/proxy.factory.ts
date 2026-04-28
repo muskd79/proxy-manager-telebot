@@ -1,4 +1,4 @@
-export function createProxy(overrides: Partial<any> = {}) {
+export function createProxy(overrides: Partial<Record<string, unknown>> = {}) {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
@@ -11,48 +11,28 @@ export function createProxy(overrides: Partial<any> = {}) {
     password: "testpass",
     country: "US",
     isp: "TestISP",
-    tags: [],
     is_deleted: false,
     assigned_to: null,
     expires_at: null,
     created_at: now,
     updated_at: now,
     // ─── Wave 21A inventory columns ───
+    // Wave 22S: purchase_lot_id removed (mig 040 dropped purchase_lots table)
     purchase_date: now,
     vendor_label: null,
     cost_usd: null,
-    purchase_lot_id: null,
+    sale_price_usd: null,
     geo_country_iso: null,
     distribute_count: 0,
     last_distributed_at: null,
+    // Wave 22G: cascade hide
+    hidden: false,
+    // Wave 22J: proxy classification (free text)
+    network_type: null,
     ...overrides,
   };
 }
 
-export function createPurchaseLot(overrides: Partial<any> = {}) {
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    vendor_label: "TestVendor",
-    purchase_date: now,
-    expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    total_cost_usd: 50,
-    currency: "USD",
-    source_file_name: "test.csv",
-    batch_reference: null,
-    notes: null,
-    proxy_count: 0,
-    parent_lot_id: null,
-    last_alert_24h_at: null,
-    last_alert_7d_at: null,
-    last_alert_30d_at: null,
-    created_by: null,
-    created_at: now,
-    updated_at: now,
-    ...overrides,
-  };
-}
-
-export function createProxies(count: number, overrides: Partial<any> = {}) {
+export function createProxies(count: number, overrides: Partial<Record<string, unknown>> = {}) {
   return Array.from({ length: count }, () => createProxy(overrides));
 }

@@ -263,15 +263,17 @@ export function ProxyTable({
           <SortableHead column="country">Quốc gia</SortableHead>
           <TableHead>ISP</TableHead>
           <TableHead>Người dùng</TableHead>
+          <SortableHead column="assigned_at">Thời gian giao</SortableHead>
           <SortableHead column="speed_ms">Tốc độ</SortableHead>
           <SortableHead column="expires_at">Ngày hết hạn</SortableHead>
+          <SortableHead column="created_by">Người thêm</SortableHead>
           <TableHead className="w-10" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={11} className="text-center py-8">
+            <TableCell colSpan={13} className="text-center py-8">
               <p className="text-muted-foreground">Chưa có proxy nào</p>
             </TableCell>
           </TableRow>
@@ -348,6 +350,18 @@ export function ProxyTable({
                     <span className="text-muted-foreground">-</span>
                   )}
                 </TableCell>
+                {/* Wave 22S — Thời gian giao */}
+                <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
+                  {proxy.assigned_at
+                    ? new Date(proxy.assigned_at).toLocaleString("vi-VN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "-"}
+                </TableCell>
                 <TableCell>
                   {proxy.speed_ms != null ? (
                     <span
@@ -369,6 +383,14 @@ export function ProxyTable({
                   {proxy.expires_at
                     ? new Date(proxy.expires_at).toLocaleDateString("vi-VN")
                     : "Vĩnh viễn"}
+                </TableCell>
+                {/* Wave 22S — Người thêm (admin who created the proxy) */}
+                <TableCell className="text-muted-foreground text-xs">
+                  {proxy.created_by ? (
+                    <span className="font-mono">{proxy.created_by.slice(0, 8)}…</span>
+                  ) : (
+                    <span>—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>

@@ -72,6 +72,7 @@ export const PROXIES_SORT = makeSortValidator(
     "status",
     "expires_at",
     "assigned_at",
+    "created_by",
   ],
   "created_at",
 );
