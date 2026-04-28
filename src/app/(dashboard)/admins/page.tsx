@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { RefreshCw, Plus, Shield, ShieldAlert, Eye, ShieldOff } from "lucide-react";
@@ -357,6 +358,12 @@ export default function AdminsPage() {
                         >
                           {admin.is_active ? "Deactivate" : "Activate"}
                         </Button>
+                        {/* Wave 22F-D: link to detail page with force-actions */}
+                        <Link href={`/admins/${admin.id}`}>
+                          <Button variant="outline" size="sm">
+                            Manage
+                          </Button>
+                        </Link>
                       </div>
                     </TableCell>
                   </TableRow>
