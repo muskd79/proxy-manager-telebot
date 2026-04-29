@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
 import { getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
+import { denyIfNotApproved } from "../guards";
 import { ChatDirection, MessageType } from "@/types/database";
 
 export async function handleCheckProxy(ctx: Context) {
@@ -18,10 +19,8 @@ export async function handleCheckProxy(ctx: Context) {
   if (!user) return;
   const lang = getUserLanguage(user);
 
-  if (user.status === "blocked" || user.status === "banned") {
-    await ctx.reply(lang === "vi" ? "[X] Tai khoan bi chan." : "[X] Account blocked.");
-    return;
-  }
+  // Wave 23B-bot-fix — uniform gate covers pending too.
+  if (await denyIfNotApproved(ctx, user, lang)) return;
 
   const { data: proxies } = await supabaseAdmin
     .from("proxies")

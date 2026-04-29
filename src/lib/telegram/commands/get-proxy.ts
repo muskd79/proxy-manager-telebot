@@ -5,11 +5,11 @@ import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
 import { proxyTypeKeyboard, quantityKeyboard } from "../keyboard";
+import { denyIfNotApproved } from "../guards";
 import {
   ChatDirection,
   MessageType,
   ProxyStatus,
-  TeleUserStatus,
 } from "@/types/database";
 
 export async function handleGetProxy(ctx: Context) {
@@ -26,22 +26,10 @@ export async function handleGetProxy(ctx: Context) {
     MessageType.Command
   );
 
-  // Check blocked
-  if (
-    user.status === TeleUserStatus.Blocked ||
-    user.status === TeleUserStatus.Banned
-  ) {
-    const text = t("accountBlocked", lang);
-    await ctx.reply(text);
-    await logChatMessage(
-      user.id,
-      null,
-      ChatDirection.Outgoing,
-      text,
-      MessageType.Text
-    );
-    return;
-  }
+  // Wave 23B-bot-fix — single guard. Rejects blocked/banned (clear
+  // message) AND pending (admin still reviewing). Pre-fix pending
+  // users slipped through and could spam /getproxy before approval.
+  if (await denyIfNotApproved(ctx, user, lang)) return;
 
   // Quick read-only rate limit preview (no DB writes, no race condition).
   // This is just for UX feedback — the real counter increment happens

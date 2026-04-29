@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
+import { denyIfNotApproved } from "../guards";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleMyProxies(ctx: Context) {
@@ -18,6 +19,9 @@ export async function handleMyProxies(ctx: Context) {
     "/myproxies",
     MessageType.Command
   );
+
+  // Wave 23B-bot-fix — gate blocked/banned/pending uniformly.
+  if (await denyIfNotApproved(ctx, user, lang)) return;
 
   const { data: proxies } = await supabaseAdmin
     .from("proxies")

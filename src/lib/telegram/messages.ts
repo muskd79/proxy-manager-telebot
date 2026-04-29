@@ -129,6 +129,10 @@ export const msg = {
     vi: "[X] T\u00E0i kho\u1EA3n c\u1EE7a b\u1EA1n \u0111\u00E3 b\u1ECB kh\u00F3a. Li\u00EAn h\u1EC7 admin \u0111\u1EC3 bi\u1EBFt th\u00EAm.",
     en: "[X] Your account has been blocked. Contact admin for details.",
   },
+  accountPendingApproval: {
+    vi: "[!] Tài khoản của bạn đang chờ admin duyệt. Bạn sẽ nhận thông báo khi được phê duyệt.",
+    en: "[!] Your account is pending admin approval. You will be notified once approved.",
+  },
   languageSelect: {
     vi: "Ch\u1ECDn ng\u00F4n ng\u1EEF / Select language:",
     en: "Select language / Ch\u1ECDn ng\u00F4n ng\u1EEF:",

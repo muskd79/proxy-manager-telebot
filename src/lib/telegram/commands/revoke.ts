@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { revokeProxy } from "../revoke";
+import { denyIfNotApproved } from "../guards";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleRevoke(ctx: Context) {
@@ -21,6 +22,9 @@ export async function handleRevoke(ctx: Context) {
     "/revoke",
     MessageType.Command
   );
+
+  // Wave 23B-bot-fix — gate blocked/banned/pending uniformly.
+  if (await denyIfNotApproved(ctx, user, lang)) return;
 
   // Get user's assigned proxies
   const { data: proxies } = await supabaseAdmin

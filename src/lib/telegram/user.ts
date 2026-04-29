@@ -64,6 +64,26 @@ export async function getOrCreateUser(ctx: Context) {
     return setting?.value?.value ?? fallback;
   };
 
+  // Wave 23B-bot-fix — admin approval gate.
+  //
+  // Pre-fix every new /start created the user with status="active",
+  // so anyone who knew the bot could request proxies immediately.
+  // Admin "approve" was a no-op (already active).
+  //
+  // Now: when default_approval_mode='manual' (the safe default), new
+  // users land in "pending". They see the "đang chờ admin duyệt"
+  // welcome and every actionable command is gated downstream until
+  // an admin approves them via the AUP-acceptance notification.
+  // When mode='auto' (admin opted into open-signup), behavior is the
+  // legacy auto-active path so existing fleets aren't broken.
+  const approvalMode = String(
+    getSettingValue("default_approval_mode", "manual"),
+  ) as ApprovalMode;
+  const initialStatus =
+    approvalMode === ApprovalMode.Manual
+      ? TeleUserStatus.Pending
+      : TeleUserStatus.Active;
+
   // Create new user with settings-based defaults
   const { data: newUser, error } = await supabaseAdmin
     .from("tele_users")
@@ -73,10 +93,8 @@ export async function getOrCreateUser(ctx: Context) {
       first_name: from.first_name ?? null,
       last_name: from.last_name ?? null,
       phone: null,
-      status: TeleUserStatus.Active,
-      approval_mode: String(
-        getSettingValue("default_approval_mode", "auto"),
-      ) as ApprovalMode,
+      status: initialStatus,
+      approval_mode: approvalMode,
       max_proxies: Number(getSettingValue("default_max_proxies", 5)),
       rate_limit_hourly: Number(getSettingValue("default_rate_limit_hourly", 3)),
       rate_limit_daily: Number(getSettingValue("default_rate_limit_daily", 10)),
