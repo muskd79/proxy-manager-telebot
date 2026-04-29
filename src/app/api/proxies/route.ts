@@ -249,20 +249,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Wave 22C: tags removed.
-    const { host, port, type, username, password, country, city, isp, notes, expires_at } = parsed.data;
+    // Wave 22C: tags removed. Wave 23B: persist category_id from single-add form.
+    const { host, port, type, network_type, username, password, country, city, isp, category_id, notes, expires_at } = parsed.data;
 
     const insertData = {
       host,
       port,
       type,
+      network_type: network_type || null,
       username: username || null,
       password: password || null,
       country: country || null,
       city: city || null,
       isp: isp || null,
+      category_id: category_id || null,
       status: "available" as const,
-      // Wave 22C: tags removed; field stays in DB but the API stops writing it.
       notes: notes || null,
       expires_at: expires_at || null,
       is_deleted: false,

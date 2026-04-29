@@ -28,6 +28,7 @@ import {
   NETWORK_TYPE_LABEL,
   type NetworkType,
 } from "@/lib/proxy-labels";
+import { CategoryPicker, type CategoryOptionLite } from "./category-picker";
 
 const proxyTypeValues = ["http", "https", "socks5"] as const;
 
@@ -41,9 +42,10 @@ const proxySchema = z.object({
   password: z.string().optional(),
   country: z.string().optional(),
   city: z.string().optional(),
-  // Wave 22Y — ISP field removed from UI (kept in DB for legacy imports)
-  // Wave 22C: tags removed in favour of categories. category_id is set
-  // via the bulk-assign UI on /proxies; the per-proxy form stays simple.
+  // Wave 22Y — ISP field removed from UI (kept in DB for legacy imports).
+  // Wave 23B — Danh mục phải chọn được khi thêm 1 proxy lẻ
+  // (trước đây chỉ làm được qua bulk-assign — UX feedback từ user).
+  category_id: z.string().optional().or(z.literal("")),
   notes: z.string().optional(),
   expires_at: z.string().optional(),
 });
@@ -71,6 +73,7 @@ export function ProxyForm({
     password: proxy?.password || "",
     country: proxy?.country || "",
     city: proxy?.city || "",
+    category_id: proxy?.category_id || "",
     notes: proxy?.notes || "",
     expires_at: proxy?.expires_at
       ? new Date(proxy.expires_at).toISOString().split("T")[0]
@@ -79,12 +82,29 @@ export function ProxyForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
+  const [categories, setCategories] = useState<CategoryOptionLite[]>([]);
 
   useEffect(() => {
     fetch("/api/proxies/stats")
       .then((r) => r.json())
       .then((d) => {
         if (d.data?.countries) setCountries(d.data.countries);
+      })
+      .catch(() => {});
+
+    fetch("/api/categories")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.data)) {
+          setCategories(
+            (d.data as Array<{ id: string; name: string; default_country?: string | null; default_proxy_type?: string | null }>).map((c) => ({
+              id: c.id,
+              name: c.name,
+              default_country: c.default_country ?? null,
+              default_proxy_type: c.default_proxy_type ?? null,
+            })),
+          );
+        }
       })
       .catch(() => {});
   }, []);
@@ -128,6 +148,7 @@ export function ProxyForm({
         country: formData.country || null,
         city: formData.city || null,
         // Wave 22Y — isp omitted from UI submissions
+        category_id: formData.category_id || null,
         notes: formData.notes || null,
         expires_at: formData.expires_at
           ? new Date(formData.expires_at).toISOString()
@@ -303,7 +324,20 @@ export function ProxyForm({
             </div>
           </div>
 
-          {/* Wave 22C: tags input removed. Strong categories supersede. */}
+          {/* Wave 23B — Danh mục cho proxy lẻ. Có nút "+ Tạo danh mục
+              mới" inline để admin không phải rời form. */}
+          <div className="space-y-2">
+            <Label>Danh mục</Label>
+            <CategoryPicker
+              value={formData.category_id}
+              onValueChange={(id) => handleChange("category_id", id)}
+              categories={categories}
+              onCategoryCreated={(c) => setCategories((prev) => [...prev, c])}
+            />
+            <p className="text-xs text-muted-foreground">
+              Nhóm proxy theo danh mục để dễ giao + thống kê. Tuỳ chọn.
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="expires_at">Ngày hết hạn</Label>

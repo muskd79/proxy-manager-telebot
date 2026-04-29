@@ -41,6 +41,7 @@ import {
 import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
+import { CategoryPicker } from "./category-picker";
 
 /**
  * Wave 22I — Smart proxy import wizard.
@@ -125,6 +126,24 @@ export function ProxyImport() {
       pasteRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [searchParams]);
+
+  // Wave 23B — auto-parse paste text (debounced 250ms). Pre-fix the
+  // user had to click an extra "Phân tích" button; feedback was
+  // "tao đâu có cần phân tích, tao cần thêm 1000 proxy đó vào". Now
+  // typing/pasting in the textarea immediately produces the row
+  // preview + the existing "Import N proxy" button is the only
+  // primary action.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (pasteText.trim()) {
+        parseContent(pasteText);
+      } else {
+        setParsedProxies([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasteText]);
   // Wave 22K — new fields user requested.
   const [networkType, setNetworkType] = useState("");
   const [vendorSource, setVendorSource] = useState("");
@@ -421,14 +440,11 @@ export function ProxyImport() {
                 <code className="rounded bg-muted px-1 text-[11px]">host:port:user:pass</code>.
                 Tối đa 10.000 dòng / lần.
               </p>
-              <Button
-                size="sm"
-                onClick={() => parseContent(pasteText)}
-                disabled={!pasteText.trim()}
-              >
-                <ClipboardPaste className="size-4 mr-1.5" />
-                Phân tích
-              </Button>
+              {parsedProxies.length > 0 && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  Đã đọc <span className="font-semibold text-foreground">{parsedProxies.length}</span> dòng
+                </span>
+              )}
             </div>
           </div>
 
@@ -457,24 +473,27 @@ export function ProxyImport() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Danh mục</Label>
-              <Select
-                value={categoryId || "_none"}
-                onValueChange={(v: string | null) => setCategoryId(v === "_none" ? "" : v ?? "")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Không phân loại" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">Không phân loại</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                      {c.default_proxy_type ? ` · ${c.default_proxy_type.toUpperCase()}` : ""}
-                      {c.default_country ? ` · ${c.default_country}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategoryPicker
+                value={categoryId}
+                onValueChange={setCategoryId}
+                categories={categories}
+                onCategoryCreated={(c) =>
+                  setCategories((prev) => [
+                    ...prev,
+                    {
+                      id: c.id,
+                      name: c.name,
+                      default_country: c.default_country ?? null,
+                      default_proxy_type: (c.default_proxy_type as ProxyType | null) ?? null,
+                      default_isp: null,
+                      default_network_type: null,
+                      default_vendor_source: null,
+                      default_purchase_price_usd: null,
+                      default_sale_price_usd: null,
+                    },
+                  ])
+                }
+              />
               <p className="text-xs text-muted-foreground">
                 Nếu chọn danh mục, các trường loại/quốc gia dưới sẽ tự fill từ default. Sửa nếu cần.
               </p>
