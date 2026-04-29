@@ -104,7 +104,22 @@ export async function handleQuantitySelection(
       // Send as file
       const buffer = formatProxiesAsBuffer(proxies);
       await ctx.reply(resultMsg);
-      await sendTelegramDocument(ctx.from.id, buffer, `proxies_${proxyType}_${data.assigned}.txt`, resultMsg);
+      const filename = `proxies_${proxyType}_${data.assigned}.txt`;
+      await sendTelegramDocument(ctx.from.id, buffer, filename, resultMsg);
+      // Wave 23C — audit row for the file delivery (mig 049). Best-effort:
+      // a failed audit insert must NOT break the user-facing reply.
+      supabaseAdmin
+        .from("bot_files")
+        .insert({
+          tele_user_id: user.id,
+          filename,
+          size_bytes: buffer.length,
+          kind: "bulk_assign",
+          context: { proxy_type: proxyType, count: data.assigned, batch_id: batchId },
+        })
+        .then(({ error }) => {
+          if (error) console.error("bot_files audit insert failed:", error.message);
+        });
     }
 
     await logChatMessage(user.id, null, ChatDirection.Outgoing, `Bulk assigned ${data.assigned} ${proxyType} proxies`, MessageType.Text);
@@ -248,7 +263,26 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
       sendTelegramMessage(teleUser.telegram_id, `${userMsg}\n\n\`${proxyLines}\``).catch(console.error);
     } else {
       const buffer = formatProxiesAsBuffer(proxies);
-      sendTelegramDocument(teleUser.telegram_id, buffer, `proxies_${request.proxy_type}_${data.assigned}.txt`, userMsg).catch(console.error);
+      const filename = `proxies_${request.proxy_type}_${data.assigned}.txt`;
+      sendTelegramDocument(teleUser.telegram_id, buffer, filename, userMsg).catch(console.error);
+      // Wave 23C — audit row (mig 049). Best-effort, fire-and-forget.
+      supabaseAdmin
+        .from("bot_files")
+        .insert({
+          tele_user_id: teleUser.id,
+          filename,
+          size_bytes: buffer.length,
+          kind: "bulk_assign_admin_approved",
+          context: {
+            proxy_type: request.proxy_type,
+            count: data.assigned,
+            batch_id: batchId,
+            request_id: requestId,
+          },
+        })
+        .then(({ error }) => {
+          if (error) console.error("bot_files audit insert failed:", error.message);
+        });
     }
   }
 
