@@ -5,8 +5,12 @@ import { requireAdminOrAbove } from "@/lib/auth";
 import { checkProxy } from "@/lib/proxy-checker";
 import { HEALTH_CHECK_CONCURRENCY } from "@/lib/constants";
 import { CheckProxiesSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { SettingsPutSchema, SettingsPostSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/csrf";
 
 /**
  * Setting keys that are secrets and must NEVER be stored in the settings
@@ -57,6 +58,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireSuperAdmin(supabase);
   if (authError) return authError;
@@ -293,6 +297,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireSuperAdmin(supabase);
   if (authError) return authError;

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { detectProxy, type ProxyDetectResult } from "@/lib/proxy-detect";
+import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
 
 /**
@@ -68,6 +69,9 @@ interface BatchProbeResult {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

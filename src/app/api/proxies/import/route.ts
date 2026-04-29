@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/logger";
 import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
+import { assertSameOrigin } from "@/lib/csrf";
 
 interface ImportProxyRow {
   host: string;
@@ -20,6 +21,9 @@ interface ImportProxyRow {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

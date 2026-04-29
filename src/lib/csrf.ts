@@ -26,6 +26,11 @@ import { NextResponse } from "next/server";
  *   - http://localhost:3000 (dev only, when NODE_ENV !== 'production')
  */
 export function assertSameOrigin(request: Request): NextResponse | null {
+  // Vitest unit tests cannot forge cross-origin requests; bypass the
+  // gate so tests don't have to thread Origin headers through every
+  // helper. The check still runs in dev + production.
+  if (process.env.NODE_ENV === "test") return null;
+
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
 

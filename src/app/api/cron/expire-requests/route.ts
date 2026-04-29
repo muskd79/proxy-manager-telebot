@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { verifyCronSecret } from "@/lib/auth";
 import { captureError } from "@/lib/error-tracking";
+import { withCronLock } from "@/lib/cron/advisory-lock";
 import type { ProxyRequest, TeleUser } from "@/types/database";
 
 /** Shape returned when proxy_requests is joined with tele_users(telegram_id, language). */
@@ -14,6 +15,14 @@ export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const outcome = await withCronLock(supabaseAdmin, "cron.expire_requests", runExpireRequests);
+  if (outcome.skipped) {
+    return NextResponse.json({ success: true, data: { skipped: true, reason: outcome.reason } });
+  }
+  return outcome.result;
+}
+
+async function runExpireRequests(): Promise<NextResponse> {
   // Expire requests pending for more than 7 days
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

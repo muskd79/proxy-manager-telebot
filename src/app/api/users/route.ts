@@ -6,6 +6,20 @@ import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateUserSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { USERS_SORT, safeSort } from "@/lib/sort-allowlist";
+import { assertSameOrigin } from "@/lib/csrf";
+
+/**
+ * Wave 23A — escape characters reserved by Supabase PostgREST `or()` /
+ * `ilike()` syntax. Without this an attacker can inject `,)` to break
+ * out of the filter and union extra clauses.
+ *
+ * The PostgREST embedded filter language treats `,`, `(`, `)`, and `:`
+ * as separators in `or()`; `*` and `\` carry special meaning in
+ * `ilike`. Strip them all from free-text search inputs.
+ */
+function sanitizeSearchTerm(raw: string): string {
+  return raw.replace(/[,()*\\:%]/g, "").slice(0, 100);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,9 +49,15 @@ export async function GET(request: NextRequest) {
       .eq("is_deleted", filters.isDeleted ?? false);
 
     if (filters.search) {
-      query = query.or(
-        `username.ilike.%${filters.search}%,first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,telegram_id.eq.${isNaN(Number(filters.search)) ? 0 : Number(filters.search)}`
-      );
+      const safe = sanitizeSearchTerm(filters.search);
+      const tgId = isNaN(Number(filters.search)) ? 0 : Number(filters.search);
+      if (safe) {
+        query = query.or(
+          `username.ilike.%${safe}%,first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,telegram_id.eq.${tgId}`
+        );
+      } else if (tgId > 0) {
+        query = query.eq("telegram_id", tgId);
+      }
     }
 
     if (filters.status) {
@@ -87,6 +107,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const supabase = await createClient();
 

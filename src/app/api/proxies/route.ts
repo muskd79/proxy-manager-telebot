@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/logger";
 import { CreateProxySchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { PROXIES_SORT, safeSort } from "@/lib/sort-allowlist";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -231,6 +232,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

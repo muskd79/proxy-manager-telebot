@@ -140,6 +140,9 @@ vi.mock("@/lib/constants", () => ({
 
 // Stub environment
 vi.stubEnv("CRON_SECRET", "test-cron-secret");
+// Wave 23A — bypass cron advisory lock; the route-level tests focus on
+// cron logic, the lock mechanism is covered by advisory-lock.test.ts
+vi.stubEnv("CRON_LOCK_BYPASS", "1");
 
 // Lazy imports (after mocks are wired)
 async function importHealthCheck() {

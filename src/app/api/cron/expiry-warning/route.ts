@@ -3,11 +3,20 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { verifyCronSecret } from "@/lib/auth";
 import { captureError } from "@/lib/error-tracking";
+import { withCronLock } from "@/lib/cron/advisory-lock";
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const outcome = await withCronLock(supabaseAdmin, "cron.expiry_warning", runExpiryWarning);
+  if (outcome.skipped) {
+    return NextResponse.json({ success: true, data: { skipped: true, reason: outcome.reason } });
+  }
+  return NextResponse.json({ success: true, data: outcome.result });
+}
+
+async function runExpiryWarning() {
   // Find proxies expiring in next 3 days that haven't been warned yet
   const now = new Date();
   const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -22,7 +31,7 @@ export async function GET(request: NextRequest) {
     .lte("expires_at", threeDaysLater.toISOString());
 
   if (!expiringProxies || expiringProxies.length === 0) {
-    return NextResponse.json({ success: true, data: { warned: 0 } });
+    return { warned: 0 };
   }
 
   let warned = 0;
@@ -68,5 +77,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, data: { warned } });
+  return { warned };
 }

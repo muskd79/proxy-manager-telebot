@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { TRASH_AUTO_CLEAN_DAYS } from "@/lib/constants";
 import { verifyCronSecret } from "@/lib/auth";
+import { withCronLock } from "@/lib/cron/advisory-lock";
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const outcome = await withCronLock(supabaseAdmin, "cron.cleanup", runCleanup);
+  if (outcome.skipped) {
+    return NextResponse.json({ success: true, data: { skipped: true, reason: outcome.reason } });
+  }
+  return NextResponse.json({ success: true, data: outcome.result });
+}
+
+async function runCleanup() {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - TRASH_AUTO_CLEAN_DAYS);
   const cutoff = cutoffDate.toISOString();
@@ -55,8 +64,5 @@ export async function GET(request: NextRequest) {
     .lt("created_at", chatCutoff.toISOString());
   const deletedChats = chatCount ?? 0;
 
-  return NextResponse.json({
-    success: true,
-    data: { deletedProxies, deletedUsers, deletedRequests, deletedLogs, deletedChats, cutoffDate: cutoff },
-  });
+  return { deletedProxies, deletedUsers, deletedRequests, deletedLogs, deletedChats, cutoffDate: cutoff };
 }

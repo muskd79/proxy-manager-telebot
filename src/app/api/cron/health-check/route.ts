@@ -3,12 +3,23 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkProxy } from "@/lib/proxy-checker";
 import { HEALTH_CHECK_CONCURRENCY, HEALTH_CHECK_CRON_BATCH_SIZE } from "@/lib/constants";
 import { verifyCronSecret } from "@/lib/auth";
+import { withCronLock } from "@/lib/cron/advisory-lock";
 
 export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
-  // Fetch proxies ordered by least recently checked
+  const outcome = await withCronLock(supabaseAdmin, "cron.health_check", async () => {
+    return runHealthCheck();
+  });
+
+  if (outcome.skipped) {
+    return NextResponse.json({ success: true, data: { skipped: true, reason: outcome.reason } });
+  }
+  return NextResponse.json({ success: true, data: outcome.result });
+}
+
+async function runHealthCheck() {
   const { data: proxies, error } = await supabaseAdmin
     .from("proxies")
     .select("id, host, port, type")
@@ -17,7 +28,7 @@ export async function GET(request: NextRequest) {
     .limit(HEALTH_CHECK_CRON_BATCH_SIZE);
 
   if (error || !proxies || proxies.length === 0) {
-    return NextResponse.json({ success: true, data: { checked: 0, alive: 0, dead: 0 } });
+    return { checked: 0, alive: 0, dead: 0 };
   }
 
   let alive = 0;
@@ -74,8 +85,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
-    success: true,
-    data: { checked: proxies.length, alive, dead },
-  });
+  return { checked: proxies.length, alive, dead };
 }

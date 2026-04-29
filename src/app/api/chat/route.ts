@@ -5,6 +5,7 @@ import type { ChatMessage, TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { SendChatMessageSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/csrf";
 
 interface ConversationResponse {
   user: TeleUser;
@@ -152,6 +153,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

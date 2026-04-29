@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminOrAbove } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { createSimulatorContext } from "@/lib/telegram/simulator";
 import type { SupportedLanguage } from "@/types/telegram";
 
@@ -51,6 +52,9 @@ const COMMAND_MAP: Record<string, (ctx: import("grammy").Context) => Promise<voi
 };
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

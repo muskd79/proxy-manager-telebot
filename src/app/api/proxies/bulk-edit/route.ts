@@ -28,6 +28,8 @@ import { ProxyStatus } from "@/types/database";
  * returns 409 — caller must change their request, not retry.
  */
 
+// Wave 23A — drop tags_add/tags_remove. The proxies.tags column was
+// removed in mig 037; the RPC is redefined in mig 041 without those args.
 const BulkEditSchema = z
   .object({
     ids: z.array(z.string().uuid()).min(1).max(5000),
@@ -35,8 +37,6 @@ const BulkEditSchema = z
       .object({
         status: z.nativeEnum(ProxyStatus).optional(),
         extend_expiry_days: z.coerce.number().int().min(-3650).max(3650).optional(),
-        tags_add: z.array(z.string().max(50)).max(20).optional(),
-        tags_remove: z.array(z.string().max(50)).max(20).optional(),
         notes: z.string().max(2000).nullable().optional(),
         is_deleted: z.boolean().optional(),
       })
@@ -45,8 +45,6 @@ const BulkEditSchema = z
         (u) =>
           u.status !== undefined ||
           u.extend_expiry_days !== undefined ||
-          (u.tags_add && u.tags_add.length > 0) ||
-          (u.tags_remove && u.tags_remove.length > 0) ||
           u.notes !== undefined ||
           u.is_deleted !== undefined,
         { message: "At least one update field is required" },
@@ -94,8 +92,6 @@ export async function POST(request: NextRequest) {
       p_is_deleted: updates.is_deleted ?? null,
       p_notes: updates.notes ?? null,
       p_extend_days: updates.extend_expiry_days ?? null,
-      p_tags_add: updates.tags_add ?? null,
-      p_tags_remove: updates.tags_remove ?? null,
     });
 
     if (error) {

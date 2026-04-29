@@ -42,7 +42,11 @@ vi.mock("@/lib/supabase/admin", () => ({
         update: (...a: unknown[]) => mockAdminsUpdate(...a),
       };
     return {};
-  }, auth: { admin: { mfa: {
+  },
+  // Wave 23A — rate-limit RPC for /auth/recover-2fa IP throttle.
+  // Always allow in tests (the throttle itself is covered separately).
+  rpc: vi.fn().mockResolvedValue({ data: { allowed: true, remaining: 99 }, error: null }),
+  auth: { admin: { mfa: {
     listFactors: (...a: unknown[]) => mockListFactors(...a),
     deleteFactor: (...a: unknown[]) => mockDeleteFactor(...a),
   } } } },

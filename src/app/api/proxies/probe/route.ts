@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { detectProxy } from "@/lib/proxy-detect";
+import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
 import dns from "dns/promises";
 
@@ -32,6 +33,9 @@ const ProbeSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;

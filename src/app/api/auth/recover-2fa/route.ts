@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { findAuthUserByEmail } from "@/lib/auth-helpers";
 import { verifyBackupCode, normaliseBackupInput } from "@/lib/backup-codes";
 import { logActivity } from "@/lib/logger";
+import { checkApiRateLimit } from "@/lib/rate-limiter";
+import { getClientIp } from "@/lib/ip";
 import { z } from "zod";
 
 /**
@@ -50,6 +52,20 @@ const RecoverSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // Wave 23A — IP rate limit for unauthenticated 2FA recovery.
+  // Without this, an attacker who guessed the email + has lots of
+  // backup-code candidates could brute-force without any throttle.
+  // The API rate limiter is fail-closed, so DB-down means HTTP 429
+  // — preferable to letting recovery requests through unchecked.
+  const ip = getClientIp(request);
+  const rl = await checkApiRateLimit(`recover2fa:${ip}`);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: "Quá nhiều lần thử. Đợi vài phút rồi thử lại." },
+      { status: 429 },
+    );
+  }
+
   const parsed = RecoverSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { verifyCronSecret } from "@/lib/auth";
 import { captureError } from "@/lib/error-tracking";
+import { withCronLock } from "@/lib/cron/advisory-lock";
 
 /**
  * Cron: expire assigned proxies whose expires_at is in the past.
@@ -51,6 +52,14 @@ export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const outcome = await withCronLock(supabaseAdmin, "cron.expire_proxies", runExpireProxies);
+  if (outcome.skipped) {
+    return NextResponse.json({ success: true, data: { skipped: true, reason: outcome.reason } });
+  }
+  return outcome.result;
+}
+
+async function runExpireProxies(): Promise<NextResponse> {
   const now = new Date().toISOString();
 
   // 1. Find all expired-assigned proxies in one query.

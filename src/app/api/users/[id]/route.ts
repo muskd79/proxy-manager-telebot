@@ -5,6 +5,7 @@ import type { TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { UpdateUserSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function GET(
   _request: NextRequest,
@@ -49,6 +50,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const { id } = await params;
     const supabase = await createClient();
@@ -192,6 +196,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const { id } = await params;
     const supabase = await createClient();

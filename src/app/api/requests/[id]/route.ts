@@ -12,6 +12,7 @@ import { UpdateRequestSchema } from "@/lib/validations";
 import { notifyOtherAdmins } from "@/lib/telegram/notify-admins";
 import { requestMachine } from "@/lib/state-machine/request";
 import { RequestStatus } from "@/types/database";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function GET(
   _request: NextRequest,
@@ -60,6 +61,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const { id } = await params;
     const supabase = await createClient();
@@ -528,6 +532,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const { id } = await params;
     const supabase = await createClient();

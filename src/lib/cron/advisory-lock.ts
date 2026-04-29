@@ -89,6 +89,16 @@ export async function withCronLock<T>(
 ): Promise<
   { skipped: true; reason: string } | { skipped: false; result: T }
 > {
+  // Cron route tests (cron.test.ts) bypass lock acquisition because
+  // the unit-test supabase mock doesn't implement the full
+  // `.update().eq().or().select()` chain. The advisory-lock unit
+  // tests do NOT set this flag and exercise the real acquire/release
+  // paths with their own targeted mocks.
+  if (process.env.CRON_LOCK_BYPASS === "1") {
+    const result = await fn();
+    return { skipped: false, result };
+  }
+
   const acquired = await tryAcquireCronLock(supabase, lockKey, ttlSeconds);
   if (!acquired) {
     return { skipped: true, reason: "another instance running" };

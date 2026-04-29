@@ -6,6 +6,7 @@ import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { UpdateProxySchema } from "@/lib/validations";
 import { proxyMachine } from "@/lib/state-machine/proxy";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function GET(
   request: NextRequest,
@@ -49,6 +50,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;
@@ -169,6 +173,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAdminOrAbove(supabase);
   if (authError) return authError;
