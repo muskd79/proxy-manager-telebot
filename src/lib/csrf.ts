@@ -34,12 +34,24 @@ export function assertSameOrigin(request: Request): NextResponse | null {
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
 
-  // Safe methods don't need the check — browsers don't auto-send
-  // cross-origin POSTs with credentials via forms without user action,
-  // but we guard GET/HEAD for consistency only when explicitly asked.
-  // (This helper is only invoked by mutation routes.)
-
+  // Build the set of origins this server considers "ourself".
+  //   1. Same-origin self URL (reconstructed from x-forwarded-host + proto,
+  //      fallback to request.url). This is the cheap-and-correct check —
+  //      if the request's Origin equals the host the server received it
+  //      on, it's same-origin by definition.
+  //   2. Explicit allowlist (APP_ORIGIN_ALLOWLIST) for trusted alternate
+  //      domains (e.g. canonical apex when traffic also lands on a
+  //      preview/branch URL).
+  //   3. NEXT_PUBLIC_APP_URL — legacy single-domain config.
+  //   4. localhost dev fallbacks when not in production.
+  //
+  // Wave 23B: previously only (2)–(4) were checked, which broke every
+  // mutation on Vercel preview deployments + on prod deployments where
+  // the canonical URL env wasn't synced. The user hit this on
+  // /api/categories POST and /api/proxies/import POST simultaneously.
   const allowed = getAllowedOrigins();
+  const selfOrigin = deriveSelfOrigin(request);
+  if (selfOrigin) allowed.add(selfOrigin);
 
   if (origin && allowed.has(origin)) return null;
 
@@ -55,6 +67,27 @@ export function assertSameOrigin(request: Request): NextResponse | null {
     { success: false, error: "Cross-origin request rejected" },
     { status: 403 },
   );
+}
+
+/**
+ * Reconstruct the origin (`scheme://host[:port]`) the request was
+ * actually received on. Vercel + most reverse proxies expose this via
+ * `x-forwarded-host` + `x-forwarded-proto`; we fall back to
+ * `request.url` for direct connections (dev). Returns null if neither
+ * source yields a usable URL.
+ */
+function deriveSelfOrigin(request: Request): string | null {
+  const xfh = request.headers.get("x-forwarded-host");
+  const xfp = request.headers.get("x-forwarded-proto");
+  if (xfh) {
+    const proto = xfp || "https";
+    return `${proto}://${xfh}`;
+  }
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return null;
+  }
 }
 
 function getAllowedOrigins(): Set<string> {

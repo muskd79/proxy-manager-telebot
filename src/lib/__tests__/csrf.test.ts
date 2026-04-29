@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { assertSameOrigin, sanitizeLogLine } from "../csrf";
 
-function mkReq(headers: Record<string, string>): Request {
-  return new Request("http://localhost/api/x", { method: "POST", headers });
+function mkReq(
+  headers: Record<string, string>,
+  url = "http://localhost/api/x",
+): Request {
+  return new Request(url, { method: "POST", headers });
 }
 
 describe("assertSameOrigin", () => {
@@ -78,6 +81,65 @@ describe("assertSameOrigin", () => {
 
   it("does NOT allow localhost in production", () => {
     expect(assertSameOrigin(mkReq({ origin: "http://localhost:3000" }))).not.toBeNull();
+  });
+
+  // Wave 23B fix — Vercel-style same-origin reconstruction.
+  // Pre-fix the helper only consulted env-derived allowlists, which
+  // broke every mutation on Vercel preview URLs and on prod when the
+  // canonical-URL env wasn't synced. Now we trust the host the request
+  // was actually received on (via x-forwarded-host or request.url).
+  describe("same-origin reconstruction (Wave 23B)", () => {
+    it("allows Origin matching x-forwarded-host + proto", () => {
+      const res = assertSameOrigin(
+        mkReq(
+          {
+            origin: "https://my-app-git-feature-branch.vercel.app",
+            "x-forwarded-host": "my-app-git-feature-branch.vercel.app",
+            "x-forwarded-proto": "https",
+          },
+          "https://internal.vercel/api/x",
+        ),
+      );
+      expect(res).toBeNull();
+    });
+
+    it("allows Origin matching request.url host when no x-forwarded-host", () => {
+      const res = assertSameOrigin(
+        mkReq(
+          { origin: "https://canonical.example.com" },
+          "https://canonical.example.com/api/x",
+        ),
+      );
+      expect(res).toBeNull();
+    });
+
+    it("still rejects when Origin matches neither self nor allowlist", () => {
+      const res = assertSameOrigin(
+        mkReq(
+          {
+            origin: "https://evil.com",
+            "x-forwarded-host": "canonical.example.com",
+            "x-forwarded-proto": "https",
+          },
+          "https://canonical.example.com/api/x",
+        ),
+      );
+      expect(res).not.toBeNull();
+      expect(res!.status).toBe(403);
+    });
+
+    it("derives proto=https when x-forwarded-proto missing (Vercel default)", () => {
+      const res = assertSameOrigin(
+        mkReq(
+          {
+            origin: "https://my-app.vercel.app",
+            "x-forwarded-host": "my-app.vercel.app",
+          },
+          "http://internal/api/x",
+        ),
+      );
+      expect(res).toBeNull();
+    });
   });
 });
 
