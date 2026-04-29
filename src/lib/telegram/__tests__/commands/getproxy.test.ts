@@ -150,7 +150,9 @@ describe("handleGetProxy", () => {
 
     expect(ctx.reply).toHaveBeenCalled();
     const replyText = ctx._replies[0];
-    expect(replyText).toContain("Select the proxy type");
+    // Wave 23B-bot UX — short header "Request Proxy" + "Pick a proxy type:".
+    expect(replyText).toContain("Request Proxy");
+    expect(replyText).toMatch(/Pick a proxy type/i);
 
     // Should have an inline keyboard for proxy type selection
     const callArgs = (ctx.reply as any).mock.calls[0];
@@ -204,9 +206,10 @@ describe("handleProxyTypeSelection", () => {
     const { handleProxyTypeSelection } = await import("../../commands/get-proxy");
     await handleProxyTypeSelection(ctx, "http");
 
-    expect(ctx.editMessageText).toHaveBeenCalled();
-    const editText = ctx._edits[0];
-    expect(editText).toContain("maximum proxy limit");
+    // Wave 23B-bot UX — new message instead of edit.
+    expect(ctx.reply).toHaveBeenCalled();
+    const replyText = ctx._replies[0];
+    expect(replyText).toContain("maximum proxy limit");
   });
 
   it("shows quantity keyboard when user has capacity", async () => {
@@ -246,13 +249,14 @@ describe("handleProxyTypeSelection", () => {
     const { handleProxyTypeSelection } = await import("../../commands/get-proxy");
     await handleProxyTypeSelection(ctx, "socks5");
 
+    // Wave 23B-bot UX — new message per step, not edit.
     expect(ctx.answerCallbackQuery).toHaveBeenCalled();
-    expect(ctx.editMessageText).toHaveBeenCalled();
-    const editText = ctx._edits[0];
-    expect(editText).toContain("How many proxies");
+    expect(ctx.reply).toHaveBeenCalled();
+    const replyText = ctx._replies[0];
+    expect(replyText).toContain("How many proxies");
 
     // Should have reply_markup for quantity keyboard
-    const callArgs = (ctx.editMessageText as any).mock.calls[0];
+    const callArgs = (ctx.reply as any).mock.calls[0];
     expect(callArgs[1]).toBeDefined();
     expect(callArgs[1].reply_markup).toBeDefined();
   });

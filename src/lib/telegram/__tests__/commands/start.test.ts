@@ -73,20 +73,15 @@ describe("handleStart", () => {
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
-    // Wave 23B-bot redesign — welcome card no longer dumps the
-    // slash command list into the body. Commands surface via the
-    // inline mainMenuKeyboard (sent as second reply) and the native
-    // bot menu (left of file-attach). The body keeps Title + greeting
-    // + proxy fraction only.
-    expect(ctx.reply).toHaveBeenCalled();
+    // Wave 23B-bot UX (per user spec 2026-04-29) — single welcome
+    // message with greeting + bot purpose + AVAILABLE proxy count
+    // + inline mainMenuKeyboard. No slash list, no second reply.
+    expect(ctx.reply).toHaveBeenCalledTimes(1);
     const firstReply = ctx._replies[0];
-    expect(firstReply).toContain("Proxy Manager Bot");
-    expect(firstReply).toContain("Welcome back");
+    expect(firstReply).toContain("Proxy Bot");
+    expect(firstReply).toMatch(/Hello|Xin chào/i);
+    expect(firstReply).toMatch(/proxies available|proxy sẵn sàng/i);
     expect(firstReply).not.toContain("/getproxy");
-
-    // Second reply carries the inline menu prompt.
-    const secondReply = ctx._replies[1];
-    expect(secondReply).toMatch(/Pick an action|Chon chuc nang/i);
   });
 
   it("sends registration greeting for a new user", async () => {
@@ -224,9 +219,10 @@ describe("handleStart", () => {
     expect(ctx._replies).toHaveLength(1);
   });
 
-  it("redesign: active user receives mainMenuKeyboard on second reply", async () => {
+  it("redesign: active user receives single welcome with inline menu (Wave 23B-bot UX)", async () => {
     const user = createTeleUser({
       telegram_id: 123456,
+      first_name: "Andre",
       status: "active",
       language: "vi",
       created_at: "2026-01-01T00:00:00Z",
@@ -235,20 +231,29 @@ describe("handleStart", () => {
 
     const usersMock = createChainableMock({ data: user, error: null });
     mockFromMap.set("tele_users", usersMock);
-    const proxiesMock = createChainableMock({ data: null, error: null, count: 1 });
+    const proxiesMock = createChainableMock({ data: null, error: null, count: 21 });
     mockFromMap.set("proxies", proxiesMock);
     const settingsMock = createChainableMock({ data: [], error: null });
     mockFromMap.set("settings", settingsMock);
     const chatMock = createChainableMock({ data: null, error: null });
     mockFromMap.set("chat_messages", chatMock);
 
-    const ctx = createMockTelegramContext({ userId: 123456, text: "/start" });
+    const ctx = createMockTelegramContext({
+      userId: 123456,
+      firstName: "Andre",
+      text: "/start",
+    });
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
-    // First reply: text + remove_keyboard (drop legacy reply keyboard)
-    // Second reply: short prompt + inline mainMenuKeyboard
-    expect(ctx._replies).toHaveLength(2);
-    expect(ctx._replies[1]).toMatch(/Chon chuc nang/i);
+    // Single welcome message containing all of: greeting with name,
+    // bot title, available count, "Chọn chức năng" prompt.
+    expect(ctx._replies).toHaveLength(1);
+    const reply = ctx._replies[0];
+    expect(reply).toContain("Andre");
+    expect(reply).toContain("Proxy Bot");
+    expect(reply).toContain("21");
+    expect(reply).toMatch(/sẵn sàng/);
+    expect(reply).toMatch(/Chọn chức năng/);
   });
 });

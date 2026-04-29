@@ -329,7 +329,9 @@ describe("handleGetProxy — rate limit flow", () => {
     await handleGetProxy(ctx);
 
     expect(ctx.reply).toHaveBeenCalledTimes(1);
-    expect(ctx._replies[0]).toContain("Select the proxy type");
+    // Wave 23B-bot UX — short header "Request Proxy" + "Pick a proxy type:"
+    expect(ctx._replies[0]).toContain("Request Proxy");
+    expect(ctx._replies[0]).toMatch(/Pick a proxy type/i);
 
     // Should have inline keyboard
     const callArgs = (ctx.reply as any).mock.calls[0];
@@ -394,12 +396,13 @@ describe("handleProxyTypeSelection — quantity keyboard", () => {
     );
     await handleProxyTypeSelection(ctx, "http");
 
+    // Wave 23B-bot UX — new message per step, not edit.
     expect(ctx.answerCallbackQuery).toHaveBeenCalled();
-    expect(ctx.editMessageText).toHaveBeenCalled();
-    expect(ctx._edits[0]).toContain("How many proxies");
+    expect(ctx.reply).toHaveBeenCalled();
+    expect(ctx._replies[0]).toContain("How many proxies");
 
     // Quantity keyboard should be present
-    const callArgs = (ctx.editMessageText as any).mock.calls[0];
+    const callArgs = (ctx.reply as any).mock.calls[0];
     expect(callArgs[1]?.reply_markup).toBeDefined();
   });
 });

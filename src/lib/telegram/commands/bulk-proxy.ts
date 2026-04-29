@@ -26,16 +26,17 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
 
   await logChatMessage(user.id, null, ChatDirection.Incoming, `qty:${proxyType}:${quantity}`, MessageType.Callback);
 
-  // For qty=1, delegate to existing flow
+  // Wave 23B-bot UX — new message per step instead of editing the
+  // previous one, so the user keeps a chat trail of their choices.
   if (quantity === 1) {
     if (user.approval_mode === ApprovalMode.Auto) {
       const result = await autoAssignProxy(user, proxyType, lang);
       await ctx.answerCallbackQuery();
-      await ctx.editMessageText(result.text, result.parseMode ? { parse_mode: result.parseMode } : undefined);
+      await ctx.reply(result.text, result.parseMode ? { parse_mode: result.parseMode } : undefined);
     } else {
       const result = await createManualRequest(user, proxyType, lang);
       await ctx.answerCallbackQuery();
-      await ctx.editMessageText(result.text);
+      await ctx.reply(result.text);
     }
     return;
   }
@@ -57,7 +58,7 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
     if (error || !data?.success || data.assigned === 0) {
       const text = t("noProxyAvailable", lang);
       await ctx.answerCallbackQuery();
-      await ctx.editMessageText(text);
+      await ctx.reply(text);
       return;
     }
 
@@ -80,11 +81,11 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
       // Send inline
       const proxyLines = formatProxiesAsText(proxies);
       const text = resultMsg + "\n\n`" + proxyLines + "`";
-      await ctx.editMessageText(text, { parse_mode: "Markdown" });
+      await ctx.reply(text, { parse_mode: "Markdown" });
     } else {
       // Send as file
       const buffer = formatProxiesAsBuffer(proxies);
-      await ctx.editMessageText(resultMsg);
+      await ctx.reply(resultMsg);
       await sendTelegramDocument(ctx.from.id, buffer, `proxies_${proxyType}_${data.assigned}.txt`, resultMsg);
     }
 
@@ -111,7 +112,7 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
       type: proxyType.toUpperCase(),
     });
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(text);
+    await ctx.reply(text);
 
     // Notify admins
     const username = user.username ? `@${user.username}` : user.first_name || "Unknown";

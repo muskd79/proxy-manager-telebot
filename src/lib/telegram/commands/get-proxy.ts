@@ -50,24 +50,37 @@ export async function handleGetProxy(ctx: Context) {
     return;
   }
 
-  // Show proxy type selection with descriptions
-  const typeDesc = lang === "vi"
+  // Wave 23B-bot UX (per user spec 2026-04-29) — concise format:
+  //   "Yêu cầu Proxy" title
+  //   "Hiện có N proxy sẵn sàng."
+  //   "Chọn loại proxy:"
+  // + HTTP/HTTPS/SOCKS5/Hủy buttons. New message (not edit), so the
+  // user can scroll back through the conversation.
+  const { count: availableProxies } = await supabaseAdmin
+    .from("proxies")
+    .select("*", { count: "exact", head: true })
+    .eq("status", ProxyStatus.Available)
+    .eq("is_deleted", false);
+
+  const text = lang === "vi"
     ? [
-        t("selectProxyType", lang),
+        "*Yêu cầu Proxy*",
         "",
-        "HTTP - Duyet web thong thuong",
-        "HTTPS - Duyet web ma hoa",
-        "SOCKS5 - Ho tro tat ca giao thuc, linh hoat nhat",
+        `Hiện có *${availableProxies ?? 0}* proxy sẵn sàng.`,
+        "",
+        "Chọn loại proxy:",
       ].join("\n")
     : [
-        t("selectProxyType", lang),
+        "*Request Proxy*",
         "",
-        "HTTP - Standard web browsing",
-        "HTTPS - Encrypted web browsing",
-        "SOCKS5 - All protocols, most flexible",
+        `*${availableProxies ?? 0}* proxies available.`,
+        "",
+        "Pick a proxy type:",
       ].join("\n");
-  const text = typeDesc;
-  await ctx.reply(text, { reply_markup: proxyTypeKeyboard(lang) });
+  await ctx.reply(text, {
+    parse_mode: "Markdown",
+    reply_markup: proxyTypeKeyboard(lang),
+  });
   await logChatMessage(
     user.id,
     null,
@@ -101,6 +114,17 @@ export async function handleProxyTypeSelection(
     MessageType.Callback
   );
 
+  // Wave 23B-bot UX — Hủy / Cancel button on the type-selection
+  // keyboard. Sends a fresh confirmation message so the user can
+  // see they did cancel.
+  if (proxyType === "cancel") {
+    await ctx.answerCallbackQuery();
+    const text = lang === "vi" ? "Đã huỷ." : "Cancelled.";
+    await ctx.reply(text);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
+    return;
+  }
+
   // Re-check rate limit (with global caps)
   const globalCaps = await loadGlobalCaps();
   const { allowed } = checkRateLimit(user, globalCaps);
@@ -127,8 +151,10 @@ export async function handleProxyTypeSelection(
     const text = fillTemplate(t("maxProxiesReached", lang), {
       max_proxies: String(effectiveMaxProxies),
     });
+    // Wave 23B-bot UX — new message, not edit. User wanted each
+    // step to leave a trail in the chat history.
     await ctx.answerCallbackQuery();
-    await ctx.editMessageText(text);
+    await ctx.reply(text);
     await logChatMessage(
       user.id,
       null,
@@ -139,11 +165,30 @@ export async function handleProxyTypeSelection(
     return;
   }
 
-  // Show quantity selection keyboard with note
+  // Wave 23B-bot UX — quantity selection as a NEW message, not edit.
+  // User feedback: "mỗi lần là 1 tin nhắn chứ không phải bấm xong
+  // tin nhắn ý bị thay thành tin nhắn khác".
   const qtyNote = lang === "vi"
-    ? "Luu y: Yeu cau > 5 can admin duyet"
+    ? "Lưu ý: Yêu cầu > 5 cần admin duyệt"
     : "Note: Requests > 5 require admin approval";
-  const qtyText = `${t("selectQuantity", lang)}\n\n${qtyNote}`;
+  const qtyText = lang === "vi"
+    ? [
+        `*${proxyType.toUpperCase()}*`,
+        "",
+        t("selectQuantity", lang),
+        "",
+        qtyNote,
+      ].join("\n")
+    : [
+        `*${proxyType.toUpperCase()}*`,
+        "",
+        t("selectQuantity", lang),
+        "",
+        qtyNote,
+      ].join("\n");
   await ctx.answerCallbackQuery();
-  await ctx.editMessageText(qtyText, { reply_markup: quantityKeyboard(proxyType, lang) });
+  await ctx.reply(qtyText, {
+    parse_mode: "Markdown",
+    reply_markup: quantityKeyboard(proxyType, lang),
+  });
 }

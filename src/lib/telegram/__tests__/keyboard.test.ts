@@ -81,16 +81,27 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
 });
 
 describe("proxyTypeKeyboard", () => {
-  it("returns 3 buttons HTTP/HTTPS/SOCKS5 with proxy_type: prefix", () => {
+  it("returns 3 type buttons + Hủy/Cancel row (Wave 23B-bot UX)", () => {
     const kb = proxyTypeKeyboard("vi");
-    const row = kb.inline_keyboard[0];
-    expect(row).toHaveLength(3);
-    expect(row.map((b) => b.text)).toEqual(["HTTP", "HTTPS", "SOCKS5"]);
-    expect(row.map((b) => ("callback_data" in b ? b.callback_data : null))).toEqual([
+    expect(kb.inline_keyboard).toHaveLength(2); // type row + cancel row
+    const typeRow = kb.inline_keyboard[0];
+    expect(typeRow.map((b) => b.text)).toEqual(["HTTP", "HTTPS", "SOCKS5"]);
+    expect(typeRow.map((b) => ("callback_data" in b ? b.callback_data : null))).toEqual([
       "proxy_type:http",
       "proxy_type:https",
       "proxy_type:socks5",
     ]);
+    const cancelRow = kb.inline_keyboard[1];
+    expect(cancelRow).toHaveLength(1);
+    expect(cancelRow[0].text).toBe("Hủy");
+    expect("callback_data" in cancelRow[0] ? cancelRow[0].callback_data : null).toBe(
+      "proxy_type:cancel",
+    );
+  });
+
+  it("English Cancel label", () => {
+    const kb = proxyTypeKeyboard("en");
+    expect(kb.inline_keyboard[1][0].text).toBe("Cancel");
   });
 });
 

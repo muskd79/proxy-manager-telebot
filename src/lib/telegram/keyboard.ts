@@ -56,15 +56,16 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
 
 /** Proxy type selection keyboard */
 export function proxyTypeKeyboard(lang: "vi" | "en"): InlineKeyboard {
-  const labels =
-    lang === "vi"
-      ? { http: "HTTP", https: "HTTPS", socks5: "SOCKS5" }
-      : { http: "HTTP", https: "HTTPS", socks5: "SOCKS5" };
+  // Wave 23B-bot UX — added Hủy / Cancel row so the user can back
+  // out without typing /cancel.
+  const cancel = lang === "vi" ? "Hủy" : "Cancel";
 
   return new InlineKeyboard()
-    .text(labels.http, "proxy_type:http")
-    .text(labels.https, "proxy_type:https")
-    .text(labels.socks5, "proxy_type:socks5");
+    .text("HTTP", "proxy_type:http")
+    .text("HTTPS", "proxy_type:https")
+    .text("SOCKS5", "proxy_type:socks5")
+    .row()
+    .text(cancel, "proxy_type:cancel");
 }
 
 /** Language selection keyboard */

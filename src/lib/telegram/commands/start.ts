@@ -121,39 +121,44 @@ export async function handleStart(ctx: Context) {
     return;
   }
 
-  // Active user: show full welcome with commands
-  const { count: proxyCount } = await supabaseAdmin
+  // Wave 23B-bot UX (per user spec 2026-04-29) — single welcome
+  // card with greeting, bot purpose, available-proxy count, and the
+  // inline mainMenuKeyboard. Pre-fix used 2 messages + a slash
+  // dump; the user wanted one clean welcome message instead.
+  //
+  // proxyCount here is the AVAILABLE pool (status='available'), not
+  // the user's own assigned ones, because the welcome shows market
+  // depth ("21 proxy sẵn sàng") not personal inventory.
+  const { count: availableProxies } = await supabaseAdmin
     .from("proxies")
     .select("*", { count: "exact", head: true })
-    .eq("assigned_to", user.id)
-    .eq("status", ProxyStatus.Assigned);
+    .eq("status", ProxyStatus.Available)
+    .eq("is_deleted", false);
 
-  // Wave 23B-bot — short welcome card. The previous build dumped 11
-  // slash-commands into the message body AND rendered a persistent
-  // reply Keyboard with another 8 commands, so the same actions
-  // appeared three times (text list + reply keyboard + native bot
-  // menu). New layout shows 1 short status block + the inline
-  // mainMenuKeyboard. Native bot menu (left of upload) still works.
-  const proxyLabel = lang === "vi" ? "Proxy hien tai" : "Current proxies";
-  const greeting = t("welcomeBack", lang);
+  const firstName = ctx.from?.first_name?.trim() || user.first_name || "";
 
-  const text = [
-    "*Proxy Manager Bot*",
-    "",
-    greeting,
-    "",
-    `${proxyLabel}: *${proxyCount ?? 0}*/${user.max_proxies}`,
-  ].join("\n");
+  const text = lang === "vi"
+    ? [
+        firstName ? `Xin chào *${firstName}*!` : "Xin chào!",
+        "",
+        "*Proxy Bot*",
+        "Bot hỗ trợ yêu cầu và quản lý proxy.",
+        `Hiện có *${availableProxies ?? 0}* proxy sẵn sàng.`,
+        "",
+        "Chọn chức năng bên dưới:",
+      ].join("\n")
+    : [
+        firstName ? `Hello *${firstName}*!` : "Hello!",
+        "",
+        "*Proxy Bot*",
+        "Bot for requesting and managing proxies.",
+        `*${availableProxies ?? 0}* proxies available.`,
+        "",
+        "Pick an action below:",
+      ].join("\n");
 
-  // Two replies: first clears any legacy persistent reply keyboard
-  // from older builds (one-shot, invisible to users on fresh installs).
-  // Second carries the inline menu. Telegram doesn't allow combining
-  // remove_keyboard with an InlineKeyboard in a single message.
   await ctx.reply(text, {
     parse_mode: "Markdown",
-    reply_markup: { remove_keyboard: true },
-  });
-  await ctx.reply(lang === "vi" ? "Chon chuc nang ben duoi:" : "Pick an action:", {
     reply_markup: mainMenuKeyboard(lang),
   });
 
