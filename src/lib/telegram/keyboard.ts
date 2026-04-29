@@ -75,14 +75,66 @@ export function languageKeyboard(): InlineKeyboard {
     .text("English", "lang:en");
 }
 
-/** Quantity selection keyboard for bulk proxy requests */
-export function quantityKeyboard(proxyType: string, lang: SupportedLanguage): InlineKeyboard {
+/**
+ * Quantity selection keyboard.
+ *
+ * Wave 23B-bot UX (per VIA pattern) — `mode` carries through the
+ * callback so handleQuantitySelection knows whether the user picked
+ * Order nhanh (quick=auto-assign) or Order riêng (custom=manual,
+ * needs admin approval). Format: `qty:<mode>:<type>:<n>`.
+ *
+ * `mode` is a literal string; default 'quick' preserves the legacy
+ * callback shape `qty:<type>:<n>` was, but new flow always supplies
+ * an explicit mode.
+ */
+export type OrderMode = "quick" | "custom";
+
+export function quantityKeyboard(
+  proxyType: string,
+  lang: SupportedLanguage,
+  mode: OrderMode = "quick",
+): InlineKeyboard {
+  // Wave 23B-bot UX — Order riêng allows higher quantities since
+  // admin will review anyway. Order nhanh stays at the original
+  // 1/2/5/10 throttle to protect auto-assignment quota.
+  const cancel = lang === "vi" ? "Hủy" : "Cancel";
+  if (mode === "custom") {
+    return new InlineKeyboard()
+      .text("5", `qty:custom:${proxyType}:5`)
+      .text("10", `qty:custom:${proxyType}:10`)
+      .text("20", `qty:custom:${proxyType}:20`)
+      .row()
+      .text("50", `qty:custom:${proxyType}:50`)
+      .text("100", `qty:custom:${proxyType}:100`)
+      .row()
+      .text(cancel, "qty:custom:cancel");
+  }
   return new InlineKeyboard()
-    .text("1", `qty:${proxyType}:1`)
-    .text("2", `qty:${proxyType}:2`)
-    .text("5", `qty:${proxyType}:5`)
+    .text("1", `qty:quick:${proxyType}:1`)
+    .text("2", `qty:quick:${proxyType}:2`)
+    .text("5", `qty:quick:${proxyType}:5`)
     .row()
-    .text("10", `qty:${proxyType}:10`);
+    .text("10", `qty:quick:${proxyType}:10`)
+    .text(cancel, "qty:quick:cancel");
+}
+
+/**
+ * Wave 23B-bot UX — order type chooser shown after a user picks
+ * a proxy type. Mirrors VIA bot's getvia.ts → "custom.choose_type"
+ * pattern: 2 explicit modes + cancel.
+ */
+export function orderTypeKeyboard(
+  proxyType: string,
+  lang: SupportedLanguage,
+): InlineKeyboard {
+  const labels = lang === "vi"
+    ? { quick: "Order nhanh", custom: "Order riêng", cancel: "Hủy" }
+    : { quick: "Quick order", custom: "Custom order", cancel: "Cancel" };
+  return new InlineKeyboard()
+    .text(labels.quick, `order_quick:${proxyType}`)
+    .text(labels.custom, `order_custom:${proxyType}`)
+    .row()
+    .text(labels.cancel, "order_type:cancel");
 }
 
 /** Confirmation keyboard */

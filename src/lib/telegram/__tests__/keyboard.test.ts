@@ -4,6 +4,8 @@ import {
   proxyTypeKeyboard,
   languageKeyboard,
   confirmKeyboard,
+  orderTypeKeyboard,
+  quantityKeyboard,
 } from "../keyboard";
 
 /**
@@ -125,5 +127,69 @@ describe("confirmKeyboard", () => {
   it("English yes/no", () => {
     const kb = confirmKeyboard("en");
     expect(kb.inline_keyboard[0].map((b) => b.text)).toEqual(["Yes", "No"]);
+  });
+});
+
+describe("orderTypeKeyboard (Wave 23B-bot, VIA pattern)", () => {
+  it("Vietnamese: Order nhanh + Order riêng + Hủy", () => {
+    const kb = orderTypeKeyboard("http", "vi");
+    expect(kb.inline_keyboard).toHaveLength(2);
+    const labels = kb.inline_keyboard[0].map((b) => b.text);
+    expect(labels).toEqual(["Order nhanh", "Order riêng"]);
+    const cancel = kb.inline_keyboard[1][0];
+    expect(cancel.text).toBe("Hủy");
+  });
+
+  it("English: Quick + Custom + Cancel", () => {
+    const kb = orderTypeKeyboard("https", "en");
+    expect(kb.inline_keyboard[0].map((b) => b.text)).toEqual([
+      "Quick order",
+      "Custom order",
+    ]);
+    expect(kb.inline_keyboard[1][0].text).toBe("Cancel");
+  });
+
+  it("callback data carries proxy type", () => {
+    const kb = orderTypeKeyboard("socks5", "vi");
+    const data = kb.inline_keyboard[0].map((b) =>
+      "callback_data" in b ? b.callback_data : null,
+    );
+    expect(data).toEqual(["order_quick:socks5", "order_custom:socks5"]);
+    const cancelData = kb.inline_keyboard[1][0];
+    expect("callback_data" in cancelData ? cancelData.callback_data : null).toBe(
+      "order_type:cancel",
+    );
+  });
+});
+
+describe("quantityKeyboard with mode (Wave 23B-bot)", () => {
+  it("quick mode: 1/2/5/10 + Hủy, callback qty:quick:<type>:<n>", () => {
+    const kb = quantityKeyboard("http", "vi", "quick");
+    const allButtons = kb.inline_keyboard.flat();
+    const labels = allButtons.map((b) => b.text);
+    expect(labels).toEqual(["1", "2", "5", "10", "Hủy"]);
+    const data = allButtons
+      .filter((b) => "callback_data" in b)
+      .map((b) => ("callback_data" in b ? b.callback_data : null));
+    expect(data).toEqual([
+      "qty:quick:http:1",
+      "qty:quick:http:2",
+      "qty:quick:http:5",
+      "qty:quick:http:10",
+      "qty:quick:cancel",
+    ]);
+  });
+
+  it("custom mode: 5/10/20/50/100 + Hủy", () => {
+    const kb = quantityKeyboard("http", "vi", "custom");
+    const labels = kb.inline_keyboard.flat().map((b) => b.text);
+    expect(labels).toEqual(["5", "10", "20", "50", "100", "Hủy"]);
+  });
+
+  it("regression: legacy default keeps quick keyboard", () => {
+    // Older callers omit mode; we default to quick to avoid breaking
+    // existing slash-command tests that haven't migrated yet.
+    const kb = quantityKeyboard("http", "vi");
+    expect(kb.inline_keyboard.flat().map((b) => b.text)[0]).toBe("1");
   });
 });

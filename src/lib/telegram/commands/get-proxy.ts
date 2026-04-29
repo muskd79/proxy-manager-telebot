@@ -4,7 +4,12 @@ import { t, fillTemplate } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
-import { proxyTypeKeyboard, quantityKeyboard } from "../keyboard";
+import {
+  proxyTypeKeyboard,
+  quantityKeyboard,
+  orderTypeKeyboard,
+  type OrderMode,
+} from "../keyboard";
 import { denyIfNotApproved } from "../guards";
 import {
   ChatDirection,
@@ -165,30 +170,94 @@ export async function handleProxyTypeSelection(
     return;
   }
 
-  // Wave 23B-bot UX — quantity selection as a NEW message, not edit.
-  // User feedback: "mỗi lần là 1 tin nhắn chứ không phải bấm xong
-  // tin nhắn ý bị thay thành tin nhắn khác".
-  const qtyNote = lang === "vi"
-    ? "Lưu ý: Yêu cầu > 5 cần admin duyệt"
-    : "Note: Requests > 5 require admin approval";
-  const qtyText = lang === "vi"
+  // Wave 23B-bot UX (per VIA pattern) — after type selection we
+  // show the Order nhanh / Order riêng chooser instead of jumping
+  // straight to quantity. User feedback: "sau khi chọn loại proxy
+  // thì cần có tin nhắn với 2 lựa chọn như bên bot via chứ".
+  //
+  // Quick = auto-assign, per-user limit (1/2/5/10).
+  // Custom = admin-approval queue, higher quantity options.
+  const { count: availableProxies } = await supabaseAdmin
+    .from("proxies")
+    .select("*", { count: "exact", head: true })
+    .eq("type", proxyType)
+    .eq("status", ProxyStatus.Available)
+    .eq("is_deleted", false);
+
+  const text = lang === "vi"
     ? [
-        `*${proxyType.toUpperCase()}*`,
+        `*Yêu cầu Proxy — ${proxyType.toUpperCase()}*`,
         "",
-        t("selectQuantity", lang),
+        `Có *${availableProxies ?? 0}* proxy ${proxyType.toUpperCase()} sẵn sàng (tối đa *${effectiveMaxProxies}*/lần)`,
         "",
-        qtyNote,
+        t("chooseOrderType", lang),
       ].join("\n")
     : [
-        `*${proxyType.toUpperCase()}*`,
+        `*Request Proxy — ${proxyType.toUpperCase()}*`,
         "",
-        t("selectQuantity", lang),
+        `*${availableProxies ?? 0}* ${proxyType.toUpperCase()} proxies available (max *${effectiveMaxProxies}*/order)`,
         "",
-        qtyNote,
+        t("chooseOrderType", lang),
       ].join("\n");
+
+  await ctx.answerCallbackQuery();
+  await ctx.reply(text, {
+    parse_mode: "Markdown",
+    reply_markup: orderTypeKeyboard(proxyType, lang),
+  });
+}
+
+/**
+ * Wave 23B-bot UX — order_quick:<type> / order_custom:<type>
+ * callbacks. Render the matching quantity keyboard and let
+ * bulk-proxy.handleQuantitySelection drive the actual assignment
+ * via the embedded mode flag.
+ */
+export async function handleOrderModeSelection(
+  ctx: Context,
+  proxyType: string,
+  mode: OrderMode,
+) {
+  if (!ctx.from) return;
+
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("id, language")
+    .eq("telegram_id", ctx.from.id)
+    .single();
+  if (!user) return;
+  const lang = getUserLanguage(user);
+
+  await logChatMessage(
+    user.id,
+    null,
+    ChatDirection.Incoming,
+    `order_${mode}:${proxyType}`,
+    MessageType.Callback,
+  );
+
+  const qtyHeader = lang === "vi"
+    ? mode === "quick" ? "*Order nhanh*" : "*Order riêng*"
+    : mode === "quick" ? "*Quick order*" : "*Custom order*";
+  const qtyHint = lang === "vi"
+    ? mode === "quick"
+      ? "Tự động cấp ngay nếu còn quota."
+      : "Yêu cầu sẽ vào hàng chờ admin duyệt."
+    : mode === "quick"
+      ? "Auto-assigned instantly when quota allows."
+      : "Request will be queued for admin approval.";
+  const qtyText = [
+    qtyHeader,
+    "",
+    `${proxyType.toUpperCase()}`,
+    qtyHint,
+    "",
+    t("selectQuantity", lang),
+  ].join("\n");
+
   await ctx.answerCallbackQuery();
   await ctx.reply(qtyText, {
     parse_mode: "Markdown",
-    reply_markup: quantityKeyboard(proxyType, lang),
+    reply_markup: quantityKeyboard(proxyType, lang, mode),
   });
 }

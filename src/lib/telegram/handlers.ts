@@ -12,6 +12,7 @@ import {
   handleStatus,
   handleLanguage,
   handleProxyTypeSelection,
+  handleOrderModeSelection,
   handleLanguageSelection,
   handleUnknownCommand,
   handleCancel,
@@ -135,6 +136,25 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // Wave 23B-bot UX — order-type chooser. Order nhanh (auto) vs
+  // Order riêng (admin-approval). After selection, show the
+  // matching quantity keyboard.
+  if (data.startsWith("order_quick:")) {
+    const proxyType = data.replace("order_quick:", "");
+    await handleOrderModeSelection(ctx, proxyType, "quick");
+    return;
+  }
+  if (data.startsWith("order_custom:")) {
+    const proxyType = data.replace("order_custom:", "");
+    await handleOrderModeSelection(ctx, proxyType, "custom");
+    return;
+  }
+  if (data === "order_type:cancel") {
+    await ctx.answerCallbackQuery();
+    await ctx.reply("Đã huỷ.");
+    return;
+  }
+
   if (data.startsWith("lang:")) {
     const lang = data.replace("lang:", "") as SupportedLanguage;
     await handleLanguageSelection(ctx, lang);
@@ -195,12 +215,32 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // Wave 23B-bot UX — qty callbacks now carry the order mode:
+  //   qty:<mode>:<type>:<n>   (mode = "quick" | "custom")
+  // Backward-compat: legacy qty:<type>:<n> defaults to quick.
+  // Cancel sub-action: qty:<mode>:cancel
   if (data.startsWith("qty:")) {
     const parts = data.split(":");
-    const proxyType = parts[1];
-    const quantity = parseInt(parts[2], 10);
+    if (parts[2] === "cancel") {
+      await ctx.answerCallbackQuery();
+      await ctx.reply("Đã huỷ.");
+      return;
+    }
+    let mode: "quick" | "custom";
+    let proxyType: string;
+    let quantity: number;
+    if (parts[1] === "quick" || parts[1] === "custom") {
+      mode = parts[1];
+      proxyType = parts[2];
+      quantity = parseInt(parts[3], 10);
+    } else {
+      // Legacy shape qty:<type>:<n>
+      mode = "quick";
+      proxyType = parts[1];
+      quantity = parseInt(parts[2], 10);
+    }
     if (proxyType && !isNaN(quantity) && quantity > 0) {
-      await handleQuantitySelection(ctx, proxyType, quantity);
+      await handleQuantitySelection(ctx, proxyType, quantity, mode);
     }
     return;
   }

@@ -396,12 +396,13 @@ describe("handleProxyTypeSelection — quantity keyboard", () => {
     );
     await handleProxyTypeSelection(ctx, "http");
 
-    // Wave 23B-bot UX — new message per step, not edit.
+    // Wave 23B-bot UX (per VIA) — type click now shows the
+    // Order nhanh / Order riêng chooser. Quantity comes after.
     expect(ctx.answerCallbackQuery).toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalled();
-    expect(ctx._replies[0]).toContain("How many proxies");
+    expect(ctx._replies[0]).toMatch(/Choose order type|Chọn loại đặt hàng/i);
 
-    // Quantity keyboard should be present
+    // orderTypeKeyboard should be attached
     const callArgs = (ctx.reply as any).mock.calls[0];
     expect(callArgs[1]?.reply_markup).toBeDefined();
   });

@@ -1,5 +1,5 @@
 export { handleStart } from "./start";
-export { handleGetProxy, handleProxyTypeSelection } from "./get-proxy";
+export { handleGetProxy, handleProxyTypeSelection, handleOrderModeSelection } from "./get-proxy";
 export { handleMyProxies } from "./my-proxies";
 export { handleStatus } from "./status";
 export { handleRevoke, handleRevokeConfirm, handleRevokeSelection } from "./revoke";

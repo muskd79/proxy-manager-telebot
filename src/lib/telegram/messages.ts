@@ -133,6 +133,12 @@ export const msg = {
     vi: "[!] Tài khoản của bạn đang chờ admin duyệt. Bạn sẽ nhận thông báo khi được phê duyệt.",
     en: "[!] Your account is pending admin approval. You will be notified once approved.",
   },
+  // Wave 23B-bot UX — order type chooser, ported from VIA bot's
+  // custom.choose_type. Two explicit modes + status hint.
+  chooseOrderType: {
+    vi: "Chọn loại đặt hàng:\n• Order nhanh: Tự động, giới hạn từng user\n• Order riêng: Cần admin duyệt yêu cầu\n\nDùng lệnh /status để xem giới hạn của mình",
+    en: "Choose order type:\n• Quick order: Automatic, per-user limit\n• Custom order: Requires admin approval\n\nUse /status to check your limits",
+  },
   languageSelect: {
     vi: "Ch\u1ECDn ng\u00F4n ng\u1EEF / Select language:",
     en: "Select language / Ch\u1ECDn ng\u00F4n ng\u1EEF:",

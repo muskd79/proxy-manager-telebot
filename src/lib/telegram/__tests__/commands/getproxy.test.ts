@@ -249,13 +249,15 @@ describe("handleProxyTypeSelection", () => {
     const { handleProxyTypeSelection } = await import("../../commands/get-proxy");
     await handleProxyTypeSelection(ctx, "socks5");
 
-    // Wave 23B-bot UX — new message per step, not edit.
+    // Wave 23B-bot UX (per VIA pattern) — type selection now shows
+    // the Order nhanh / Order riêng chooser, not the quantity
+    // keyboard directly. Quantity comes after a mode is picked.
     expect(ctx.answerCallbackQuery).toHaveBeenCalled();
     expect(ctx.reply).toHaveBeenCalled();
     const replyText = ctx._replies[0];
-    expect(replyText).toContain("How many proxies");
+    expect(replyText).toMatch(/Choose order type|Chọn loại đặt hàng/i);
 
-    // Should have reply_markup for quantity keyboard
+    // Should have reply_markup for orderTypeKeyboard
     const callArgs = (ctx.reply as any).mock.calls[0];
     expect(callArgs[1]).toBeDefined();
     expect(callArgs[1].reply_markup).toBeDefined();

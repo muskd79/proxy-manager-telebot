@@ -8,11 +8,25 @@ import { formatProxiesAsText, formatProxiesAsBuffer } from "../format-proxies";
 import { notifyAllAdmins, notifyOtherAdmins, getAdminByTelegramId } from "../notify-admins";
 import { autoAssignProxy, createManualRequest } from "./assign-proxy";
 import { ChatDirection, MessageType, ApprovalMode } from "@/types/database";
+import type { OrderMode } from "../keyboard";
 import { InlineKeyboard } from "grammy";
 
 const BULK_AUTO_THRESHOLD = 5; // Above this, force manual approval
 
-export async function handleQuantitySelection(ctx: Context, proxyType: string, quantity: number) {
+/**
+ * Wave 23B-bot UX — `mode` = "quick" | "custom" derived from the
+ * order-type screen the user picked first. Quick honors the user's
+ * approval_mode + threshold; Custom always queues for admin.
+ *
+ * Default 'quick' keeps callers that haven't migrated yet on the
+ * legacy auto-or-manual decision.
+ */
+export async function handleQuantitySelection(
+  ctx: Context,
+  proxyType: string,
+  quantity: number,
+  mode: OrderMode = "quick",
+) {
   if (!ctx.from) return;
 
   const { data: user } = await supabaseAdmin
@@ -24,11 +38,11 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
   if (!user) return;
   const lang = getUserLanguage(user);
 
-  await logChatMessage(user.id, null, ChatDirection.Incoming, `qty:${proxyType}:${quantity}`, MessageType.Callback);
+  await logChatMessage(user.id, null, ChatDirection.Incoming, `qty:${mode}:${proxyType}:${quantity}`, MessageType.Callback);
 
   // Wave 23B-bot UX — new message per step instead of editing the
   // previous one, so the user keeps a chat trail of their choices.
-  if (quantity === 1) {
+  if (quantity === 1 && mode === "quick") {
     if (user.approval_mode === ApprovalMode.Auto) {
       const result = await autoAssignProxy(user, proxyType, lang);
       await ctx.answerCallbackQuery();
@@ -41,8 +55,12 @@ export async function handleQuantitySelection(ctx: Context, proxyType: string, q
     return;
   }
 
-  // For qty>1: Check if auto mode and below threshold
-  const forceManual = quantity > BULK_AUTO_THRESHOLD || user.approval_mode === ApprovalMode.Manual;
+  // Wave 23B-bot UX — Custom order ALWAYS goes to admin queue.
+  // Quick order honors the threshold + user approval mode (legacy).
+  const forceManual =
+    mode === "custom" ||
+    quantity > BULK_AUTO_THRESHOLD ||
+    user.approval_mode === ApprovalMode.Manual;
 
   if (!forceManual) {
     // Auto-assign bulk
