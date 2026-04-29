@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
+import { parseProxyLine as parseProxyLineLib } from "@/lib/proxy-parse";
 
 /**
  * Wave 22I — Smart proxy import wizard.
@@ -210,29 +211,13 @@ export function ProxyImport() {
       setSalePrice(String(cat.default_sale_price_usd));
   }, [categoryId, categories]);
 
-  function parseProxyLine(line: string, lineNum: number): ParsedProxy {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return { line: lineNum, raw: line, host: "", port: 0, valid: false, error: "Empty line" };
-    }
-    const parts = trimmed.split(/[:\t,;]/);
-    if (parts.length < 2) {
-      return { line: lineNum, raw: trimmed, host: "", port: 0, valid: false, error: "Invalid format (expected host:port)" };
-    }
-    const host = parts[0].trim();
-    const port = parseInt(parts[1].trim());
-    const username = parts[2]?.trim() || undefined;
-    const password = parts[3]?.trim() || undefined;
-    if (!host) return { line: lineNum, raw: trimmed, host: "", port: 0, valid: false, error: "Missing host" };
-    if (isNaN(port) || port < 1 || port > 65535) {
-      return { line: lineNum, raw: trimmed, host, port: 0, valid: false, error: "Invalid port" };
-    }
-    return { line: lineNum, raw: trimmed, host, port, username, password, valid: true };
-  }
-
+  // Wave 23B-fix — parseProxyLine extracted to src/lib/proxy-parse.ts
+  // so vitest can exercise it without mounting React. The component
+  // still owns the parsedProxies state + UI; the helper is a pure
+  // function shared with future server-side imports.
   function parseContent(content: string) {
     const lines = content.split(/\r?\n/).filter((l) => l.trim());
-    const parsed = lines.map((line, i) => parseProxyLine(line, i + 1));
+    const parsed: ParsedProxy[] = lines.map((line, i) => parseProxyLineLib(line, i + 1));
     setParsedProxies(parsed);
     setResult(null);
     setProbeProgress(0);
@@ -683,57 +668,118 @@ export function ProxyImport() {
               </div>
             )}
 
-            <div className="max-h-[400px] overflow-y-auto">
+            {/* Wave 23B-fix — preview legend bar. Pre-fix the table had
+                7 columns with terse headers and no explanation of what
+                "-" meant. User feedback: "cần mô tả rõ ở phần xem
+                trước có những cột gì và cột gì trống". */}
+            <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">Chú giải:</span>
+              <span className="flex items-center gap-1">
+                <span className="font-mono text-muted-foreground">—</span>
+                <span>trống / chưa có</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="font-mono text-amber-600">—</span>
+                <span>không auth (user/pass trống — proxy public)</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle className="size-3 text-emerald-500" />
+                <span>hợp lệ / alive</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <XCircle className="size-3 text-red-500" />
+                <span>format lỗi (dòng đỏ, không import)</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <AlertCircle className="size-3 text-red-500" />
+                <span>dead (mờ, sẽ bị bỏ nếu bật &quot;dropDead&quot;)</span>
+              </span>
+            </div>
+
+            <div className="max-h-[400px] overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead className="w-20">Port</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="w-24">Loại detect</TableHead>
-                    <TableHead className="w-20">Tốc độ</TableHead>
-                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-12" title="Số thứ tự dòng trong input">#</TableHead>
+                    <TableHead title="Địa chỉ IP/host của proxy (bắt buộc)">Host</TableHead>
+                    <TableHead className="w-20" title="Cổng (1-65535, bắt buộc)">Cổng</TableHead>
+                    <TableHead className="w-32" title="Tên đăng nhập của proxy (có thể trống nếu proxy public)">User</TableHead>
+                    <TableHead className="w-24" title="Mật khẩu (đi kèm User)">Pass</TableHead>
+                    <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
+                    <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
+                    <TableHead className="w-32" title="Trạng thái dòng: hợp lệ / lỗi format / alive / dead">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {parsedProxies.slice(0, 200).map((proxy) => (
-                    <TableRow key={proxy.line} className={proxy.alive === false ? "opacity-50" : undefined}>
-                      <TableCell className="text-muted-foreground">{proxy.line}</TableCell>
-                      <TableCell className="font-mono text-xs">{proxy.host || "-"}</TableCell>
-                      <TableCell className="font-mono text-xs">{proxy.port || "-"}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{proxy.username || "-"}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {proxy.detected_type ? (
-                          <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {proxy.speed_ms != null ? `${proxy.speed_ms}ms` : "-"}
-                      </TableCell>
-                      <TableCell>
-                        {!proxy.valid ? (
-                          <span className="flex items-center gap-1 text-red-500 text-xs" title={proxy.error}>
-                            <XCircle className="size-3.5" />{proxy.error}
-                          </span>
-                        ) : proxy.alive === false ? (
-                          <span className="flex items-center gap-1 text-red-500 text-xs">
-                            <AlertCircle className="size-3.5" />Dead
-                          </span>
-                        ) : proxy.alive === true ? (
-                          <span className="flex items-center gap-1 text-emerald-500 text-xs">
-                            <CheckCircle className="size-3.5" />Alive
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-emerald-500 text-xs">
-                            <CheckCircle className="size-3.5" />Hợp lệ
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {parsedProxies.slice(0, 200).map((proxy) => {
+                    // Wave 23B-fix — visual row state cues:
+                    //   invalid format → red-tinted bg
+                    //   dead probe    → opacity-50 (existing)
+                    //   missing auth  → no extra cue (legitimate scenario)
+                    const rowClass = !proxy.valid
+                      ? "bg-red-50 dark:bg-red-950/20"
+                      : proxy.alive === false
+                        ? "opacity-50"
+                        : "";
+                    return (
+                      <TableRow key={proxy.line} className={rowClass}>
+                        <TableCell className="text-muted-foreground">{proxy.line}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.host || <span className="text-red-500">— thiếu host</span>}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.port || <span className="text-red-500">—</span>}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.username ? (
+                            <span>{proxy.username}</span>
+                          ) : (
+                            <span className="text-amber-600" title="Proxy không có auth — public proxy">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.password ? (
+                            <span className="text-muted-foreground">••••••</span>
+                          ) : (
+                            <span className="text-amber-600" title="Không có pass">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.detected_type ? (
+                            <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground" title="Chưa probe">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {proxy.speed_ms != null ? (
+                            `${proxy.speed_ms}ms`
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {!proxy.valid ? (
+                            <span className="flex items-center gap-1 text-red-500 text-xs" title={proxy.error}>
+                              <XCircle className="size-3.5" />{proxy.error}
+                            </span>
+                          ) : proxy.alive === false ? (
+                            <span className="flex items-center gap-1 text-red-500 text-xs">
+                              <AlertCircle className="size-3.5" />Dead
+                            </span>
+                          ) : proxy.alive === true ? (
+                            <span className="flex items-center gap-1 text-emerald-500 text-xs">
+                              <CheckCircle className="size-3.5" />Alive
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-emerald-500 text-xs">
+                              <CheckCircle className="size-3.5" />Hợp lệ
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
               {parsedProxies.length > 200 && (
