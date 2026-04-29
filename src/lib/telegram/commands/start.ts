@@ -1,8 +1,9 @@
-import { type Context, Keyboard } from "grammy";
+import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
+import { mainMenuKeyboard } from "../keyboard";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 import { AUP_VERSION, sendAupPrompt } from "./aup";
 
@@ -56,14 +57,14 @@ export async function handleStart(ctx: Context) {
           "/language - Change language",
         ].join("\n");
 
-    const pendingKeyboard = new Keyboard()
-      .text("/support").text("/language")
-      .resized()
-      .persistent();
-
+    // Wave 23B-bot — drop the persistent reply Keyboard. We pass
+    // remove_keyboard so any old reply keyboard from a previous build
+    // is cleared on the user's client. The native bot menu (left of
+    // the file-attach button) still exposes the slash commands via
+    // setMyCommands.
     await ctx.reply(pendingText, {
       parse_mode: "Markdown",
-      reply_markup: pendingKeyboard,
+      reply_markup: { remove_keyboard: true },
     });
 
     // Log outgoing
@@ -81,6 +82,45 @@ export async function handleStart(ctx: Context) {
     return;
   }
 
+  // Wave 23B-bot — blocked users get a clear "account blocked"
+  // message + only the /support button. Pre-fix the welcome was
+  // identical to active users with status="blocked" buried in the
+  // body, so a banned user could still see the menu and try to
+  // request proxies (handlers would reject downstream, bad UX).
+  if (user.status === "blocked" || user.status === "banned") {
+    const blockedText = lang === "vi"
+      ? [
+          "*Proxy Manager Bot*",
+          "",
+          "Tài khoản của bạn hiện đang bị khoá / chặn.",
+          "Mọi yêu cầu proxy sẽ bị từ chối.",
+          "",
+          "Trạng thái: *blocked*",
+          "Liên hệ admin qua /support nếu cần khiếu nại.",
+        ].join("\n")
+      : [
+          "*Proxy Manager Bot*",
+          "",
+          "Your account is currently blocked.",
+          "All proxy requests will be rejected.",
+          "",
+          "Status: *blocked*",
+          "Use /support to contact an admin if you want to appeal.",
+        ].join("\n");
+    await ctx.reply(blockedText, {
+      parse_mode: "Markdown",
+      reply_markup: { remove_keyboard: true },
+    });
+    await logChatMessage(
+      user.id,
+      null,
+      ChatDirection.Outgoing,
+      blockedText,
+      MessageType.Text,
+    );
+    return;
+  }
+
   // Active user: show full welcome with commands
   const { count: proxyCount } = await supabaseAdmin
     .from("proxies")
@@ -88,7 +128,12 @@ export async function handleStart(ctx: Context) {
     .eq("assigned_to", user.id)
     .eq("status", ProxyStatus.Assigned);
 
-  const statusLabel = lang === "vi" ? "Trang thai" : "Status";
+  // Wave 23B-bot — short welcome card. The previous build dumped 11
+  // slash-commands into the message body AND rendered a persistent
+  // reply Keyboard with another 8 commands, so the same actions
+  // appeared three times (text list + reply keyboard + native bot
+  // menu). New layout shows 1 short status block + the inline
+  // mainMenuKeyboard. Native bot menu (left of upload) still works.
   const proxyLabel = lang === "vi" ? "Proxy hien tai" : "Current proxies";
   const greeting = t("welcomeBack", lang);
 
@@ -97,27 +142,19 @@ export async function handleStart(ctx: Context) {
     "",
     greeting,
     "",
-    `${statusLabel}: *${user.status}*`,
     `${proxyLabel}: *${proxyCount ?? 0}*/${user.max_proxies}`,
-    "",
-    lang === "vi" ? "*Cac lenh co san:*" : "*Available commands:*",
-    "/getproxy - " + (lang === "vi" ? "Yeu cau proxy" : "Request proxy"),
-    "/myproxies - " + (lang === "vi" ? "Xem proxy" : "View proxies"),
-    "/checkproxy - " + (lang === "vi" ? "Kiem tra proxy" : "Check health"),
-    "/status - " + (lang === "vi" ? "Trang thai" : "Status"),
-    "/help - " + (lang === "vi" ? "Huong dan" : "Help"),
   ].join("\n");
-  const menuKeyboard = new Keyboard()
-    .text("/getproxy").text("/myproxies").row()
-    .text("/checkproxy").text("/status").row()
-    .text("/history").text("/revoke").row()
-    .text("/support").text("/help")
-    .resized()
-    .persistent();
 
+  // Two replies: first clears any legacy persistent reply keyboard
+  // from older builds (one-shot, invisible to users on fresh installs).
+  // Second carries the inline menu. Telegram doesn't allow combining
+  // remove_keyboard with an InlineKeyboard in a single message.
   await ctx.reply(text, {
     parse_mode: "Markdown",
-    reply_markup: menuKeyboard,
+    reply_markup: { remove_keyboard: true },
+  });
+  await ctx.reply(lang === "vi" ? "Chon chuc nang ben duoi:" : "Pick an action:", {
+    reply_markup: mainMenuKeyboard(lang),
   });
 
   // Log outgoing

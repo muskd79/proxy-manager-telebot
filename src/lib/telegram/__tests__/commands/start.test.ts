@@ -73,11 +73,20 @@ describe("handleStart", () => {
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
+    // Wave 23B-bot redesign — welcome card no longer dumps the
+    // slash command list into the body. Commands surface via the
+    // inline mainMenuKeyboard (sent as second reply) and the native
+    // bot menu (left of file-attach). The body keeps Title + greeting
+    // + proxy fraction only.
     expect(ctx.reply).toHaveBeenCalled();
-    const replyText = ctx._replies[0];
-    expect(replyText).toContain("Welcome back");
-    expect(replyText).toContain("/getproxy");
-    expect(replyText).toContain("Proxy Manager Bot");
+    const firstReply = ctx._replies[0];
+    expect(firstReply).toContain("Proxy Manager Bot");
+    expect(firstReply).toContain("Welcome back");
+    expect(firstReply).not.toContain("/getproxy");
+
+    // Second reply carries the inline menu prompt.
+    const secondReply = ctx._replies[1];
+    expect(secondReply).toMatch(/Pick an action|Chon chuc nang/i);
   });
 
   it("sends registration greeting for a new user", async () => {
@@ -204,9 +213,42 @@ describe("handleStart", () => {
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
-    // Even blocked users get the welcome screen with their status shown
+    // Wave 23B-bot — blocked users now get a dedicated "account
+    // blocked" card instead of the active-user welcome + menu.
+    // No mainMenuKeyboard reply.
     expect(ctx.reply).toHaveBeenCalled();
     const replyText = ctx._replies[0];
-    expect(replyText).toContain("blocked");
+    expect(replyText).toMatch(/blocked/i);
+    expect(replyText).toMatch(/support/i);
+    // Only one reply — no menu shown to blocked users.
+    expect(ctx._replies).toHaveLength(1);
+  });
+
+  it("redesign: active user receives mainMenuKeyboard on second reply", async () => {
+    const user = createTeleUser({
+      telegram_id: 123456,
+      status: "active",
+      language: "vi",
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-05T00:00:00Z",
+    });
+
+    const usersMock = createChainableMock({ data: user, error: null });
+    mockFromMap.set("tele_users", usersMock);
+    const proxiesMock = createChainableMock({ data: null, error: null, count: 1 });
+    mockFromMap.set("proxies", proxiesMock);
+    const settingsMock = createChainableMock({ data: [], error: null });
+    mockFromMap.set("settings", settingsMock);
+    const chatMock = createChainableMock({ data: null, error: null });
+    mockFromMap.set("chat_messages", chatMock);
+
+    const ctx = createMockTelegramContext({ userId: 123456, text: "/start" });
+    const { handleStart } = await import("../../commands/start");
+    await handleStart(ctx);
+
+    // First reply: text + remove_keyboard (drop legacy reply keyboard)
+    // Second reply: short prompt + inline mainMenuKeyboard
+    expect(ctx._replies).toHaveLength(2);
+    expect(ctx._replies[1]).toMatch(/Chon chuc nang/i);
   });
 });

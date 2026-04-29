@@ -81,6 +81,44 @@ bot.api
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
 
+  // Wave 23B-bot — main inline menu dispatcher. Each button calls
+  // the same command handler that the slash command would, after
+  // first answering the callback so Telegram clears the spinner.
+  if (data.startsWith("menu:")) {
+    const action = data.slice(5);
+    await ctx.answerCallbackQuery();
+    switch (action) {
+      case "request":
+        await handleGetProxy(ctx);
+        return;
+      case "my":
+        await handleMyProxies(ctx);
+        return;
+      case "check":
+        await handleCheckProxy(ctx);
+        return;
+      case "limit":
+        await handleStatus(ctx);
+        return;
+      case "warranty":
+        // Wave 23B-bot rename only — full warranty schema (see
+        // docs/WARRANTY_RENAME_ANALYSIS.md Option C) deferred to
+        // Wave 24. /revoke flow handles the user-side action today.
+        await handleRevoke(ctx);
+        return;
+      case "history":
+        await handleHistory(ctx);
+        return;
+      case "help":
+        await handleHelp(ctx);
+        return;
+      case "language":
+        await handleLanguage(ctx);
+        return;
+    }
+    return;
+  }
+
   if (data === "aup_accept") {
     await handleAupAcceptCallback(ctx);
     return;
