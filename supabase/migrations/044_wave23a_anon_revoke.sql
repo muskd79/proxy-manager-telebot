@@ -1,5 +1,5 @@
 -- ============================================================
--- 044_wave23a_anon_revoke.sql
+-- 044_wave23a_anon_revoke.sql  (re-applied with 043 fix)
 -- Wave 23A — defense in depth: revoke anon role grants on the public
 -- schema and explicitly deny on rate-limit / dedup tables.
 --

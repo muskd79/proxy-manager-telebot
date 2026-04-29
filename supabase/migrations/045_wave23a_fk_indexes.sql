@@ -1,5 +1,5 @@
 -- ============================================================
--- 045_wave23a_fk_indexes.sql
+-- 045_wave23a_fk_indexes.sql  (re-applied with 043 fix)
 -- Wave 23A — index foreign-key columns that lack a covering index.
 -- Without these, every cascade-delete on the parent and every join
 -- query on the FK does a sequential scan of the child table.
