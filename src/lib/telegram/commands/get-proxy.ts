@@ -6,11 +6,12 @@ import { logChatMessage } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
 import {
   proxyTypeKeyboard,
-  quantityKeyboard,
   orderTypeKeyboard,
   type OrderMode,
 } from "../keyboard";
 import { denyIfNotApproved } from "../guards";
+import { setBotState } from "../state";
+import { InlineKeyboard } from "grammy";
 import {
   ChatDirection,
   MessageType,
@@ -208,10 +209,13 @@ export async function handleProxyTypeSelection(
 }
 
 /**
- * Wave 23B-bot UX — order_quick:<type> / order_custom:<type>
- * callbacks. Render the matching quantity keyboard and let
- * bulk-proxy.handleQuantitySelection drive the actual assignment
- * via the embedded mode flag.
+ * Wave 23B-bot UX (per VIA pattern) — order_quick / order_custom
+ * callback. Sets a conversation state and prompts the user to type
+ * the quantity. No preset keyboard — VIA-style free-form text input
+ * so user can ask for 3, 7, 13… any positive integer.
+ *
+ * The text-input is consumed by handleQtyTextInput (handlers.ts
+ * message:text handler) which checks getBotState() and dispatches.
  */
 export async function handleOrderModeSelection(
   ctx: Context,
@@ -236,28 +240,44 @@ export async function handleOrderModeSelection(
     MessageType.Callback,
   );
 
-  const qtyHeader = lang === "vi"
-    ? mode === "quick" ? "*Order nhanh*" : "*Order riêng*"
-    : mode === "quick" ? "*Quick order*" : "*Custom order*";
-  const qtyHint = lang === "vi"
+  const stepKey = mode === "quick" ? "awaiting_quick_qty" : "awaiting_custom_qty";
+  await setBotState(user.id, { step: stepKey, proxyType });
+
+  const text = lang === "vi"
     ? mode === "quick"
-      ? "Tự động cấp ngay nếu còn quota."
-      : "Yêu cầu sẽ vào hàng chờ admin duyệt."
+      ? [
+          `*Order nhanh — ${proxyType.toUpperCase()}*`,
+          "",
+          "Nhập số lượng bạn cần (1–10):",
+          "",
+          "Tự động cấp ngay nếu còn quota.",
+        ].join("\n")
+      : [
+          `*Order riêng — ${proxyType.toUpperCase()}*`,
+          "",
+          "Nhập số lượng bạn cần (không giới hạn):",
+          "",
+          "Yêu cầu sẽ vào hàng chờ admin duyệt.",
+        ].join("\n")
     : mode === "quick"
-      ? "Auto-assigned instantly when quota allows."
-      : "Request will be queued for admin approval.";
-  const qtyText = [
-    qtyHeader,
-    "",
-    `${proxyType.toUpperCase()}`,
-    qtyHint,
-    "",
-    t("selectQuantity", lang),
-  ].join("\n");
+      ? [
+          `*Quick order — ${proxyType.toUpperCase()}*`,
+          "",
+          "Enter the quantity you need (1–10):",
+          "",
+          "Auto-assigned instantly when quota allows.",
+        ].join("\n")
+      : [
+          `*Custom order — ${proxyType.toUpperCase()}*`,
+          "",
+          "Enter the quantity you need (no limit):",
+          "",
+          "Request will be queued for admin approval.",
+        ].join("\n");
+
+  const cancelKb = new InlineKeyboard()
+    .text(lang === "vi" ? "Hủy" : "Cancel", "qty:cancel");
 
   await ctx.answerCallbackQuery();
-  await ctx.reply(qtyText, {
-    parse_mode: "Markdown",
-    reply_markup: quantityKeyboard(proxyType, lang, mode),
-  });
+  await ctx.reply(text, { parse_mode: "Markdown", reply_markup: cancelKb });
 }

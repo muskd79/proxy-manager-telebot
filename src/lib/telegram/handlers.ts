@@ -30,7 +30,9 @@ import {
   handleAdminBlockUser,
   handleAupAcceptCallback,
   handleAupDeclineCallback,
+  handleQtyTextInput,
 } from "./commands";
+import { getBotState, clearBotState } from "./state";
 import {
   handleQuantitySelection,
   handleAdminBulkApproveCallback,
@@ -215,17 +217,25 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  // Wave 23B-bot UX — qty callbacks now carry the order mode:
-  //   qty:<mode>:<type>:<n>   (mode = "quick" | "custom")
-  // Backward-compat: legacy qty:<type>:<n> defaults to quick.
-  // Cancel sub-action: qty:<mode>:cancel
+  // Wave 23B-bot UX — qty:cancel from the text-input prompt clears
+  // the conversation state and replies. The qty:<mode>:<type>:<n>
+  // shape is no longer produced by the bot but kept as a legacy
+  // fallback for in-flight clicks from older clients.
+  if (data === "qty:cancel" || data === "qty:quick:cancel" || data === "qty:custom:cancel") {
+    await ctx.answerCallbackQuery();
+    if (ctx.from) {
+      const { data: u } = await supabaseAdmin
+        .from("tele_users")
+        .select("id")
+        .eq("telegram_id", ctx.from.id)
+        .single();
+      if (u) await clearBotState(u.id);
+    }
+    await ctx.reply("Đã huỷ.");
+    return;
+  }
   if (data.startsWith("qty:")) {
     const parts = data.split(":");
-    if (parts[2] === "cancel") {
-      await ctx.answerCallbackQuery();
-      await ctx.reply("Đã huỷ.");
-      return;
-    }
     let mode: "quick" | "custom";
     let proxyType: string;
     let quantity: number;
@@ -234,7 +244,6 @@ bot.on("callback_query:data", async (ctx) => {
       proxyType = parts[2];
       quantity = parseInt(parts[3], 10);
     } else {
-      // Legacy shape qty:<type>:<n>
       mode = "quick";
       proxyType = parts[1];
       quantity = parseInt(parts[2], 10);
@@ -283,6 +292,15 @@ bot.on("message:text", async (ctx) => {
     .single();
 
   if (!user) return;
+
+  // Wave 23B-bot UX — first check if we're mid-conversation (e.g. user
+  // is typing a quantity for an Order nhanh / Order riêng flow). If
+  // yes, dispatch to the state-aware handler and stop.
+  const state = await getBotState(user.id);
+  if (state.step === "awaiting_quick_qty" || state.step === "awaiting_custom_qty") {
+    const consumed = await handleQtyTextInput(ctx, state.step, state.proxyType, ctx.message.text);
+    if (consumed) return;
+  }
 
   await supabaseAdmin.from("chat_messages").insert({
     tele_user_id: user.id,
