@@ -116,20 +116,18 @@ describe("handleStart", () => {
     expect(replyText).toContain("registered successfully");
   });
 
-  it("does NOT notify admins on /start before AUP acceptance (Wave 18B gate)", async () => {
-    // Wave 18B moved admin notification out of handleStart and into the AUP
-    // accept callback, so admins are not asked to approve users who haven't
-    // accepted the terms (and may later decline).
+  it("Wave 23C-fix: brand-new pending user lands directly on the pending welcome AND admins are notified", async () => {
+    // AUP gate removed per user request — every new user goes
+    // straight to the pending welcome card and admins receive an
+    // Approve/Block prompt the first time we see them.
     const user = createTeleUser({
       telegram_id: 789,
       username: "fresh",
       first_name: "Fresh",
       status: "pending",
       language: "en",
-      aup_accepted_at: null, // not accepted yet -> AUP prompt, no admin notify
-      aup_version: null,
       created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z", // same = new
     });
 
     const usersMock = createChainableMock({ data: user, error: null });
@@ -145,14 +143,18 @@ describe("handleStart", () => {
     const { handleStart } = await import("../../commands/start");
     await handleStart(ctx);
 
-    // Reply should be the AUP prompt, not the pending-registration message.
+    // Pending welcome card (no AUP terms, no AUP buttons).
     expect(ctx.reply).toHaveBeenCalled();
     const replyText = ctx._replies[0];
-    expect(replyText).toMatch(/terms of use|proxy service/i);
+    expect(replyText).toMatch(/registered successfully|pending admin approval/i);
+    expect(replyText).not.toMatch(/terms of use|accept|decline/i);
 
-    // Admins are NOT notified yet — they only hear about the user after
-    // AUP acceptance (that is exercised by handleAupAcceptCallback tests).
-    expect(mockNotifyAllAdmins).not.toHaveBeenCalled();
+    // Admins ARE notified now — moved here from the old AUP-accept
+    // callback. They receive an inline Approve/Block keyboard.
+    expect(mockNotifyAllAdmins).toHaveBeenCalled();
+    const [adminText, adminOpts] = mockNotifyAllAdmins.mock.calls[0];
+    expect(adminText).toMatch(/New User|pending approval/i);
+    expect(adminOpts?.inlineKeyboard).toBeDefined();
   });
 
   it("does not notify admins for returning users", async () => {

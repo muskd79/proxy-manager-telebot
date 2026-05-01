@@ -1,11 +1,12 @@
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { mainMenuKeyboard } from "../keyboard";
+import { notifyAllAdmins } from "../notify-admins";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
-import { AUP_VERSION, sendAupPrompt } from "./aup";
 
 export async function handleStart(ctx: Context) {
   const user = await getOrCreateUser(ctx);
@@ -23,14 +24,23 @@ export async function handleStart(ctx: Context) {
     MessageType.Command
   );
 
-  // AUP gate: required by every proxy vendor's reseller ToS. User must
-  // explicitly accept before we distribute any proxy. Re-prompt if the
-  // stored acceptance is for an older AUP version than the current one.
-  const aupAcceptedAt = user.aup_accepted_at;
-  const aupVersion = user.aup_version;
-  if (!aupAcceptedAt || aupVersion !== AUP_VERSION) {
-    await sendAupPrompt(ctx, lang, user.id);
-    return;
+  // Wave 23C-fix — AUP gate removed per user request 2026-04-29
+  // ("bỏ đoạn chấp nhận chính sách đi"). User now lands directly
+  // in the pending-approval welcome (or active welcome if already
+  // approved). Admin notification moved here so it fires the first
+  // time we see a brand-new pending user — replaces the old
+  // AUP-accept-callback notify path.
+  if (isNew && user.status === "pending") {
+    const username = ctx.from?.username
+      ? `@${ctx.from.username}`
+      : ctx.from?.first_name || "Unknown";
+    const adminText = `[New User] ${username} (ID: ${ctx.from?.id ?? user.telegram_id}) registered and is pending approval.\n\nApprove or block?`;
+    const adminKb = new InlineKeyboard()
+      .text("Approve", `admin_approve_user:${user.id}`)
+      .text("Block", `admin_block_user:${user.id}`);
+    notifyAllAdmins(adminText, { inlineKeyboard: adminKb }).catch((e) =>
+      console.error("notify-admins on first /start failed:", e instanceof Error ? e.message : String(e)),
+    );
   }
 
   // If user is new or pending, show limited message
@@ -76,9 +86,9 @@ export async function handleStart(ctx: Context) {
       MessageType.Text
     );
 
-    // Admin notification is now triggered by the AUP accept callback, not
-    // here, so admins don't approve users who later decline. Old behavior
-    // would admin-notify on first /start regardless of AUP status.
+    // Wave 23C-fix — admin notification fires earlier in this same
+    // handler when isNew && pending. The old AUP-callback notify
+    // path is removed.
     return;
   }
 

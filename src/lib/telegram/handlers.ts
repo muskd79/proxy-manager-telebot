@@ -28,8 +28,6 @@ import {
   handleAdminRejectCallback,
   handleAdminApproveUser,
   handleAdminBlockUser,
-  handleAupAcceptCallback,
-  handleAupDeclineCallback,
   handleQtyTextInput,
 } from "./commands";
 import { getBotState, clearBotState } from "./state";
@@ -122,15 +120,10 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
-  if (data === "aup_accept") {
-    await handleAupAcceptCallback(ctx);
-    return;
-  }
-
-  if (data === "aup_decline") {
-    await handleAupDeclineCallback(ctx);
-    return;
-  }
+  // Wave 23C-fix — AUP callbacks removed per user request 2026-04-29
+  // ("bỏ đoạn chấp nhận chính sách đi"). The aup.ts file remains in
+  // the tree but no callback path can reach it; legacy users with a
+  // stored aup_accepted_at column simply ignore it now.
 
   if (data.startsWith("proxy_type:")) {
     const proxyType = data.replace("proxy_type:", "");

@@ -10,12 +10,8 @@ export { handleHelp, handleUnknownCommand } from "./help";
 export { handleCheckProxy } from "./check-proxy";
 export { handleHistory } from "./history";
 export { handleSupport } from "./support";
-export {
-  AUP_VERSION,
-  sendAupPrompt,
-  handleAupAcceptCallback,
-  handleAupDeclineCallback,
-} from "./aup";
+// Wave 23C-fix — AUP exports removed; aup.ts kept on disk as
+// legacy reference but no longer wired into the dispatcher.
 export {
   handleAdminRequests,
   handleAdminApproveCallback,
