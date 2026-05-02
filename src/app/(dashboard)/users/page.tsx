@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Users,
   Search,
@@ -57,6 +58,26 @@ export default function UsersPage() {
     unblockUser,
     deleteUser,
   } = useUsers();
+
+  // Phase 3 (PM UX) — read ?status= from URL on mount so dashboard
+  // KPI drill-down lands on a pre-filtered view. Pre-fix admin had
+  // to click the card AND re-filter by hand. We sync the filter
+  // back into setFilters so the rest of the page logic stays
+  // unchanged.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const urlStatus = searchParams.get("status");
+    if (urlStatus && urlStatus !== filters.status) {
+      setFilters({
+        ...filters,
+        status: urlStatus as TeleUserStatus,
+        page: 1,
+      });
+    }
+    // intentionally only on first mount — don't react to filter
+    // changes from inside the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Realtime sync: re-fetch when tele_users table changes (debounced to reduce load)
   const usersDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

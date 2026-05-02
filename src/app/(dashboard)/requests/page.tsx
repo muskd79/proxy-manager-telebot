@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   FileText,
   Search,
@@ -46,14 +47,22 @@ export default function RequestsPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Phase 3 (PM UX) — honor ?status= from URL on first mount so
+  // dashboard drill-down + bookmarked filter URLs land correctly.
+  // Defaults to "pending" if no param given. activeTab is string-
+  // typed because the component also has a "recent" pseudo-tab
+  // that doesn't map to a RequestStatus.
+  const searchParams = useSearchParams();
+  const initialStatus = (searchParams.get("status") as RequestStatus) || "pending";
   const [filters, setFilters] = useState<RequestFilters>({
     page: 1,
     pageSize: 20,
     sortBy: "requested_at",
     sortOrder: "desc",
-    status: "pending" as RequestStatus,
+    status: initialStatus,
   });
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState<string>(initialStatus);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState("");
 

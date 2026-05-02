@@ -87,27 +87,33 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
   }
 
   return (
+    // Phase 3 (PM UX) — KPI drill-down. Pre-fix the 4 cards linked
+    // to broad pages (/proxies, /users, /requests, /history) which
+    // showed all rows; admin had to filter again. Now each card
+    // deep-links to the FILTERED view that matches its number, so
+    // clicking "Pending Requests: 12" lands on the pending tab
+    // with 12 rows visible. PM finding #14 closed.
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <StatCard
         title="Total Proxies"
         value={stats.totalProxies}
         subtitle={`${stats.availableProxies} available / ${stats.assignedProxies} assigned / ${stats.expiredProxies} expired`}
         icon={<Server className="size-4" />}
-        href="/proxies"
+        href="/proxies?status=available"
       />
       <StatCard
         title="Telegram Users"
         value={stats.totalUsers}
         subtitle={`${stats.activeUsers} active / ${stats.blockedUsers} blocked / ${stats.pendingUsers} pending`}
         icon={<Users className="size-4" />}
-        href="/users"
+        href="/users?status=pending"
       />
       <StatCard
         title="Pending Requests"
         value={stats.pendingRequests}
         subtitle={`${stats.totalRequests} total requests`}
         icon={<Clock className="size-4" />}
-        href="/requests"
+        href="/requests?status=pending"
       />
       <StatCard
         title="Assigned Today"

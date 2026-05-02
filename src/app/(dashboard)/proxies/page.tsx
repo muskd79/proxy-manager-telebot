@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -74,12 +74,20 @@ export default function ProxiesPage() {
   const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
-  const [filters, setFilters] = useState<ProxyFiltersType>({
+  // Phase 3 (PM UX) — read ?status= / ?type= / ?category_id= from
+  // URL on first mount so dashboard KPI drill-down lands on a
+  // pre-filtered view. Pre-fix admin had to click the card AND
+  // re-filter by hand.
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<ProxyFiltersType>(() => ({
     page: 1,
     pageSize: 20,
     sortBy: "created_at",
     sortOrder: "desc",
-  });
+    status: (searchParams.get("status") as ProxyFiltersType["status"]) || undefined,
+    type: (searchParams.get("type") as ProxyFiltersType["type"]) || undefined,
+    categoryId: searchParams.get("category_id") || undefined,
+  }));
 
   const fetchProxies = useCallback(async () => {
     setLoading(true);
