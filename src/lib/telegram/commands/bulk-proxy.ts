@@ -236,8 +236,12 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
     return;
   }
 
-  // Update original request
-  await supabaseAdmin
+  // Phase 1B (B-014) — race fix. Pre-fix UPDATE didn't filter
+  // status=pending; if a second admin clicked approve concurrently
+  // both would call bulk_assign_proxies and double-assign. Filter
+  // + RETURNING so only the FIRST admin's UPDATE wins; the second
+  // admin's path falls through and short-circuits on data.length=0.
+  const { data: updatedRows } = await supabaseAdmin
     .from("proxy_requests")
     .update({
       status: "approved",
@@ -245,7 +249,14 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
       processed_at: new Date().toISOString(),
       batch_id: batchId,
     })
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .eq("status", "pending")
+    .select("id");
+  if (!updatedRows || updatedRows.length === 0) {
+    await ctx.answerCallbackQuery("Request already processed");
+    await ctx.editMessageText("[Already processed by another admin]");
+    return;
+  }
 
   // Send proxies to user
   const proxies = data.proxies as Array<{ host: string; port: number; username: string | null; password: string | null }>;

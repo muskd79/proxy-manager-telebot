@@ -755,8 +755,9 @@ describe("GET /api/cron/expire-requests", () => {
       ],
       error: null,
     });
-    // Batch update call
-    queueReturn({ data: null, error: null });
+    // Phase 1B (B-013) — UPDATE returns the rows it actually flipped
+    // (status was still 'pending'). Test mocks both rows succeeded.
+    queueReturn({ data: [{ id: "req1" }, { id: "req2" }], error: null });
 
     const res = await GET(createCronRequest("test-cron-secret"));
     const body = await res.json();
@@ -780,7 +781,7 @@ describe("GET /api/cron/expire-requests", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: [{ id: "req1" }], error: null });
 
     await GET(createCronRequest("test-cron-secret"));
 
@@ -804,13 +805,13 @@ describe("GET /api/cron/expire-requests", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: [{ id: "req1" }], error: null });
 
     await GET(createCronRequest("test-cron-secret"));
 
     expect(sendTelegramMessage).toHaveBeenCalledWith(
       22222,
-      expect.stringContaining("het han sau 7 ngay")
+      expect.stringContaining("hết hạn sau 7 ngày")
     );
   });
 
@@ -828,12 +829,37 @@ describe("GET /api/cron/expire-requests", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: [{ id: "req1" }], error: null });
 
     const res = await GET(createCronRequest("test-cron-secret"));
     const body = await res.json();
 
     expect(body.data.expired).toBe(1);
+    expect(body.data.notified).toBe(0);
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("Phase 1B regression: skips notification when admin approved between SELECT and UPDATE (race)", async () => {
+    const { sendTelegramMessage } = await import("@/lib/telegram/send");
+
+    queueReturn({
+      data: [
+        {
+          id: "req1",
+          tele_user_id: "u1",
+          proxy_type: "http",
+          tele_users: { telegram_id: 11111, language: "en" },
+        },
+      ],
+      error: null,
+    });
+    // UPDATE returns NO rows because admin approved req1 in the
+    // race window. The new code must skip the user notification.
+    queueReturn({ data: [], error: null });
+
+    const res = await GET(createCronRequest("test-cron-secret"));
+    const body = await res.json();
+    expect(body.data.expired).toBe(0);
     expect(body.data.notified).toBe(0);
     expect(sendTelegramMessage).not.toHaveBeenCalled();
   });
@@ -855,7 +881,7 @@ describe("GET /api/cron/expire-requests", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: null });
+    queueReturn({ data: [{ id: "req1" }], error: null });
 
     // Should not throw
     const res = await GET(createCronRequest("test-cron-secret"));

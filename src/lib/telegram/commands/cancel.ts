@@ -109,15 +109,24 @@ export async function handleCancelConfirm(ctx: Context, confirmed: boolean) {
     return;
   }
 
-  await supabaseAdmin
+  // Phase 1B (B-008) — race fix. Pre-fix UPDATE didn't filter
+  // status=pending; if admin approved a request between our SELECT
+  // and UPDATE, we'd flip the now-approved row back to cancelled
+  // and orphan the proxy already delivered. Add the filter so the
+  // UPDATE only touches rows that are STILL pending — others slip
+  // through silently which is the correct outcome.
+  const { data: cancelled } = await supabaseAdmin
     .from("proxy_requests")
     .update({ status: "cancelled", processed_at: new Date().toISOString() })
-    .in("id", pendingRequests.map((r) => r.id));
+    .in("id", pendingRequests.map((r) => r.id))
+    .eq("status", RequestStatus.Pending)
+    .select("id");
+  const cancelledCount = cancelled?.length ?? 0;
 
   const text =
     lang === "vi"
-      ? `[OK] Đã hủy ${pendingRequests.length} yêu cầu đang chờ.`
-      : `[OK] Cancelled ${pendingRequests.length} pending request(s).`;
+      ? `[OK] Đã hủy ${cancelledCount} yêu cầu đang chờ.`
+      : `[OK] Cancelled ${cancelledCount} pending request(s).`;
   await ctx.editMessageText(text);
   await logChatMessage(
     user.id,
