@@ -51,6 +51,8 @@ vi.mock("@/lib/supabase/admin", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
         update: vi.fn().mockReturnValue(chainable),
         upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
+        // Wave 23D — clearBotState in /cancel needs .delete().eq()
+        delete: vi.fn().mockReturnValue(chainable),
       }),
       rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
     },

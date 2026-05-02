@@ -4,6 +4,8 @@ import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
 import { captureError } from "@/lib/error-tracking";
 import { BOT_COMMANDS, RECENT_MESSAGE_WINDOW_MS } from "@/lib/constants";
+import { getOrCreateUser, getUserLanguage } from "./user";
+import { denyIfNotApproved } from "./guards";
 import {
   handleStart,
   handleHelp,
@@ -277,14 +279,22 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
-  // Log plain text messages
-  const { data: user } = await supabaseAdmin
-    .from("tele_users")
-    .select("id, language")
-    .eq("telegram_id", from.id)
-    .single();
+  // Wave 23D — VIA-style "every message must reply" guarantee.
+  //
+  // Pre-fix `if (!user) return;` left brand-new users (who type
+  // text BEFORE /start) in silence. Now we use getOrCreateUser so
+  // the row is created and the new-user welcome path can engage.
+  // Source: docs/BOT_RESPONSE_GAP_2026-05-02.md case #12 (P0).
+  const user = await getOrCreateUser(ctx);
+  if (!user) return; // unreachable in practice — only fails on DB outage
 
-  if (!user) return;
+  const lang = getUserLanguage(user);
+
+  // Wave 23D — blocked / banned / pending users must NOT receive a
+  // chatty reply that tells them the bot is alive and what /help
+  // does. Hand off to the same denyIfNotApproved guard the proxy
+  // commands use. Source: gap doc case #14 (P1).
+  if (await denyIfNotApproved(ctx, user, lang)) return;
 
   // Wave 23B-bot UX — first check if we're mid-conversation (e.g. user
   // is typing a quantity for an Order nhanh / Order riêng flow). If
@@ -303,8 +313,6 @@ bot.on("message:text", async (ctx) => {
     message_type: MessageType.Text,
     raw_data: null,
   });
-
-  const lang = (user.language as SupportedLanguage) || "en";
 
   // Check if the user's last command was /support (within last 30 minutes)
   const { data: lastSupportCmd } = await supabaseAdmin
@@ -341,6 +349,81 @@ bot.on("message:text", async (ctx) => {
     raw_data: null,
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wave 23D — Unsupported media handler
+//
+// Telegram users can send photo / video / voice / sticker / document /
+// animation / location / contact / poll. Pre-fix grammy router didn't
+// match any of these, so the bot was completely silent — violating the
+// "every message must have a response" requirement. Port the VIA bot
+// pattern: log the incoming message description, then reply with a
+// "text only please" hint that respects user language + approval gate.
+// Source: docs/BOT_RESPONSE_GAP_2026-05-02.md case #15, #16 (P0).
+// ---------------------------------------------------------------------------
+
+bot.on(
+  [
+    "message:photo",
+    "message:document",
+    "message:sticker",
+    "message:voice",
+    "message:video",
+    "message:video_note",
+    "message:animation",
+    "message:audio",
+    "message:location",
+    "message:contact",
+    "message:poll",
+  ],
+  async (ctx) => {
+    if (!ctx.from) return;
+    const user = await getOrCreateUser(ctx);
+    if (!user) return;
+    const lang = getUserLanguage(user);
+    if (await denyIfNotApproved(ctx, user, lang)) return;
+
+    // Build a short [Kind] / [File name] / [Sticker emoji] description
+    // for the audit log so admins can see what the user actually sent.
+    const m = ctx.message;
+    const incomingDesc =
+      m?.photo ? "[Photo]"
+      : m?.document ? `[File] ${m.document.file_name ?? ""}`
+      : m?.sticker ? `[Sticker] ${m.sticker.emoji ?? ""}`
+      : m?.voice ? `[Voice] ${m.voice.duration ?? 0}s`
+      : m?.video ? "[Video]"
+      : m?.video_note ? "[Video note]"
+      : m?.animation ? "[Animation]"
+      : m?.audio ? "[Audio]"
+      : m?.location ? "[Location]"
+      : m?.contact ? "[Contact]"
+      : m?.poll ? "[Poll]"
+      : "[Unsupported]";
+
+    await supabaseAdmin.from("chat_messages").insert({
+      tele_user_id: user.id,
+      telegram_message_id: m?.message_id ?? null,
+      direction: ChatDirection.Incoming,
+      message_text: incomingDesc,
+      message_type: MessageType.Text,
+      raw_data: null,
+    });
+
+    const reply = lang === "vi"
+      ? "Bot chỉ hỗ trợ tin nhắn dạng văn bản. Gửi /help để xem các lệnh có sẵn."
+      : "This bot only supports text messages. Send /help to see available commands.";
+    await ctx.reply(reply);
+
+    await supabaseAdmin.from("chat_messages").insert({
+      tele_user_id: user.id,
+      telegram_message_id: null,
+      direction: ChatDirection.Outgoing,
+      message_text: reply,
+      message_type: MessageType.Text,
+      raw_data: null,
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Error handler

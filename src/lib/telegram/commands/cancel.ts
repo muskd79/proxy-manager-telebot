@@ -3,6 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
+import { clearBotState } from "../state";
 import { ChatDirection, MessageType, RequestStatus } from "@/types/database";
 
 export async function handleCancel(ctx: Context) {
@@ -20,6 +21,12 @@ export async function handleCancel(ctx: Context) {
     "/cancel",
     MessageType.Command
   );
+
+  // Wave 23D — also clear conversation state. Pre-fix /cancel only
+  // dropped pending DB requests; if the user was mid-flow (e.g.
+  // awaiting_quick_qty) the state survived and the next text message
+  // got eaten by the qty-input handler. VIA bot pattern.
+  await clearBotState(user.id);
 
   // Fetch pending requests with details
   const { data: pendingRequests } = await supabaseAdmin
