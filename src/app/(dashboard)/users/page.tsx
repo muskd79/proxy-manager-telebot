@@ -10,6 +10,7 @@ import {
   CheckCircle,
   Trash2,
   Filter,
+  RefreshCw,
 } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
@@ -235,10 +236,20 @@ export default function UsersPage() {
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={handleExport}>
-          <Download className="mr-2 h-4 w-4" />
-          {t("common.export")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => fetchUsers()}
+            disabled={isLoading}
+            title="Tải lại"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+          </Button>
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" />
+            {t("common.export")}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

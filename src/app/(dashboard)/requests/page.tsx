@@ -8,6 +8,7 @@ import {
   XCircle,
   Zap,
   Filter,
+  RefreshCw,
 } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
@@ -201,16 +202,26 @@ export default function RequestsPage() {
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       {/* Page Header */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-          <FileText className="h-5 w-5 text-primary" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <FileText className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">{t("requests.title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("requests.subtitle")}
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">{t("requests.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("requests.subtitle")}
-          </p>
-        </div>
+        <Button
+          variant="outline"
+          onClick={() => fetchRequests()}
+          disabled={isLoading}
+          title="Tải lại"
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
       {/* Tabs */}
