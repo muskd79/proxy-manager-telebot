@@ -22,11 +22,11 @@ export async function handleSupport(ctx: Context) {
 
   const text = lang === "vi"
     ? [
-        "*Ho tro*",
+        "*Hỗ trợ*",
         "",
-        "Gui tin nhan bat ky trong chat nay, admin se doc va tra loi.",
+        "Gửi tin nhắn bất kỳ trong chat này, admin sẽ đọc và trả lời.",
         "",
-        "Luu y: Admin co the mat vai phut de phan hoi.",
+        "Lưu ý: Admin có thể mất vài phút để phản hồi.",
       ].join("\n")
     : [
         "*Support*",

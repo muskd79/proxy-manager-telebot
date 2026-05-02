@@ -50,7 +50,7 @@ export async function handleMyProxies(ctx: Context) {
     const expires = p.expires_at
       ? new Date(p.expires_at).toISOString().split("T")[0]
       : "N/A";
-    const expiryLabel = lang === "vi" ? "Het han" : "Expires";
+    const expiryLabel = lang === "vi" ? "Hết hạn" : "Expires";
 
     // FIX 5: Format credentials - show "no auth" when empty
     const hasAuth = p.username && p.password;
@@ -63,7 +63,7 @@ export async function handleMyProxies(ctx: Context) {
     if (p.expires_at) {
       const expiresDate = new Date(p.expires_at);
       if (expiresDate.getTime() - now.getTime() <= threeDaysMs && expiresDate > now) {
-        expiryWarning = lang === "vi" ? " [!] Sap het han!" : " [!] Expires soon!";
+        expiryWarning = lang === "vi" ? " [!] Sắp hết hạn!" : " [!] Expires soon!";
       }
     }
 

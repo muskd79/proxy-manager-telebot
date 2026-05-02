@@ -226,7 +226,7 @@ export async function handleOrderModeSelection(
 
   const { data: user } = await supabaseAdmin
     .from("tele_users")
-    .select("id, language")
+    .select("*")
     .eq("telegram_id", ctx.from.id)
     .single();
   if (!user) return;
@@ -243,37 +243,45 @@ export async function handleOrderModeSelection(
   const stepKey = mode === "quick" ? "awaiting_quick_qty" : "awaiting_custom_qty";
   await setBotState(user.id, { step: stepKey, proxyType });
 
+  // Wave 23E — port chính xác format VIA bot. User feedback
+  // 2026-05-02: muốn "Yêu cầu Proxy — TYPE / Có N proxy sẵn sàng
+  // (tối đa M/lần) / Nhập số lượng proxy bạn cần:" như VIA.
+  // VIA composes 3 keys: getvia.title + getvia.available + getvia.enter_qty
+  // (handlers/callbacks/getvia.ts:115-199). Ghép tương tự, gắn
+  // type vào title.
+  const globalCaps = await loadGlobalCaps();
+  const effectiveMaxProxies =
+    globalCaps.global_max_proxies && globalCaps.global_max_proxies > 0
+      ? Math.min(user.max_proxies, globalCaps.global_max_proxies)
+      : user.max_proxies;
+
+  const { count: availableProxies } = await supabaseAdmin
+    .from("proxies")
+    .select("*", { count: "exact", head: true })
+    .eq("type", proxyType)
+    .eq("status", ProxyStatus.Available)
+    .eq("is_deleted", false);
+
+  const totalCount = availableProxies ?? 0;
+  const maxLabel = mode === "quick"
+    ? String(Math.min(effectiveMaxProxies, 10))
+    : (lang === "vi" ? "không giới hạn" : "no limit");
+
   const text = lang === "vi"
-    ? mode === "quick"
-      ? [
-          `*Order nhanh — ${proxyType.toUpperCase()}*`,
-          "",
-          "Nhập số lượng bạn cần (1–10):",
-          "",
-          "Tự động cấp ngay nếu còn quota.",
-        ].join("\n")
-      : [
-          `*Order riêng — ${proxyType.toUpperCase()}*`,
-          "",
-          "Nhập số lượng bạn cần (không giới hạn):",
-          "",
-          "Yêu cầu sẽ vào hàng chờ admin duyệt.",
-        ].join("\n")
-    : mode === "quick"
-      ? [
-          `*Quick order — ${proxyType.toUpperCase()}*`,
-          "",
-          "Enter the quantity you need (1–10):",
-          "",
-          "Auto-assigned instantly when quota allows.",
-        ].join("\n")
-      : [
-          `*Custom order — ${proxyType.toUpperCase()}*`,
-          "",
-          "Enter the quantity you need (no limit):",
-          "",
-          "Request will be queued for admin approval.",
-        ].join("\n");
+    ? [
+        `*Yêu cầu Proxy — ${proxyType.toUpperCase()}*`,
+        "",
+        `Có *${totalCount}* proxy sẵn sàng (tối đa *${maxLabel}*/lần)`,
+        "",
+        "Nhập số lượng proxy bạn cần:",
+      ].join("\n")
+    : [
+        `*Request Proxy — ${proxyType.toUpperCase()}*`,
+        "",
+        `*${totalCount}* proxies available (max *${maxLabel}*/request)`,
+        "",
+        "Enter the number of proxies you need:",
+      ].join("\n");
 
   const cancelKb = new InlineKeyboard()
     .text(lang === "vi" ? "Hủy" : "Cancel", "qty:cancel");

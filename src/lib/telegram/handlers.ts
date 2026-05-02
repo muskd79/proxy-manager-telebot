@@ -178,7 +178,7 @@ bot.on("callback_query:data", async (ctx) => {
       .eq("telegram_id", ctx.from.id)
       .single();
     const lang = (user?.language === "vi") ? "vi" : "en";
-    await ctx.editMessageText(lang === "vi" ? "Da huy." : "Cancelled.");
+    await ctx.editMessageText(lang === "vi" ? "Đã hủy." : "Cancelled.");
     return;
   }
 
@@ -332,10 +332,10 @@ bot.on("message:text", async (ctx) => {
   // Reply with appropriate response
   const text = isSupportMode
     ? (lang === "vi"
-        ? "Tin nhan da nhan. Admin se phan hoi som."
+        ? "Tin nhắn đã nhận. Admin sẽ phản hồi sớm."
         : "Message received. Admin will respond soon.")
     : (lang === "vi"
-        ? "Su dung /help de xem cac lenh co san."
+        ? "Sử dụng /help để xem các lệnh có sẵn."
         : "Use /help to see available commands.");
 
   await ctx.reply(text);

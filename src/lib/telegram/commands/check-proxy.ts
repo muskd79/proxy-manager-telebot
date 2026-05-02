@@ -30,11 +30,11 @@ export async function handleCheckProxy(ctx: Context) {
     .eq("is_deleted", false);
 
   if (!proxies || proxies.length === 0) {
-    await ctx.reply(lang === "vi" ? "[i] Ban khong co proxy nao." : "[i] You have no assigned proxies.");
+    await ctx.reply(lang === "vi" ? "[i] Bạn không có proxy nào." : "[i] You have no assigned proxies.");
     return;
   }
 
-  await ctx.reply(lang === "vi" ? "Dang kiem tra..." : "Checking...");
+  await ctx.reply(lang === "vi" ? "Đang kiểm tra..." : "Checking...");
 
   const results: string[] = [];
   for (const proxy of proxies) {
@@ -54,7 +54,7 @@ export async function handleCheckProxy(ctx: Context) {
     }
   }
 
-  const header = lang === "vi" ? "*Ket qua kiem tra:*" : "*Health check results:*";
+  const header = lang === "vi" ? "*Kết quả kiểm tra:*" : "*Health check results:*";
   await ctx.reply(`${header}\n\n${results.join("\n")}`, { parse_mode: "Markdown" });
 
   await logChatMessage(user.id, ctx.message?.message_id ?? null, ChatDirection.Incoming, "/checkproxy", MessageType.Command);

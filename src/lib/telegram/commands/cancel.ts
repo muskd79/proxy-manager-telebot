@@ -40,7 +40,7 @@ export async function handleCancel(ctx: Context) {
   if (!pendingRequests || pendingRequests.length === 0) {
     const text =
       lang === "vi"
-        ? "[i] Khong co yeu cau nao dang cho de huy."
+        ? "[i] Không có yêu cầu nào đang chờ để hủy."
         : "[i] No pending requests to cancel.";
     await ctx.reply(text);
     await logChatMessage(
@@ -54,19 +54,19 @@ export async function handleCancel(ctx: Context) {
   }
 
   // Show pending requests list with confirmation
-  const header = lang === "vi" ? "*Yeu cau dang cho:*" : "*Pending requests:*";
+  const header = lang === "vi" ? "*Yêu cầu đang chờ:*" : "*Pending requests:*";
   const lines = pendingRequests.map((r, i) => {
     const type = r.proxy_type?.toUpperCase() || "ANY";
     const date = new Date(r.created_at).toISOString().split("T")[0];
     return `${i + 1}. ${type} - ${date}`;
   });
 
-  const confirmLabel = lang === "vi" ? "Huy tat ca?" : "Cancel all?";
+  const confirmLabel = lang === "vi" ? "Hủy tất cả?" : "Cancel all?";
   const text = `${header}\n\n${lines.join("\n")}\n\n${confirmLabel}`;
 
   const keyboard = new InlineKeyboard()
-    .text(lang === "vi" ? "Co" : "Yes", "cancel_confirm:yes")
-    .text(lang === "vi" ? "Khong" : "No", "cancel_confirm:no");
+    .text(lang === "vi" ? "Có" : "Yes", "cancel_confirm:yes")
+    .text(lang === "vi" ? "Không" : "No", "cancel_confirm:no");
 
   await ctx.reply(text, { parse_mode: "Markdown", reply_markup: keyboard });
   await logChatMessage(
@@ -93,7 +93,7 @@ export async function handleCancelConfirm(ctx: Context, confirmed: boolean) {
   await ctx.answerCallbackQuery();
 
   if (!confirmed) {
-    await ctx.editMessageText(lang === "vi" ? "Da huy." : "Cancelled.");
+    await ctx.editMessageText(lang === "vi" ? "Đã hủy." : "Cancelled.");
     return;
   }
 
@@ -105,7 +105,7 @@ export async function handleCancelConfirm(ctx: Context, confirmed: boolean) {
     .eq("is_deleted", false);
 
   if (!pendingRequests || pendingRequests.length === 0) {
-    await ctx.editMessageText(lang === "vi" ? "[i] Khong co yeu cau nao dang cho." : "[i] No pending requests.");
+    await ctx.editMessageText(lang === "vi" ? "[i] Không có yêu cầu nào đang chờ." : "[i] No pending requests.");
     return;
   }
 
@@ -116,7 +116,7 @@ export async function handleCancelConfirm(ctx: Context, confirmed: boolean) {
 
   const text =
     lang === "vi"
-      ? `[OK] Da huy ${pendingRequests.length} yeu cau dang cho.`
+      ? `[OK] Đã hủy ${pendingRequests.length} yêu cầu đang chờ.`
       : `[OK] Cancelled ${pendingRequests.length} pending request(s).`;
   await ctx.editMessageText(text);
   await logChatMessage(

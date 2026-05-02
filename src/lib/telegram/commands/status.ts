@@ -36,16 +36,16 @@ export async function handleStatus(ctx: Context) {
   const statusLines =
     lang === "vi"
       ? [
-          "*Trang thai tai khoan*",
+          "*Trạng thái tài khoản*",
           "",
-          `Trang thai: *${user.status}*`,
-          `Che do duyet: *${user.approval_mode}*`,
-          `Proxy hien tai: *${proxyCount ?? 0}* / ${user.max_proxies}`,
+          `Trạng thái: *${user.status}*`,
+          `Chế độ duyệt: *${user.approval_mode}*`,
+          `Proxy hiện tại: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
-          "*Gioi han yeu cau:*",
-          `Theo gio: ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset moi gio)`,
-          `Theo ngay: ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset moi 24 gio)`,
-          `Tong cong: ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (gioi han tron doi)`,
+          "*Giới hạn yêu cầu:*",
+          `Theo giờ: ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset mỗi giờ)`,
+          `Theo ngày: ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset mỗi 24 giờ)`,
+          `Tổng cộng: ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (giới hạn trọn đời)`,
         ]
       : [
           "*Account Status*",
@@ -67,11 +67,11 @@ export async function handleStatus(ctx: Context) {
 
   if (hourlyReset && hourlyReset > now) {
     const mins = Math.ceil((hourlyReset.getTime() - now.getTime()) / 60000);
-    statusLines.push(lang === "vi" ? `Reset theo gio: ${mins} phut` : `Hourly reset: ${mins} min`);
+    statusLines.push(lang === "vi" ? `Reset theo giờ: ${mins} phút` : `Hourly reset: ${mins} min`);
   }
   if (dailyReset && dailyReset > now) {
     const hours = Math.ceil((dailyReset.getTime() - now.getTime()) / 3600000);
-    statusLines.push(lang === "vi" ? `Reset theo ngay: ${hours} gio` : `Daily reset: ${hours} hrs`);
+    statusLines.push(lang === "vi" ? `Reset theo ngày: ${hours} giờ` : `Daily reset: ${hours} hrs`);
   }
 
   const text = statusLines.join("\n");

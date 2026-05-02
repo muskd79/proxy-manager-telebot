@@ -106,12 +106,12 @@ export async function handleRevokeConfirm(ctx: Context, count: string) {
   const lang = getUserLanguage(user);
 
   const confirmText = lang === "vi"
-    ? `Ban co chac khong? Hanh dong nay se tra tat ca ${count} proxy.`
+    ? `Bạn có chắc không? Hành động này sẽ trả tất cả ${count} proxy.`
     : `Are you sure? This will return ALL ${count} proxies.`;
 
   const keyboard = new InlineKeyboard()
-    .text(lang === "vi" ? "Co" : "Yes", "revoke:all")
-    .text(lang === "vi" ? "Khong" : "No", "revoke:cancel");
+    .text(lang === "vi" ? "Có" : "Yes", "revoke:all")
+    .text(lang === "vi" ? "Không" : "No", "revoke:cancel");
 
   await ctx.answerCallbackQuery();
   await ctx.editMessageText(confirmText, { reply_markup: keyboard });

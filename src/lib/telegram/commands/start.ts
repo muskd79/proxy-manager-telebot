@@ -49,12 +49,12 @@ export async function handleStart(ctx: Context) {
       ? [
           "*Proxy Manager Bot*",
           "",
-          "Xin chao! Ban da dang ky thanh cong.",
+          "Xin chào! Bạn đã đăng ký thành công.",
           "",
-          "[i] Tai khoan cua ban dang cho admin duyet. Ban se duoc thong bao khi duoc phe duyet.",
+          "[i] Tài khoản của bạn đang chờ admin duyệt. Bạn sẽ được thông báo khi được phê duyệt.",
           "",
-          "/support - Ho tro",
-          "/language - Doi ngon ngu",
+          "/support - Hỗ trợ",
+          "/language - Đổi ngôn ngữ",
         ].join("\n")
       : [
           "*Proxy Manager Bot*",
