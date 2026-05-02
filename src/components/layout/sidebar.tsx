@@ -97,10 +97,14 @@ function NavContent({
       icon: Users,
       altPaths: ["/chat"], // Tin nhắn = sub-tab
     },
+    // ─── BOT (Phase 3, 2026-05-02 — promoted to its own group per
+    //          PM UX review: bot is the user-facing surface, distinct
+    //          from admin-side QUẢN LÝ entities) ───
     {
       title: t("sidebar.bot"),
       href: "/bot",
       icon: Bot,
+      section: t("sidebar.groupBot"),
       altPaths: ["/bot-simulator"], // legacy URL, redirected to /bot/simulator
     },
 
