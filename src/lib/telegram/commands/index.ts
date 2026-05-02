@@ -7,7 +7,7 @@ export { handleRevoke, handleRevokeConfirm, handleRevokeSelection } from "./revo
 export { handleCancel, handleCancelConfirm } from "./cancel";
 export { handleLanguage, handleLanguageSelection } from "./language";
 export { handleHelp, handleUnknownCommand } from "./help";
-export { handleCheckProxy } from "./check-proxy";
+export { handleCheckProxy, handleCheckListInput } from "./check-proxy";
 export { handleHistory } from "./history";
 export { handleSupport } from "./support";
 // Wave 23C-fix — AUP exports removed; aup.ts kept on disk as

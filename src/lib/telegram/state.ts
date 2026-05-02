@@ -19,7 +19,8 @@ export type BotStep =
   | "idle"
   | "awaiting_quick_qty"
   | "awaiting_custom_qty"
-  | "awaiting_confirm";
+  | "awaiting_confirm"
+  | "awaiting_check_list";
 
 export type OrderModeStored = "quick" | "custom";
 
@@ -40,6 +41,7 @@ const VALID_STEPS: BotStep[] = [
   "awaiting_quick_qty",
   "awaiting_custom_qty",
   "awaiting_confirm",
+  "awaiting_check_list",
 ];
 
 export async function getBotState(teleUserId: string): Promise<BotState> {

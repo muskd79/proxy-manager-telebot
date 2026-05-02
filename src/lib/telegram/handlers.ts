@@ -32,6 +32,7 @@ import {
   handleAdminBlockUser,
   handleQtyTextInput,
   handleConfirmCallback,
+  handleCheckListInput,
 } from "./commands";
 import { getBotState, clearBotState } from "./state";
 import {
@@ -157,6 +158,23 @@ bot.on("callback_query:data", async (ctx) => {
   // No = clear state + reply cancelled.
   if (data === "confirm:yes" || data === "confirm:no") {
     await handleConfirmCallback(ctx, data === "confirm:yes");
+    return;
+  }
+
+  // Wave 24-checkproxy — Hủy from the awaiting_check_list prompt.
+  // Clears state + acknowledges so the user knows the bot is no
+  // longer waiting for their paste.
+  if (data === "check:cancel") {
+    await ctx.answerCallbackQuery();
+    if (ctx.from) {
+      const { data: u } = await supabaseAdmin
+        .from("tele_users")
+        .select("id")
+        .eq("telegram_id", ctx.from.id)
+        .single();
+      if (u) await clearBotState(u.id);
+    }
+    await ctx.reply("Đã hủy.");
     return;
   }
 
@@ -310,6 +328,12 @@ bot.on("message:text", async (ctx) => {
   const state = await getBotState(user.id);
   if (state.step === "awaiting_quick_qty" || state.step === "awaiting_custom_qty") {
     const consumed = await handleQtyTextInput(ctx, state.step, state.proxyType, ctx.message.text);
+    if (consumed) return;
+  }
+
+  // Wave 24-checkproxy — user pasted a proxy list after /checkproxy.
+  if (state.step === "awaiting_check_list") {
+    const consumed = await handleCheckListInput(ctx, ctx.message.text);
     if (consumed) return;
   }
 
