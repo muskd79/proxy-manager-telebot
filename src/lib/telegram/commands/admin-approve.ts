@@ -3,6 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
+import { safeCredentialString } from "../format";
 // DEFAULT_PROXY_EXPIRY_MS no longer needed: safe_assign_proxy RPC
 // is now the source of truth for proxy state on approval.
 
@@ -168,10 +169,20 @@ export async function handleAdminApproveCallback(
 
   if (teleUser) {
     const lang = (teleUser.language === "vi" || teleUser.language === "en") ? teleUser.language : "en";
+    // Wave 25-pre1 (P0 1.1, 3.1) — sanitize credentials before
+    // embedding in backtick block. Pre-fix `host` or `password`
+    // containing a backtick produced 400 from Telegram and the
+    // user got nothing.
+    const cred = safeCredentialString(
+      proxy.host,
+      proxy.port,
+      proxy.username,
+      proxy.password,
+    );
     const text =
       lang === "vi"
-        ? `Proxy đã được cấp!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nLoại: ${proxy.type.toUpperCase()}`
-        : `Proxy assigned!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nType: ${proxy.type.toUpperCase()}`;
+        ? `Proxy đã được cấp!\n\n\`${cred}\`\n\nLoại: ${proxy.type.toUpperCase()}`
+        : `Proxy assigned!\n\n\`${cred}\`\n\nType: ${proxy.type.toUpperCase()}`;
 
     await sendTelegramMessage(teleUser.telegram_id, text);
   }
@@ -270,17 +281,23 @@ export async function handleAdminApproveUser(
     return;
   }
 
-  // Update user status to active
-  const { data: user } = await supabaseAdmin
+  // Wave 25-pre1 (P0 12.7) — only flip pending → active. Pre-fix
+  // an admin clicking an OLD pending notification on a user who
+  // was later blocked (or self-deleted) would silently un-block /
+  // un-delete them. .eq("status","pending") makes the UPDATE a
+  // no-op when the user is no longer pending; the empty .select()
+  // signals the admin "already processed".
+  const { data: rows } = await supabaseAdmin
     .from("tele_users")
     .update({ status: "active" })
     .eq("id", userId)
     .eq("is_deleted", false)
-    .select("telegram_id, username, first_name")
-    .single();
+    .eq("status", "pending")
+    .select("telegram_id, username, first_name");
+  const user = rows && rows.length > 0 ? rows[0] : null;
 
   if (!user) {
-    await ctx.answerCallbackQuery("User not found");
+    await ctx.answerCallbackQuery("User not found or already processed");
     return;
   }
 
@@ -318,17 +335,20 @@ export async function handleAdminBlockUser(
     return;
   }
 
-  // Update user status to blocked
-  const { data: user } = await supabaseAdmin
+  // Wave 25-pre1 (P0 12.8) — only flip pending → blocked. Same
+  // race protection as approve: if the user has been activated by
+  // another admin or self-deleted, the UPDATE is a no-op.
+  const { data: rows } = await supabaseAdmin
     .from("tele_users")
     .update({ status: "blocked" })
     .eq("id", userId)
     .eq("is_deleted", false)
-    .select("telegram_id, username, first_name")
-    .single();
+    .eq("status", "pending")
+    .select("telegram_id, username, first_name");
+  const user = rows && rows.length > 0 ? rows[0] : null;
 
   if (!user) {
-    await ctx.answerCallbackQuery("User not found");
+    await ctx.answerCallbackQuery("User not found or already processed");
     return;
   }
 

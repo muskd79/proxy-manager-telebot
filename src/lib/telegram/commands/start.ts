@@ -6,6 +6,7 @@ import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { mainMenuKeyboard } from "../keyboard";
 import { notifyAllAdmins } from "../notify-admins";
+import { escapeMarkdown } from "../format";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleStart(ctx: Context) {
@@ -145,7 +146,11 @@ export async function handleStart(ctx: Context) {
     .eq("status", ProxyStatus.Available)
     .eq("is_deleted", false);
 
-  const firstName = ctx.from?.first_name?.trim() || user.first_name || "";
+  // Wave 25-pre1 (P0 1.1) — escape Markdown special chars in user
+  // first_name. Pre-fix a Telegram name like "*bold*" or "[bracket]"
+  // broke the welcome with 400 "can't parse entities".
+  const rawFirstName = ctx.from?.first_name?.trim() || user.first_name || "";
+  const firstName = escapeMarkdown(rawFirstName);
 
   const text = lang === "vi"
     ? [

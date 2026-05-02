@@ -25,7 +25,14 @@ export async function handleStatus(ctx: Context) {
     .eq("status", ProxyStatus.Assigned);
 
   function progressBar(used: number, limit: number): string {
-    const filled = Math.min(Math.round((used / limit) * 10), 10);
+    // Wave 25-pre1 (P0 5.1) — admin can set rate_limit_*=0 which used
+    // to throw RangeError("Invalid count value") via NaN.repeat().
+    // Treat zero/negative limit as "no quota" → render as full empty.
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return "[----------]";
+    }
+    const safeUsed = Number.isFinite(used) && used > 0 ? used : 0;
+    const filled = Math.min(Math.round((safeUsed / limit) * 10), 10);
     return "[" + "#".repeat(filled) + "-".repeat(10 - filled) + "]";
   }
 

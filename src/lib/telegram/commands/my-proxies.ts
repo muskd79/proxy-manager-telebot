@@ -4,6 +4,7 @@ import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
+import { safeCredentialString } from "../format";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleMyProxies(ctx: Context) {
@@ -52,11 +53,14 @@ export async function handleMyProxies(ctx: Context) {
       : "N/A";
     const expiryLabel = lang === "vi" ? "Hết hạn" : "Expires";
 
-    // FIX 5: Format credentials - show "no auth" when empty
+    // FIX 5: Format credentials - show "no auth" when empty.
+    // Wave 25-pre1 (P0 3.1) — sanitize backtick chars in host /
+    // username / password before embedding in a backtick block,
+    // otherwise a credential like `pass`123` breaks Markdown.
     const hasAuth = p.username && p.password;
     const credential = hasAuth
-      ? `\`${p.host}:${p.port}:${p.username}:${p.password}\``
-      : `\`${p.host}:${p.port}\` (${lang === "vi" ? "khong xac thuc" : "no auth"})`;
+      ? `\`${safeCredentialString(p.host, p.port, p.username, p.password)}\``
+      : `\`${safeCredentialString(p.host, p.port)}\` (${lang === "vi" ? "không xác thực" : "no auth"})`;
 
     // FIX 12: Expiry warning if within 3 days
     let expiryWarning = "";
@@ -76,11 +80,18 @@ export async function handleMyProxies(ctx: Context) {
       : `*Your proxies (${proxies.length}/${user.max_proxies}):*`;
   const text = `${header}\n\n${lines.join("\n")}`;
   await ctx.reply(text, { parse_mode: "Markdown" });
+
+  // Wave 25-pre1 (P0 3.9) — mask credentials in audit log. Pre-fix
+  // chat_messages stored full host:port:user:pass; if the DB ever
+  // leaks (snapshot, debug dump) every proxy credential leaks too.
+  // The user's chat already has the message; the audit log just
+  // needs to know "user got their proxy list".
+  const masked = `${header}\n\n[${proxies.length} proxies — credentials masked in audit log]`;
   await logChatMessage(
     user.id,
     null,
     ChatDirection.Outgoing,
-    text,
+    masked,
     MessageType.Text
   );
 }

@@ -155,14 +155,27 @@ export async function handleRevokeSelection(ctx: Context, proxyId: string) {
       return;
     }
 
-    for (const p of proxies) {
-      await revokeProxy(p.id, user.id);
-    }
+    // Wave 25-pre1 (P0 7.2) \u2014 count successful revokes. Pre-fix loop
+    // ignored the boolean return; if RPC fail (DB hiccup) the user
+    // saw "\u0111\u00E3 tr\u1EA3 th\u00E0nh c\u00F4ng" while the proxy is still assigned.
+    // Now Promise.allSettled in parallel + count truthy returns +
+    // surface the failed count.
+    const results = await Promise.allSettled(
+      proxies.map((p) => revokeProxy(p.id, user.id)),
+    );
+    const okCount = results.filter(
+      (r) => r.status === "fulfilled" && r.value === true,
+    ).length;
+    const failedCount = proxies.length - okCount;
 
     const text =
       lang === "vi"
-        ? `[OK] \u0110\u00E3 tr\u1EA3 t\u1EA5t c\u1EA3 ${proxies.length} proxy th\u00E0nh c\u00F4ng.`
-        : `[OK] Successfully returned all ${proxies.length} proxies.`;
+        ? failedCount === 0
+          ? `[OK] \u0110\u00E3 tr\u1EA3 t\u1EA5t c\u1EA3 ${okCount} proxy th\u00E0nh c\u00F4ng.`
+          : `[OK] \u0110\u00E3 tr\u1EA3 ${okCount}/${proxies.length} proxy. ${failedCount} th\u1EA5t b\u1EA1i \u2014 vui l\u00F2ng th\u1EED l\u1EA1i.`
+        : failedCount === 0
+          ? `[OK] Successfully returned all ${okCount} proxies.`
+          : `[OK] Returned ${okCount}/${proxies.length}. ${failedCount} failed \u2014 please retry.`;
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(text);
     await logChatMessage(
@@ -189,12 +202,19 @@ export async function handleRevokeSelection(ctx: Context, proxyId: string) {
       return;
     }
 
-    await revokeProxy(proxy.id, user.id);
+    // Wave 25-pre1 (P0 7.4) \u2014 single revoke also need to honor the
+    // RPC return. If false the proxy is still assigned (RPC race
+    // with cron expiry, DB error). Show user a retry hint instead
+    // of lying with "\u0111\u00E3 tr\u1EA3 th\u00E0nh c\u00F4ng".
+    const ok = await revokeProxy(proxy.id, user.id);
 
-    const text =
-      lang === "vi"
+    const text = ok
+      ? lang === "vi"
         ? `[OK] \u0110\u00E3 tr\u1EA3 proxy \`${proxy.host}:${proxy.port}\` th\u00E0nh c\u00F4ng.`
-        : `[OK] Successfully returned proxy \`${proxy.host}:${proxy.port}\`.`;
+        : `[OK] Successfully returned proxy \`${proxy.host}:${proxy.port}\`.`
+      : lang === "vi"
+        ? `[X] Tr\u1EA3 proxy \`${proxy.host}:${proxy.port}\` th\u1EA5t b\u1EA1i \u2014 vui l\u00F2ng th\u1EED l\u1EA1i.`
+        : `[X] Failed to return proxy \`${proxy.host}:${proxy.port}\` \u2014 please retry.`;
     await ctx.answerCallbackQuery();
     await ctx.editMessageText(text, { parse_mode: "Markdown" });
     await logChatMessage(

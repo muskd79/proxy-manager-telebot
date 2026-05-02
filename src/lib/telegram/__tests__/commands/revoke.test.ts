@@ -20,7 +20,10 @@ function mockFrom(table: string) {
 vi.mock("@/lib/supabase/admin", () => ({
   supabaseAdmin: {
     from: vi.fn((table: string) => mockFrom(table)),
-    rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    // Wave 25-pre1 — revokeProxy now checks the RPC return for
+    // success. Default the mock to a successful payload so existing
+    // tests don't need per-test setup.
+    rpc: vi.fn().mockResolvedValue({ data: { success: true }, error: null }),
   },
 }));
 

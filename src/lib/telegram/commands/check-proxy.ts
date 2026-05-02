@@ -32,6 +32,11 @@ const MAX_CHECK_PER_BATCH = 20;
  * 3 sockets per host, so 5×3 = 15 sockets in flight — safe on
  * Vercel hobby + courteous to the targets. */
 const PROBE_CONCURRENCY = 5;
+/** Wave 25-pre1 (P0 4.4) — wall-clock budget for the whole batch.
+ * 20 unreachable proxies × 5s detect timeout / 5 concurrent ≈ 20s.
+ * Vercel hobby caps at 10s but Pro is 60s. We cap at 25s so we
+ * stay within Pro's window with margin. Rest reports as "timeout". */
+const BATCH_WALL_CLOCK_MS = 25_000;
 
 export async function handleCheckProxy(ctx: Context) {
   const from = ctx.from;
@@ -153,7 +158,10 @@ export async function handleCheckListInput(
 
   // Probe with concurrency cap. detectProxy already tolerates
   // SSRF + timeout internally so we don't try/catch each.
-  const results: Array<{
+  // Wave 25-pre1: track wall-clock budget so we never blow past
+  // Vercel function timeout. Anything we run out of time on is
+  // reported as "kiểm tra timeout".
+  type ProbeRow = {
     line: number;
     host: string;
     port: number;
@@ -161,9 +169,28 @@ export async function handleCheckListInput(
     type: string | null;
     latency_ms: number;
     blocked?: boolean;
-  }> = [];
+    timed_out?: boolean;
+  };
+  const results: ProbeRow[] = [];
+  const probeStart = Date.now();
 
   for (let i = 0; i < valid.length; i += PROBE_CONCURRENCY) {
+    const elapsed = Date.now() - probeStart;
+    if (elapsed >= BATCH_WALL_CLOCK_MS) {
+      // Mark remaining rows as timed_out and stop dialing.
+      for (const row of valid.slice(i)) {
+        results.push({
+          line: row.line,
+          host: row.host,
+          port: row.port,
+          alive: false,
+          type: null,
+          latency_ms: 0,
+          timed_out: true,
+        });
+      }
+      break;
+    }
     const chunk = valid.slice(i, i + PROBE_CONCURRENCY);
     const chunkResults = await Promise.all(
       chunk.map(async (row) => {
@@ -176,7 +203,7 @@ export async function handleCheckListInput(
           type: r.type,
           latency_ms: r.speed_ms,
           blocked: r.ssrf_blocked,
-        };
+        } satisfies ProbeRow;
       }),
     );
     results.push(...chunkResults);
@@ -190,6 +217,9 @@ export async function handleCheckListInput(
     const target = `\`${r.host}:${r.port}\``;
     if (r.blocked) {
       return `${target} — [!] ${lang === "vi" ? "IP bị chặn" : "blocked"}`;
+    }
+    if (r.timed_out) {
+      return `${target} — [-] ${lang === "vi" ? "kiểm tra timeout" : "check timed out"}`;
     }
     if (r.alive) {
       const t = r.type ? r.type.toUpperCase() : "?";
