@@ -18,19 +18,28 @@ export const HEALTH_CHECK_CRON_BATCH_SIZE = 2000;
 export const TRASH_AUTO_CLEAN_DAYS = 30;
 
 // Bot
+//
+// Note (Phase 3 — 2026-05-02): VI descriptions ARE accented even
+// though Telegram's native bot menu (the Menu button next to the
+// file-attach in chat) renders them in a tight strip. Telegram
+// fully supports UTF-8 here, the un-accented strings were a
+// historical artefact. The descriptions are pushed to Telegram
+// via `bot.api.setMyCommands(...)` in src/lib/telegram/handlers.ts;
+// changes propagate the next time setMyCommands runs (on cold
+// start of the webhook lambda).
 export const BOT_COMMANDS = [
-  { command: "start", description_vi: "Bat dau va dang ky", description_en: "Start and register" },
-  { command: "getproxy", description_vi: "Yeu cau proxy moi", description_en: "Request a new proxy" },
-  { command: "myproxies", description_vi: "Xem proxy cua ban", description_en: "View your proxies" },
-  { command: "checkproxy", description_vi: "Kiem tra proxy", description_en: "Check proxy health" },
-  { command: "status", description_vi: "Trang thai tai khoan", description_en: "Account status" },
-  { command: "history", description_vi: "Lich su yeu cau", description_en: "Request history" },
-  { command: "revoke", description_vi: "Tra proxy", description_en: "Return proxy" },
-  { command: "cancel", description_vi: "Huy yeu cau dang cho", description_en: "Cancel pending requests" },
-  { command: "support", description_vi: "Ho tro", description_en: "Contact support" },
-  { command: "language", description_vi: "Doi ngon ngu", description_en: "Change language" },
-  { command: "help", description_vi: "Huong dan su dung", description_en: "Help" },
-  { command: "requests", description_vi: "Duyet yeu cau (Admin)", description_en: "Pending requests (Admin)" },
+  { command: "start", description_vi: "Bắt đầu và đăng ký", description_en: "Start and register" },
+  { command: "getproxy", description_vi: "Yêu cầu proxy mới", description_en: "Request a new proxy" },
+  { command: "myproxies", description_vi: "Xem proxy của bạn", description_en: "View your proxies" },
+  { command: "checkproxy", description_vi: "Kiểm tra proxy", description_en: "Check proxy health" },
+  { command: "status", description_vi: "Trạng thái tài khoản", description_en: "Account status" },
+  { command: "history", description_vi: "Lịch sử yêu cầu", description_en: "Request history" },
+  { command: "revoke", description_vi: "Trả proxy", description_en: "Return proxy" },
+  { command: "cancel", description_vi: "Hủy yêu cầu đang chờ", description_en: "Cancel pending requests" },
+  { command: "support", description_vi: "Hỗ trợ", description_en: "Contact support" },
+  { command: "language", description_vi: "Đổi ngôn ngữ", description_en: "Change language" },
+  { command: "help", description_vi: "Hướng dẫn sử dụng", description_en: "Help" },
+  { command: "requests", description_vi: "Duyệt yêu cầu (Admin)", description_en: "Pending requests (Admin)" },
 ] as const;
 
 // Wave 22D-5: deleted unused constants SIDEBAR_WIDTH,

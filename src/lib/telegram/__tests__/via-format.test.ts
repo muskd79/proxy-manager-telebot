@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { msg } from "../messages";
+import { BOT_COMMANDS } from "@/lib/constants";
 
 /**
  * Wave 23E — regression tests pinning the Vietnamese-with-accents
@@ -44,6 +45,22 @@ describe("Wave 23E — Vietnamese accents (VIA-format port)", () => {
       const vi = (value as { vi: string }).vi;
       for (const banned of UNACCENTED_BANLIST) {
         if (vi.includes(banned)) offenders.push(`${key}: "${banned}"`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  // 2026-05-02 user feedback: native Telegram bot menu (the Menu
+  // button in the chat composer area, populated by setMyCommands)
+  // was still showing un-accented strings. The descriptions live
+  // in BOT_COMMANDS, separate from msg. Pin them too.
+  it("regression: BOT_COMMANDS description_vi has zero unaccented strings", () => {
+    const offenders: string[] = [];
+    for (const cmd of BOT_COMMANDS) {
+      for (const banned of UNACCENTED_BANLIST) {
+        if (cmd.description_vi.includes(banned)) {
+          offenders.push(`${cmd.command}: "${banned}"`);
+        }
       }
     }
     expect(offenders).toEqual([]);
