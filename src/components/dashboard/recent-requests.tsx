@@ -59,6 +59,13 @@ export function RecentRequests() {
   }, []);
 
   async function handleAction(id: string, action: "approved" | "rejected") {
+    // Phase 3 (PM UX) — confirm before firing the dashboard
+    // 1-click Approve/Reject. Pre-fix tap → request fires
+    // immediately (UI auditor B9). UX-mistake-cost is high
+    // because the row is just an icon button next to others.
+    const verb = action === "approved" ? "Phê duyệt" : "Từ chối";
+    if (!window.confirm(`${verb} yêu cầu này?`)) return;
+
     try {
       const res = await fetch(`/api/requests/${id}`, {
         method: "PUT",

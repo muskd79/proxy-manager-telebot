@@ -49,12 +49,11 @@ export default function BotOverviewPage() {
           cta="Mở Simulator"
         />
         <BotCard
-          href="/bot/config"
+          href="/settings"
           icon={Cog}
           title="Cấu hình"
-          description="Webhook URL, danh sách lệnh, danh sách chặn IP, rate limit. (Sắp ra mắt — Phase 2)"
-          cta="Xem cấu hình"
-          comingSoon
+          description="Webhook URL, bot token, command list, rate-limit. Hiện đang ở trang Cài đặt chung."
+          cta="Mở Cài đặt"
         />
         <SoonCard
           icon={Activity}

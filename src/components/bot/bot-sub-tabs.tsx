@@ -3,22 +3,22 @@
 /**
  * Wave 22U — sub-tabs nested under "Quản lý Bot".
  *
- * Phase 1 sub-tabs:
- *   - /bot              — Tổng quan (landing with cards)
- *   - /bot/simulator    — Giả lập (test bot commands; moved from /bot-simulator)
- *   - /bot/config       — Cấu hình (Phase 2 stub: webhook, command list, ban list)
+ * Phase 3 (2026-05-02) — dropped /bot/config sub-tab. The page was a
+ * Phase-1 stub that linked back to /settings; PM UX review flagged
+ * it as bait-and-switch. Restore the tab when a real bot-config UI
+ * ships (Wave 22V plan).
  *
- * Wave 22V (planned): add Thống kê + Lệnh & Phản hồi tabs per UX
- * agent's recommendation.
+ * Active sub-tabs:
+ *   - /bot              — Tổng quan (landing with cards)
+ *   - /bot/simulator    — Giả lập (test bot commands)
  */
 
-import { LayoutGrid, Terminal, Cog } from "lucide-react";
+import { LayoutGrid, Terminal } from "lucide-react";
 import { PageSubTabs, type PageSubTabItem } from "@/components/navigation/page-sub-tabs";
 
 const tabs: readonly PageSubTabItem[] = [
   { href: "/bot", labelKey: "botTabs.overview", icon: LayoutGrid, match: "exact" },
   { href: "/bot/simulator", labelKey: "botTabs.simulator", icon: Terminal },
-  { href: "/bot/config", labelKey: "botTabs.config", icon: Cog },
 ];
 
 export function BotSubTabs() {

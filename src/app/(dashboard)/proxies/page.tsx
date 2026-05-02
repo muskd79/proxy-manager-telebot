@@ -252,10 +252,22 @@ export default function ProxiesPage() {
   }
 
   async function handleDelete(id: string) {
+    // Phase 3 (PM UX) — destructive single-proxy delete now confirms
+    // first. Pre-fix: tap "Xoá" → request fired immediately; bulk
+    // had a confirm but single-row didn't (UX inconsistency flagged
+    // by UI auditor B3).
+    const proxy = proxies.find((p) => p.id === id);
+    const label = proxy ? `${proxy.host}:${proxy.port}` : "proxy này";
+    if (!window.confirm(`Chuyển ${label} vào Thùng rác?`)) return;
+
     const res = await fetch(`/api/proxies/${id}`, { method: "DELETE" });
     if (res.ok) {
+      toast.success(`Đã chuyển ${label} vào Thùng rác`);
       fetchProxies();
       setSelectedIds((prev) => prev.filter((x) => x !== id));
+    } else {
+      const body = await res.json().catch(() => ({}));
+      toast.error(`Xoá thất bại: ${body?.error || res.statusText}`);
     }
   }
 

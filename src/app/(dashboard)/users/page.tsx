@@ -103,24 +103,46 @@ export default function UsersPage() {
   const handleBulkAction = async () => {
     if (!bulkAction || selectedIds.length === 0) return;
 
-    let successCount = 0;
-    for (const id of selectedIds) {
-      let success = false;
-      switch (bulkAction) {
-        case "block":
-          success = await blockUser(id);
-          break;
-        case "unblock":
-          success = await unblockUser(id);
-          break;
-        case "delete":
-          success = await deleteUser(id);
-          break;
-      }
-      if (success) successCount++;
-    }
+    // Phase 3 (PM UX) — port Promise.allSettled pattern from /proxies
+    // (Wave 22X). Pre-fix the for-loop ran serially, so blocking 100
+    // users took 100 seconds AND the toast "block completed for
+    // 87/100" hid which 13 failed and why. New pattern:
+    //   - parallel fan-out
+    //   - count successes and surface the first error
+    //   - distinguish total / success / failed in toast
+    const action = bulkAction;
+    const total = selectedIds.length;
 
-    toast.success(`${bulkAction} completed for ${successCount}/${selectedIds.length} users`);
+    const results = await Promise.allSettled(
+      selectedIds.map(async (id) => {
+        switch (action) {
+          case "block":
+            return await blockUser(id);
+          case "unblock":
+            return await unblockUser(id);
+          case "delete":
+            return await deleteUser(id);
+        }
+      }),
+    );
+    const successCount = results.filter(
+      (r) => r.status === "fulfilled" && r.value === true,
+    ).length;
+    const failedCount = total - successCount;
+
+    const labelVi: Record<string, string> = {
+      block: "Chặn",
+      unblock: "Bỏ chặn",
+      delete: "Xoá",
+    };
+    const label = labelVi[action] ?? action;
+    if (failedCount === 0) {
+      toast.success(`${label}: ${successCount}/${total} thành công`);
+    } else {
+      toast.warning(
+        `${label}: ${successCount}/${total} thành công, ${failedCount} thất bại`,
+      );
+    }
     setSelectedIds([]);
     setBulkAction(null);
     fetchUsers();
