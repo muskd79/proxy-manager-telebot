@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, actorLabel } from "@/lib/auth";
 import { findAuthUserByEmail } from "@/lib/auth-helpers";
 import { logActivity } from "@/lib/logger";
+import { assertSameOrigin } from "@/lib/csrf";
 
 /**
  * Wave 22F-C — POST /api/admins/[id]/disable-2fa
@@ -30,6 +31,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Wave Phase-1A — CSRF guard. Pre-fix attacker could lure a
+  // logged-in super_admin into a cross-origin POST that disables
+  // 2FA on a target admin then revokes their sessions.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireSuperAdmin(supabase);
   if (authError) return authError;

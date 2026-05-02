@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
 
 /**
@@ -26,6 +27,10 @@ const DisableSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // Wave Phase-1A CSRF guard.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAuth(supabase);
   if (authError) return authError;

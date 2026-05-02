@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, actorLabel } from "@/lib/auth";
 import { findAuthUserByEmail } from "@/lib/auth-helpers";
 import { logActivity } from "@/lib/logger";
+import { assertSameOrigin } from "@/lib/csrf";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 
@@ -57,6 +58,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Wave Phase-1A CSRF guard.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireSuperAdmin(supabase);
   if (authError) return authError;

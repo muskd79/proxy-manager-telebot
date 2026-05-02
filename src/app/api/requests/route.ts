@@ -6,6 +6,7 @@ import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateRequestSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { REQUESTS_SORT, safeSort } from "@/lib/sort-allowlist";
+import { assertSameOrigin } from "@/lib/csrf";
 
 export async function GET(request: NextRequest) {
   try {
@@ -123,6 +124,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Wave Phase-1A CSRF guard.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   try {
     const supabase = await createClient();
 

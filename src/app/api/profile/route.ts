@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { assertSameOrigin } from "@/lib/csrf";
 import { z } from "zod";
 
 const UpdateProfileSchema = z.object({
@@ -17,6 +18,10 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  // Wave Phase-1A CSRF guard.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAuth(supabase);
   if (authError) return authError;

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
+import { assertSameOrigin } from "@/lib/csrf";
 
 /**
  * Wave 22F-B — POST /api/profile/2fa/enroll
@@ -20,6 +21,10 @@ import { logActivity } from "@/lib/logger";
  * must disable the existing factor first via /disable.
  */
 export async function POST(request: NextRequest) {
+  // Wave Phase-1A CSRF guard.
+  const csrfErr = assertSameOrigin(request);
+  if (csrfErr) return csrfErr;
+
   const supabase = await createClient();
   const { admin, error: authError } = await requireAuth(supabase);
   if (authError) return authError;
