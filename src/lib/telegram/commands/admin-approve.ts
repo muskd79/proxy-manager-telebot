@@ -3,7 +3,8 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
-import { DEFAULT_PROXY_EXPIRY_MS } from "@/lib/constants";
+// DEFAULT_PROXY_EXPIRY_MS no longer needed: safe_assign_proxy RPC
+// is now the source of truth for proxy state on approval.
 
 /** Minimal tele_users shape returned by the JOIN in .select(...tele_users(...)). */
 type JoinedTeleUser = {
@@ -89,7 +90,15 @@ export async function handleAdminApproveCallback(
     return;
   }
 
-  // Fetch the pending request
+  // Phase 1C (B-007) — migrate to safe_assign_proxy RPC.
+  // Pre-fix: SELECT proxy + 2 separate UPDATEs (proxy then request)
+  // → 2 admins clicking Approve concurrently could both pass the
+  // SELECT (status='available'), both UPDATE proxy=assigned, both
+  // UPDATE request=approved → same proxy promised to two users.
+  // The RPC (mig 027) is atomic + idempotent (returns "already
+  // processed" when the second admin races in).
+
+  // 1. Fetch the pending request (read-only — RPC re-checks).
   const { data: request } = await supabaseAdmin
     .from("proxy_requests")
     .select("id, proxy_type, tele_user_id")
@@ -102,51 +111,55 @@ export async function handleAdminApproveCallback(
     return;
   }
 
-  // Find an available proxy matching the requested type
+  // 2. Pick first available proxy of the requested type.
   let proxyQuery = supabaseAdmin
     .from("proxies")
-    .select("id, host, port, type, username, password")
+    .select("id")
     .eq("status", "available")
     .eq("is_deleted", false)
     .limit(1);
-
   if (request.proxy_type) {
     proxyQuery = proxyQuery.eq("type", request.proxy_type);
   }
-
-  const { data: proxy } = await proxyQuery.single();
-
-  if (!proxy) {
+  const { data: proxyRow } = await proxyQuery.maybeSingle();
+  if (!proxyRow) {
     await ctx.answerCallbackQuery("No proxy available");
     await ctx.editMessageText("No available proxy for this request.");
     return;
   }
 
-  // Assign the proxy
-  const expiresAt = new Date(
-    Date.now() + DEFAULT_PROXY_EXPIRY_MS
-  ).toISOString();
+  // 3. Atomic assign via RPC.
+  const adminInfoForRpc = await getAdminByTelegramId(from.id);
+  const { data: rpcResult, error: rpcError } = await supabaseAdmin.rpc(
+    "safe_assign_proxy",
+    {
+      p_request_id: requestId,
+      p_proxy_id: proxyRow.id,
+      p_admin_id: adminInfoForRpc.adminId || null,
+    },
+  );
 
-  await supabaseAdmin
-    .from("proxies")
-    .update({
-      status: "assigned",
-      assigned_to: request.tele_user_id,
-      assigned_at: new Date().toISOString(),
-      expires_at: expiresAt,
-    })
-    .eq("id", proxy.id);
+  if (rpcError || !rpcResult || (rpcResult as { success?: boolean }).success !== true) {
+    const errMsg =
+      (rpcResult as { error?: string } | null)?.error ||
+      (rpcError ? "Assignment failed" : "Assignment failed");
+    await ctx.answerCallbackQuery(errMsg);
+    await ctx.editMessageText(`[X] ${errMsg}`);
+    return;
+  }
 
-  await supabaseAdmin
-    .from("proxy_requests")
-    .update({
-      status: "approved",
-      proxy_id: proxy.id,
-      processed_at: new Date().toISOString(),
-    })
-    .eq("id", requestId);
+  const proxy = (rpcResult as {
+    proxy: {
+      id: string;
+      host: string;
+      port: number;
+      type: string;
+      username: string | null;
+      password: string | null;
+    };
+  }).proxy;
 
-  // Notify the user who requested
+  // 4. Notify the user who requested.
   const { data: teleUser } = await supabaseAdmin
     .from("tele_users")
     .select("telegram_id, language")
@@ -157,7 +170,7 @@ export async function handleAdminApproveCallback(
     const lang = (teleUser.language === "vi" || teleUser.language === "en") ? teleUser.language : "en";
     const text =
       lang === "vi"
-        ? `Proxy da duoc cap!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nLoai: ${proxy.type.toUpperCase()}`
+        ? `Proxy đã được cấp!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nLoại: ${proxy.type.toUpperCase()}`
         : `Proxy assigned!\n\n\`${proxy.host}:${proxy.port}:${proxy.username || ""}:${proxy.password || ""}\`\n\nType: ${proxy.type.toUpperCase()}`;
 
     await sendTelegramMessage(teleUser.telegram_id, text);

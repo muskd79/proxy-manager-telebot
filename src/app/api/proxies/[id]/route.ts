@@ -96,9 +96,18 @@ export async function PUT(
     }
     if (parsed.data.deleted_at !== undefined) updateData.deleted_at = parsed.data.deleted_at;
 
-    // Guard proxy status transitions against the lifecycle state machine.
-    // Without this, admins can flip `banned -> available` or `expired -> assigned`
-    // from the web UI, skipping the maintenance check step defined in proxyMachine.
+    // Phase 1C (B-009) — atomic state-machine guard.
+    // Pre-fix: SELECT current status (line 103) → check canTransition
+    // (line 110) → UPDATE (line 141) had a TOCTOU window between
+    // SELECT and UPDATE. Two admins editing concurrently could both
+    // pass canTransition then both UPDATE → final state can be
+    // illegal (banned→available bypassing maintenance).
+    //
+    // Fix: still validate canTransition up-front for UX (so we can
+    // return 409 with a meaningful message), THEN add an atomic
+    // `.eq("status", currentStatus)` to the UPDATE so the row is
+    // only modified when its status hasn't changed in between.
+    let expectedCurrentStatus: ProxyStatus | undefined;
     if (status !== undefined) {
       const { data: currentProxy } = await supabase
         .from("proxies")
@@ -117,6 +126,7 @@ export async function PUT(
           );
         }
       }
+      expectedCurrentStatus = currentStatus;
     }
 
     if (host !== undefined) updateData.host = host;
@@ -138,14 +148,29 @@ export async function PUT(
       }
     }
 
-    const { data, error } = await supabase
+    let updateQuery = supabase
       .from("proxies")
       .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
+      .eq("id", id);
+    // Phase 1C — atomic guard: only UPDATE if status hasn't changed.
+    if (expectedCurrentStatus !== undefined) {
+      updateQuery = updateQuery.eq("status", expectedCurrentStatus);
+    }
+    const { data, error } = await updateQuery.select().maybeSingle();
 
     if (error) throw error;
+    if (!data) {
+      // Phase 1C — concurrent change detected: another admin (or a
+      // cron job) flipped the proxy's status between our read and
+      // our write. Tell the caller to refresh and retry.
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Proxy state changed concurrently. Please refresh and try again.",
+        },
+        { status: 409 },
+      );
+    }
 
     logActivity({
       actorType: "admin",
