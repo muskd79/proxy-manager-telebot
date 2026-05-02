@@ -1,17 +1,22 @@
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { BotStep } from "../state";
-import { clearBotState } from "../state";
+import { clearBotState, setBotState } from "../state";
 import { handleQuantitySelection } from "./bulk-proxy";
 
 /**
  * Wave 23B-bot UX — handle a number typed by the user while we are
- * in `awaiting_quick_qty` or `awaiting_custom_qty`. Validates the
- * input, clears the state, and hands off to the existing
- * bulk-proxy.handleQuantitySelection flow with the correct mode.
+ * in `awaiting_quick_qty` or `awaiting_custom_qty`.
+ *
+ * Wave 24-1 — instead of placing the order immediately we now set
+ * state to `awaiting_confirm` and ask the user "Xác nhận?" with a
+ * Yes/No inline keyboard, mirroring VIA bot's confirm step
+ * (i18n/getvia.ts confirm.title/qty/ask). The actual order
+ * placement happens in `handleConfirmCallback` on yes.
  *
  * Returns true when the message was consumed (caller should stop
  * processing further), false when no state was active.
@@ -59,9 +64,9 @@ export async function handleQtyTextInput(
   const qty = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(qty) || qty <= 0 || !/^\d+$/.test(trimmed)) {
     const msg = lang === "vi"
-      ? "[!] Số không hợp lệ. Nhập một số nguyên dương (ví dụ: 3)."
-      : "[!] Invalid number. Please enter a positive integer (e.g. 3).";
-    await ctx.reply(msg);
+      ? "[!] Vui lòng nhập một *số*. Ví dụ: `1`, `3`, `5`"
+      : "[!] Please enter a *number*. Example: `1`, `3`, `5`";
+    await ctx.reply(msg, { parse_mode: "Markdown" });
     return true;
   }
 
@@ -78,11 +83,101 @@ export async function handleQtyTextInput(
     return true;
   }
 
-  // Clear state BEFORE delegating so a slow downstream step doesn't
-  // lock the user in a stale conversation.
-  await clearBotState(user.id);
-
+  // Wave 24-1 — move to confirm step. Lock proxyType + qty + mode
+  // in the conversation state and ask "Xác nhận?". The order is
+  // only placed when the user clicks Yes on the inline keyboard.
   const mode = step === "awaiting_quick_qty" ? "quick" : "custom";
-  await handleQuantitySelection(ctx, proxyType, qty, mode);
+  await setBotState(user.id, {
+    step: "awaiting_confirm",
+    proxyType,
+    quantity: qty,
+    mode,
+  });
+
+  const confirmText = lang === "vi"
+    ? [
+        "*Xác nhận yêu cầu*",
+        "",
+        `Loại: *${proxyType.toUpperCase()}*`,
+        `Số lượng: *${qty}* proxy`,
+        mode === "quick"
+          ? "Hình thức: *Order nhanh* (tự động cấp)"
+          : "Hình thức: *Order riêng* (admin duyệt)",
+        "",
+        "Xác nhận?",
+      ].join("\n")
+    : [
+        "*Confirm request*",
+        "",
+        `Type: *${proxyType.toUpperCase()}*`,
+        `Quantity: *${qty}* proxies`,
+        mode === "quick"
+          ? "Mode: *Quick order* (auto)"
+          : "Mode: *Custom order* (admin approval)",
+        "",
+        "Confirm?",
+      ].join("\n");
+
+  const kb = new InlineKeyboard()
+    .text(lang === "vi" ? "Xác nhận" : "Confirm", "confirm:yes")
+    .text(lang === "vi" ? "Hủy" : "Cancel", "confirm:no");
+
+  await ctx.reply(confirmText, { parse_mode: "Markdown", reply_markup: kb });
+  await logChatMessage(
+    user.id,
+    null,
+    ChatDirection.Outgoing,
+    confirmText,
+    MessageType.Text,
+  );
   return true;
+}
+
+/**
+ * Wave 24-1 — confirm:yes / confirm:no callback. Reads quantity +
+ * mode + proxyType from state, then either places the order or
+ * cancels. Always clears state at the end.
+ */
+export async function handleConfirmCallback(
+  ctx: Context,
+  confirmed: boolean,
+): Promise<void> {
+  if (!ctx.from) return;
+
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("id, language")
+    .eq("telegram_id", ctx.from.id)
+    .single();
+  if (!user) return;
+  const lang = getUserLanguage(user);
+
+  await ctx.answerCallbackQuery();
+
+  // Re-read the state. We need quantity + mode + proxyType to place.
+  const { getBotState } = await import("../state");
+  const state = await getBotState(user.id);
+
+  if (state.step !== "awaiting_confirm" || !state.proxyType || !state.quantity || !state.mode) {
+    // State drift: another flow / TTL expiry / older deploy.
+    await clearBotState(user.id);
+    const msg = lang === "vi"
+      ? "Phiên đã hết hạn. Vui lòng thử lại."
+      : "Session expired. Please try again.";
+    await ctx.reply(msg);
+    return;
+  }
+
+  if (!confirmed) {
+    await clearBotState(user.id);
+    const msg = lang === "vi" ? "Đã hủy yêu cầu." : "Request cancelled.";
+    await ctx.reply(msg);
+    await logChatMessage(user.id, null, ChatDirection.Outgoing, msg, MessageType.Text);
+    return;
+  }
+
+  // Yes — clear state then place the order via the existing path.
+  const { proxyType, quantity, mode } = state;
+  await clearBotState(user.id);
+  await handleQuantitySelection(ctx, proxyType, quantity, mode);
 }

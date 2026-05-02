@@ -31,6 +31,7 @@ import {
   handleAdminApproveUser,
   handleAdminBlockUser,
   handleQtyTextInput,
+  handleConfirmCallback,
 } from "./commands";
 import { getBotState, clearBotState } from "./state";
 import {
@@ -148,7 +149,14 @@ bot.on("callback_query:data", async (ctx) => {
   }
   if (data === "order_type:cancel") {
     await ctx.answerCallbackQuery();
-    await ctx.reply("Đã huỷ.");
+    await ctx.reply("Đã hủy.");
+    return;
+  }
+
+  // Wave 24-1 — confirm step after qty input. Yes = place the order,
+  // No = clear state + reply cancelled.
+  if (data === "confirm:yes" || data === "confirm:no") {
+    await handleConfirmCallback(ctx, data === "confirm:yes");
     return;
   }
 

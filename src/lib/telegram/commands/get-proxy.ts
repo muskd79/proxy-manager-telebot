@@ -37,6 +37,32 @@ export async function handleGetProxy(ctx: Context) {
   // users slipped through and could spam /getproxy before approval.
   if (await denyIfNotApproved(ctx, user, lang)) return;
 
+  // Wave 24-2 — pending.exists guard (port từ VIA i18n/common.ts).
+  // Nếu user đã có yêu cầu pending chưa được duyệt → từ chối tạo
+  // thêm. Pre-fix user spam /getproxy 10 lần thì admin queue ngập
+  // 10 row pending cùng 1 user.
+  const { count: pendingCount } = await supabaseAdmin
+    .from("proxy_requests")
+    .select("*", { count: "exact", head: true })
+    .eq("tele_user_id", user.id)
+    .eq("status", "pending")
+    .eq("is_deleted", false);
+
+  if (pendingCount !== null && pendingCount > 0) {
+    const pendingText = lang === "vi"
+      ? "Bạn đã có yêu cầu đang chờ xử lý.\nVui lòng đợi admin duyệt."
+      : "You already have a pending request.\nPlease wait for admin approval.";
+    await ctx.reply(pendingText);
+    await logChatMessage(
+      user.id,
+      null,
+      ChatDirection.Outgoing,
+      pendingText,
+      MessageType.Text,
+    );
+    return;
+  }
+
   // Quick read-only rate limit preview (no DB writes, no race condition).
   // This is just for UX feedback — the real counter increment happens
   // atomically inside bulk_assign_proxies RPC when a proxy is assigned.

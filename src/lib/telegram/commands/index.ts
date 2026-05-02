@@ -1,6 +1,6 @@
 export { handleStart } from "./start";
 export { handleGetProxy, handleProxyTypeSelection, handleOrderModeSelection } from "./get-proxy";
-export { handleQtyTextInput } from "./custom-order";
+export { handleQtyTextInput, handleConfirmCallback } from "./custom-order";
 export { handleMyProxies } from "./my-proxies";
 export { handleStatus } from "./status";
 export { handleRevoke, handleRevokeConfirm, handleRevokeSelection } from "./revoke";

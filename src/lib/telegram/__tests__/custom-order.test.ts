@@ -20,8 +20,11 @@ vi.mock("../logging", () => ({
 }));
 
 const mockClearBotState = vi.fn().mockResolvedValue(undefined);
+const mockSetBotState = vi.fn().mockResolvedValue(undefined);
 vi.mock("../state", () => ({
   clearBotState: (...args: unknown[]) => mockClearBotState(...args),
+  setBotState: (...args: unknown[]) => mockSetBotState(...args),
+  getBotState: vi.fn().mockResolvedValue({ step: "idle" }),
 }));
 
 const mockHandleQuantitySelection = vi.fn().mockResolvedValue(undefined);
@@ -29,7 +32,8 @@ vi.mock("../commands/bulk-proxy", () => ({
   handleQuantitySelection: (...args: unknown[]) => mockHandleQuantitySelection(...args),
 }));
 
-import { handleQtyTextInput } from "../commands/custom-order";
+import { handleQtyTextInput, handleConfirmCallback } from "../commands/custom-order";
+import * as stateModule from "../state";
 
 function mkCtx() {
   const replies: string[] = [];
@@ -57,7 +61,8 @@ describe("handleQtyTextInput (Wave 23B-bot, VIA-style text input)", () => {
       "abc",
     );
     expect(consumed).toBe(true);
-    expect(replies[0]).toMatch(/không hợp lệ|invalid/i);
+    // Wave 23E — message ported from VIA validate.number key.
+    expect(replies[0]).toMatch(/Vui lòng nhập một|Please enter a number/i);
     expect(mockHandleQuantitySelection).not.toHaveBeenCalled();
   });
 
@@ -74,7 +79,7 @@ describe("handleQtyTextInput (Wave 23B-bot, VIA-style text input)", () => {
   });
 
   it("regression: accepts arbitrary number 3 (user feedback case)", async () => {
-    const { ctx } = mkCtx();
+    const { ctx, replies } = mkCtx();
     const consumed = await handleQtyTextInput(
       ctx as never,
       "awaiting_quick_qty",
@@ -82,24 +87,30 @@ describe("handleQtyTextInput (Wave 23B-bot, VIA-style text input)", () => {
       "3",
     );
     expect(consumed).toBe(true);
-    expect(mockClearBotState).toHaveBeenCalledWith("u1");
-    expect(mockHandleQuantitySelection).toHaveBeenCalledWith(
-      ctx,
-      "http",
-      3,
-      "quick",
-    );
+    // Wave 24-1 — qty no longer auto-places; sets state to
+    // awaiting_confirm and asks "Xác nhận?" with summary.
+    expect(mockSetBotState).toHaveBeenCalledWith("u1", expect.objectContaining({
+      step: "awaiting_confirm",
+      proxyType: "http",
+      quantity: 3,
+      mode: "quick",
+    }));
+    expect(replies[0]).toMatch(/Xác nhận|Confirm/i);
+    expect(replies[0]).toContain("3");
+    expect(mockHandleQuantitySelection).not.toHaveBeenCalled();
   });
 
-  it("custom mode allows up to 100", async () => {
-    const { ctx } = mkCtx();
+  it("custom mode allows up to 100 (waits for confirm)", async () => {
+    const { ctx, replies } = mkCtx();
     await handleQtyTextInput(ctx as never, "awaiting_custom_qty", "https", "73");
-    expect(mockHandleQuantitySelection).toHaveBeenCalledWith(
-      ctx,
-      "https",
-      73,
-      "custom",
-    );
+    expect(mockSetBotState).toHaveBeenCalledWith("u1", expect.objectContaining({
+      step: "awaiting_confirm",
+      proxyType: "https",
+      quantity: 73,
+      mode: "custom",
+    }));
+    expect(replies[0]).toContain("73");
+    expect(mockHandleQuantitySelection).not.toHaveBeenCalled();
   });
 
   it("custom mode rejects 101 with limit message", async () => {
@@ -137,6 +148,68 @@ describe("handleQtyTextInput (Wave 23B-bot, VIA-style text input)", () => {
     );
     expect(consumed).toBe(true);
     expect(mockClearBotState).toHaveBeenCalled();
+    expect(replies[0]).toMatch(/hết hạn|expired/i);
+  });
+});
+
+// ---- Wave 24-1 confirm callback ------------------------------------------
+
+describe("handleConfirmCallback (Wave 24-1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUserSelect.mockResolvedValue({ data: { id: "u1", language: "vi" }, error: null });
+  });
+
+  it("Yes → places order via handleQuantitySelection then clears state", async () => {
+    vi.spyOn(stateModule, "getBotState").mockResolvedValueOnce({
+      step: "awaiting_confirm",
+      proxyType: "http",
+      quantity: 3,
+      mode: "quick",
+    });
+    const replies: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx: any = {
+      from: { id: 999 },
+      reply: vi.fn(async (t: string) => { replies.push(t); }),
+      answerCallbackQuery: vi.fn().mockResolvedValue(undefined),
+    };
+    await handleConfirmCallback(ctx, true);
+    expect(mockClearBotState).toHaveBeenCalled();
+    expect(mockHandleQuantitySelection).toHaveBeenCalledWith(ctx, "http", 3, "quick");
+  });
+
+  it("No → cancels with reply, never places order", async () => {
+    vi.spyOn(stateModule, "getBotState").mockResolvedValueOnce({
+      step: "awaiting_confirm",
+      proxyType: "http",
+      quantity: 3,
+      mode: "quick",
+    });
+    const replies: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx: any = {
+      from: { id: 999 },
+      reply: vi.fn(async (t: string) => { replies.push(t); }),
+      answerCallbackQuery: vi.fn().mockResolvedValue(undefined),
+    };
+    await handleConfirmCallback(ctx, false);
+    expect(mockClearBotState).toHaveBeenCalled();
+    expect(mockHandleQuantitySelection).not.toHaveBeenCalled();
+    expect(replies[0]).toMatch(/Đã hủy|cancelled/i);
+  });
+
+  it("State drift (idle) → expired message, never places", async () => {
+    vi.spyOn(stateModule, "getBotState").mockResolvedValueOnce({ step: "idle" });
+    const replies: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx: any = {
+      from: { id: 999 },
+      reply: vi.fn(async (t: string) => { replies.push(t); }),
+      answerCallbackQuery: vi.fn().mockResolvedValue(undefined),
+    };
+    await handleConfirmCallback(ctx, true);
+    expect(mockHandleQuantitySelection).not.toHaveBeenCalled();
     expect(replies[0]).toMatch(/hết hạn|expired/i);
   });
 });
