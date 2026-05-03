@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import type { Proxy } from "@/types/database";
 import { z } from "zod";
+import { toast } from "sonner";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
@@ -57,14 +58,14 @@ interface ProxyFormProps {
   onSave: (data: Record<string, unknown>) => Promise<void>;
 }
 
-export function ProxyForm({
-  open,
-  onOpenChange,
-  proxy,
-  onSave,
-}: ProxyFormProps) {
-  const isEdit = !!proxy;
-  const [formData, setFormData] = useState({
+/**
+ * Wave 26-B (gap 1.1) — single source of truth for form initial state.
+ * Pre-fix the inline initializer ran ONCE on mount, so admins editing
+ * proxy A → closing → editing proxy B saw A's data prefilled. Now both
+ * the initial useState() AND the prop-change useEffect call this.
+ */
+function buildInitialFormData(proxy: Proxy | null | undefined) {
+  return {
     host: proxy?.host || "",
     port: proxy?.port?.toString() || "",
     type: proxy?.type || "http",
@@ -78,11 +79,44 @@ export function ProxyForm({
     expires_at: proxy?.expires_at
       ? new Date(proxy.expires_at).toISOString().split("T")[0]
       : "",
-  });
+  };
+}
+
+/**
+ * Wave 26-B (gap 1.7) — extended category lite used to auto-fill
+ * country/proxy_type/network_type/expires_at from category defaults.
+ * Mirrors ProxyImport's category-default useEffect so the single-
+ * proxy form behaves the same as the bulk wizard.
+ */
+interface CategoryFullDefaults extends CategoryOptionLite {
+  default_network_type?: string | null;
+}
+
+export function ProxyForm({
+  open,
+  onOpenChange,
+  proxy,
+  onSave,
+}: ProxyFormProps) {
+  const isEdit = !!proxy;
+  const [formData, setFormData] = useState(() => buildInitialFormData(proxy));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
-  const [categories, setCategories] = useState<CategoryOptionLite[]>([]);
+  const [categories, setCategories] = useState<CategoryFullDefaults[]>([]);
+
+  // Wave 26-B (gap 1.1) — reset form when the `proxy` prop changes
+  // OR when the dialog reopens. Pre-fix: stale data from previous
+  // proxy reused on subsequent edits. The `open` dependency catches
+  // the case where admin closes a Sửa dialog then reopens "Thêm đơn"
+  // (proxy goes from non-null to null).
+  useEffect(() => {
+    if (open) {
+      setFormData(buildInitialFormData(proxy));
+      setErrors({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proxy?.id, open]);
 
   useEffect(() => {
     fetch("/api/proxies/stats")
@@ -97,17 +131,60 @@ export function ProxyForm({
       .then((d) => {
         if (Array.isArray(d?.data)) {
           setCategories(
-            (d.data as Array<{ id: string; name: string; default_country?: string | null; default_proxy_type?: string | null }>).map((c) => ({
+            (d.data as Array<{
+              id: string;
+              name: string;
+              default_country?: string | null;
+              default_proxy_type?: string | null;
+              default_network_type?: string | null;
+            }>).map((c) => ({
               id: c.id,
               name: c.name,
               default_country: c.default_country ?? null,
               default_proxy_type: c.default_proxy_type ?? null,
+              default_network_type: c.default_network_type ?? null,
             })),
           );
         }
       })
       .catch(() => {});
   }, []);
+
+  // Wave 26-B (gap 1.7) — auto-fill category defaults. Pre-fix the
+  // single-proxy form ignored category defaults (only the import
+  // wizard used them). Two surfaces, two behaviours = inconsistent.
+  // Now both honor: when a category is picked AND the corresponding
+  // form field is still empty, fill it from the default. Existing
+  // values are NEVER overwritten — admin's typed value wins.
+  useEffect(() => {
+    if (!formData.category_id) return;
+    const cat = categories.find((c) => c.id === formData.category_id);
+    if (!cat) return;
+
+    // Narrow the category defaults back into the form's strict literal
+    // types. The category endpoint returns `default_proxy_type` /
+    // `default_network_type` as `string | null`; we only adopt them
+    // when they match the corresponding enum.
+    const validProxyTypes = ["http", "https", "socks5"] as const;
+    const defaultType =
+      cat.default_proxy_type &&
+      (validProxyTypes as readonly string[]).includes(cat.default_proxy_type)
+        ? (cat.default_proxy_type as (typeof validProxyTypes)[number])
+        : null;
+    const defaultNetworkType =
+      cat.default_network_type &&
+      (NETWORK_TYPE_VALUES as readonly string[]).includes(cat.default_network_type)
+        ? (cat.default_network_type as NetworkType)
+        : null;
+
+    setFormData((prev) => ({
+      ...prev,
+      country: prev.country || cat.default_country || "",
+      type: prev.type || defaultType || "http",
+      network_type: prev.network_type || defaultNetworkType || "",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.category_id, categories]);
 
   function handleChange(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -120,9 +197,12 @@ export function ProxyForm({
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
+  /**
+   * Wave 26-B (gap 1.5) — split submit into "save + close" and
+   * "save + continue (reset form, keep dialog open, keep category)".
+   * `mode` controls the post-save behaviour.
+   */
+  async function performSave(mode: "close" | "continue") {
     const result = proxySchema.safeParse(formData);
     if (!result.success) {
       const fieldErrors: Record<string, string> = {};
@@ -155,24 +235,77 @@ export function ProxyForm({
           : null,
       };
 
+      // Snapshot the host/port BEFORE the save so the toast names the
+      // proxy admin just acted on, not whatever leaks back from
+      // optimistic state updates.
+      const label = `${formData.host}:${formData.port}`;
       await onSave(data);
-      onOpenChange(false);
+
+      // Wave 26-B (gap 1.2 + 2.2) — toast on success. Pre-fix the dialog
+      // closed silently; admin had no positive confirmation.
+      toast.success(
+        isEdit ? `Đã cập nhật ${label}` : `Đã tạo ${label}`,
+      );
+
+      if (mode === "close") {
+        onOpenChange(false);
+      } else {
+        // Wave 26-B (gap 1.5) — "Tạo và thêm tiếp": clear host / port /
+        // username / password / city / notes / expires_at, but PRESERVE
+        // type / network_type / country / category_id. Admins commonly
+        // batch-create proxies under the same category + country +
+        // protocol — only the host/port differs.
+        setFormData((prev) => ({
+          ...prev,
+          host: "",
+          port: "",
+          username: "",
+          password: "",
+          city: "",
+          notes: "",
+          expires_at: "",
+        }));
+        setErrors({});
+      }
     } catch (err) {
       console.error("Failed to save proxy:", err);
+      // Wave 26-B (gap 1.2) — surface the error explicitly so admin
+      // doesn't see a quiet dialog that won't close. Network glitch
+      // and validation failures both end up here.
+      toast.error(
+        err instanceof Error ? err.message : "Lưu proxy thất bại",
+      );
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void performSave("close");
+  }
+
+  function handleSaveAndContinue() {
+    void performSave("continue");
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Sửa proxy" : "Thêm proxy"}</DialogTitle>
+          {/* Wave 26-B (gap 1.4) — show host:port in edit-mode title.
+              Pre-fix "Sửa proxy" was generic; admin scrolling a 1000-
+              row list could lose track of which row they opened. */}
+          <DialogTitle>
+            {isEdit && proxy
+              ? `Sửa ${proxy.host}:${proxy.port}`
+              : "Thêm proxy mới"}
+          </DialogTitle>
+          {/* Wave 26-B (gap 1.8) — call out required fields explicitly. */}
           <DialogDescription>
             {isEdit
-              ? "Cập nhật thông tin proxy bên dưới."
-              : "Nhập thông tin proxy mới. Có thể bỏ trống các trường tuỳ chọn."}
+              ? "Cập nhật thông tin proxy bên dưới. Bắt buộc: Host + Cổng."
+              : "Nhập thông tin proxy mới. Bắt buộc: Host + Cổng. Các trường khác tuỳ chọn."}
           </DialogDescription>
         </DialogHeader>
 
@@ -370,6 +503,20 @@ export function ProxyForm({
             >
               Huỷ
             </Button>
+            {/* Wave 26-B (gap 1.5) — secondary "Tạo và thêm tiếp" button
+                (create-mode only). Saves + resets host/port/credentials
+                + keeps category/country/type so admins batch-create
+                under the same group without reopening the dialog. */}
+            {!isEdit && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleSaveAndContinue}
+                disabled={saving}
+              >
+                {saving ? "Đang lưu..." : "Tạo và thêm tiếp"}
+              </Button>
+            )}
             <Button type="submit" disabled={saving}>
               {saving ? "Đang lưu..." : isEdit ? "Cập nhật" : "Tạo"}
             </Button>
