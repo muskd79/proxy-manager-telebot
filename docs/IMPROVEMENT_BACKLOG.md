@@ -83,3 +83,55 @@
 - **Wave 23B** = P1-3, P1-4, P1-5, P1-8, P1-12 + một số P2 nhanh (1 tuần)
 - **Wave 23C** = P2-1 (service layer) + P2-3 (audit) — refactor lớn (3-4 tuần)
 - **Wave 24** = P2-10 (vendor decision) + P2-12 (god-pages split) + P3-10 (E2E)
+
+---
+
+## Bot UX coding standards (added 2026-05-03)
+
+> Source: `docs/DESIGN_REVIEW_LIVE_2026-05-03.md`. Every PR touching `src/lib/telegram/**` must satisfy these rules. CI tests enforce most of them. Update this section when conventions change.
+
+### Strings
+- All user-visible strings live in `src/lib/telegram/messages.ts`. No exceptions for user-facing text.
+- Every key has both `vi` AND `en`. Keep both in sync (line count, template vars, emphasis).
+- No raw emoji in `src/lib/telegram/**/*.ts` (Unicode 1F300-1FAFF).
+- Vietnamese strings must be diacritic-correct: `huỷ`, `huỷ` (not `huy`), `kiểm tra` (not `kiem tra`), `tài khoản` (not `tai khoan`), `không` (not `khong`), `yêu cầu` (not `yeu cau`), `từ chối` (not `tu choi`). Mark exceptions with `// allow-unaccented` inline comment.
+- All `parse_mode: "Markdown"` payloads pass user-supplied fragments through `escapeMarkdown` from `src/lib/telegram/format.ts` first.
+
+### Icons
+- Use `Icon.*` constants from `src/lib/telegram/icons.ts` (proposed). Vocabulary:
+  - `Icon.error` = `[X]` (failure / blocked)
+  - `Icon.warn` = `[!]` (rate limit / soft failure)
+  - `Icon.info` = `[i]` (pending / neutral notice)
+  - `Icon.ok` = `[OK]` (success)
+  - `Icon.neutral` = `[-]` (timed out / unknown)
+- Admin status badges go in admin status messages only: `[Approved]`, `[Rejected]`, `[Already processed]`. Don't mix with user-visible icons.
+
+### Callbacks
+- Callback data uses the `CB` builders from `src/lib/telegram/callbacks.ts` (proposed). Format: `<namespace>:<verb>[:<arg1>[:<arg2>]]`.
+- Existing namespaces: `menu`, `type`, `order`, `qty`, `confirm`, `check`, `lang`, `cancel`, `revoke`, `admin`. Add new namespaces by adding a discriminated-union member in `callbacks.ts::CallbackData`.
+- Always call `ctx.answerCallbackQuery()` — Telegram spinner hangs otherwise.
+
+### State machine
+- State CRUD only via `getBotState` / `setBotState` / `clearBotState` from `src/lib/telegram/state.ts`.
+- `BotState` will become a discriminated union (Wave 25-pre4). New states are new union members; TypeScript exhaustiveness enforces handler coverage.
+- TTL is 30 min — handled inside `state.ts`. Don't reimplement.
+
+### Inline keyboards
+- Max button label length: 12 characters. Test: `__tests__/keyboard.test.ts` asserts.
+- Max columns per row: 3. Two columns is the default for the main menu.
+- Always include a `Cancel` / `Hủy` row when the keyboard sets a non-idle state.
+
+### Error / state coverage
+- Long replies route through `chunkMessage` (proposed `src/lib/telegram/chunk.ts`) to respect Telegram's 4096-char ceiling.
+- Long-running tasks (>3s) use the progress helper (proposed `src/lib/telegram/progress.ts`).
+- Every handler that places a request first checks `denyIfNotApproved`.
+- Every admin handler first calls `getAdminByTelegramId` and bails on non-admin.
+
+### How to add a new bot command
+See `docs/DESIGN_REVIEW_LIVE_2026-05-03.md` § Maintainability Appendix § C.1. Eight steps in eight files; the doc enumerates them.
+
+### How to add a sidebar item / dashboard KPI
+Same doc, § C.3 / § C.4.
+
+### Decision log
+Pending design decisions live in `docs/decision-log.md` (to be created Wave 25-pre2). Inline `// see decision-log.md#<slug>` comments. Closing a decision deletes the row.
