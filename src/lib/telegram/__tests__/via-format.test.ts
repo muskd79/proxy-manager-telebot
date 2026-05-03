@@ -168,3 +168,69 @@ describe("Wave 25-pre2 — diacritic lint across bot command files", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wave 25-pre3 (Pass 5.5) — emoji policy enforcement.
+//
+// messages.ts:6 has a comment "no emojis" but nothing enforces it. A new
+// dev pasting 🚀 into a copy key during Wave 26 would slip through.
+// Block the emoji unicode ranges across the entire bot tree (commands +
+// messages.ts + keyboard.ts + state.ts + format.ts + handlers.ts + ...).
+//
+// Range covered: U+1F300–U+1FAFF (Miscellaneous Symbols and Pictographs +
+// Supplemental Symbols and Pictographs). Excludes:
+//   - U+2700–U+27BF (Dingbats — used legitimately, e.g. ✓ ✗ ✓ ✗)
+//   - U+2600–U+26FF (Misc Symbols — sun, snowflake, etc; rare in code)
+// In practice we mostly care about the "playful" emoji — 🚀 ❤️ 👍 etc.
+//
+// Allow per-line override: append `// allow-emoji` comment to keep a
+// specific instance (e.g. for tests that intentionally use emoji input).
+// ---------------------------------------------------------------------------
+
+describe("Wave 25-pre3 — emoji policy across bot tree", () => {
+  function listBotFiles(): string[] {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const root = join(here, "..");
+    const out: string[] = [];
+    function walk(dir: string) {
+      for (const name of readdirSync(dir)) {
+        // Skip __tests__ folder — tests can use any string they want
+        // for fixtures (we test emoji handling, etc.).
+        if (name === "__tests__") continue;
+        if (name === "_deprecated") continue;
+        const full = join(dir, name);
+        const s = statSync(full);
+        if (s.isDirectory()) {
+          walk(full);
+        } else if (s.isFile() && name.endsWith(".ts")) {
+          out.push(full);
+        }
+      }
+    }
+    walk(root);
+    return out;
+  }
+
+  // Match the BMP emoji ranges. We keep the regex narrow so legit
+  // dingbats (U+2713 ✓, U+2717 ✗) and misc symbols are NOT flagged.
+  const EMOJI_RE = /[\u{1F300}-\u{1FAFF}]/u;
+
+  it("regression: bot tree has no playful emoji (1F300-1FAFF)", () => {
+    const offenders: string[] = [];
+    for (const file of listBotFiles()) {
+      const content = readFileSync(file, "utf-8");
+      const lines = content.split("\n");
+      lines.forEach((line, i) => {
+        if (line.includes("// allow-emoji")) return;
+        const match = line.match(EMOJI_RE);
+        if (match) {
+          const fileName = file.split(/[\\/]/).slice(-2).join("/");
+          offenders.push(
+            `${fileName}:${i + 1} contains emoji "${match[0]}" (codepoint U+${match[0].codePointAt(0)?.toString(16).toUpperCase()})`,
+          );
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});
