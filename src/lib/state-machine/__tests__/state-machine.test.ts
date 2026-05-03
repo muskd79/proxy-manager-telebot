@@ -106,4 +106,76 @@ describe("proxyMachine", () => {
       proxyMachine.canTransition(ProxyStatus.Expired, ProxyStatus.Available),
     ).toBe(true);
   });
+
+  // ─── Wave 26-D — warranty transitions ────────────────────────────
+  describe("Wave 26-D warranty mechanism", () => {
+    it("allows assigned -> reported_broken (user báo lỗi qua bot)", () => {
+      expect(
+        proxyMachine.canTransition(ProxyStatus.Assigned, ProxyStatus.ReportedBroken),
+      ).toBe(true);
+    });
+
+    it("allows reported_broken -> maintenance (admin duyệt warranty default)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.ReportedBroken,
+          ProxyStatus.Maintenance,
+        ),
+      ).toBe(true);
+    });
+
+    it("allows reported_broken -> banned (admin duyệt + checkbox 'mark banned')", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.ReportedBroken,
+          ProxyStatus.Banned,
+        ),
+      ).toBe(true);
+    });
+
+    it("allows reported_broken -> assigned (admin từ chối warranty = revert)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.ReportedBroken,
+          ProxyStatus.Assigned,
+        ),
+      ).toBe(true);
+    });
+
+    it("blocks reported_broken -> available (must go through maintenance OR banned)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.ReportedBroken,
+          ProxyStatus.Available,
+        ),
+      ).toBe(false);
+    });
+
+    it("blocks reported_broken -> expired (cron expire path stays out of this branch)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.ReportedBroken,
+          ProxyStatus.Expired,
+        ),
+      ).toBe(false);
+    });
+
+    it("blocks available -> reported_broken (only assigned proxy can be reported)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.Available,
+          ProxyStatus.ReportedBroken,
+        ),
+      ).toBe(false);
+    });
+
+    it("blocks banned -> reported_broken (already terminal)", () => {
+      expect(
+        proxyMachine.canTransition(
+          ProxyStatus.Banned,
+          ProxyStatus.ReportedBroken,
+        ),
+      ).toBe(false);
+    });
+  });
 });
