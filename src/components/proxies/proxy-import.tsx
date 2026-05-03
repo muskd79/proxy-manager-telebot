@@ -168,6 +168,10 @@ export function ProxyImport() {
   const [importing, setImporting] = useState(false);
   const [probing, setProbing] = useState(false);
   const [probeProgress, setProbeProgress] = useState(0);
+  const [probeErrors, setProbeErrors] = useState<string[]>([]);
+  // Wave 26-A — AbortController so the user can cancel a long
+  // probe (1000 proxy × 5s/probe ≈ 100s on hobby).
+  const probeAbortRef = useRef<AbortController | null>(null);
   const [dropDead, setDropDead] = useState(true);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -263,70 +267,142 @@ export function ProxyImport() {
    * Wave 22I — batch-probe all valid rows. Calls /api/proxies/probe-batch
    * in chunks of 200 so the UI can show progress instead of one big spinner.
    * Each chunk concurrency is server-side (50 parallel).
+   *
+   * Wave 26-A robustness pass:
+   *   - skip rows already probed (re-running adds new rows only;
+   *     "Probe lại tất cả" button below resets first then re-runs)
+   *   - per-chunk failure no longer breaks the loop (collect errors,
+   *     continue; final toast names which chunks failed)
+   *   - apply partial updates in `finally` so abort / network drop
+   *     keeps the rows we DID probe
+   *   - AbortController wired to a cancel button — admin can stop a
+   *     1000-row probe early without reload
+   *
+   * Args: `forceAll = true` re-probes every valid row regardless of
+   * whether it was probed before. Default false = additive (typical
+   * case after pasting more rows on top of an already-probed batch).
    */
-  async function handleProbe() {
+  async function handleProbe(forceAll: boolean = false) {
     const valid = parsedProxies.filter((p) => p.valid);
+    const todo = forceAll
+      ? valid
+      : valid.filter((p) => p.alive === undefined);
+
     if (valid.length === 0) return;
+    if (todo.length === 0) {
+      toast.info("Tất cả proxy đã được probe rồi. Bấm \"Probe lại\" để chạy lại.");
+      return;
+    }
+
+    const ac = new AbortController();
+    probeAbortRef.current = ac;
     setProbing(true);
     setProbeProgress(0);
+    setProbeErrors([]);
+
+    const updates = new Map<number, Partial<ParsedProxy>>();
+    const errors: string[] = [];
+
     try {
       const CHUNK = 200;
-      const updates = new Map<number, Partial<ParsedProxy>>();
-      for (let i = 0; i < valid.length; i += CHUNK) {
-        const chunk = valid.slice(i, i + CHUNK);
-        const res = await fetch("/api/proxies/probe-batch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proxies: chunk.map((p) => ({
-              host: p.host,
-              port: p.port,
-              ref: String(p.line),
-            })),
-          }),
-        });
-        if (!res.ok) {
-          const body = await res.json();
-          toast.error(body.error || `Probe failed at chunk ${i}`);
-          break;
-        }
-        const body = await res.json();
-        type ProbeRow = {
-          ref?: string;
-          alive: boolean;
-          type: ProxyType | null;
-          speed_ms: number;
-        };
-        for (const r of body.data.results as ProbeRow[]) {
-          const lineNum = Number(r.ref);
-          if (Number.isFinite(lineNum)) {
-            updates.set(lineNum, {
-              detected_type: r.type,
-              alive: r.alive,
-              speed_ms: r.speed_ms,
-            });
-          }
-        }
-        setProbeProgress(Math.min(100, Math.round(((i + chunk.length) / valid.length) * 100)));
-      }
+      for (let i = 0; i < todo.length; i += CHUNK) {
+        if (ac.signal.aborted) break;
+        const chunk = todo.slice(i, i + CHUNK);
+        try {
+          const res = await fetch("/api/proxies/probe-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              proxies: chunk.map((p) => ({
+                host: p.host,
+                port: p.port,
+                ref: String(p.line),
+              })),
+            }),
+            signal: ac.signal,
+          });
 
-      // Apply all updates in one setState pass to avoid re-renders.
+          if (!res.ok) {
+            // Wave 26-A — per-chunk failure no longer aborts the run.
+            // Earlier chunks' updates still apply (in finally below);
+            // the failing chunk gets recorded for the summary toast.
+            let body: { error?: string } | null = null;
+            try {
+              body = await res.json();
+            } catch {
+              body = null;
+            }
+            errors.push(
+              `Chunk ${Math.floor(i / CHUNK) + 1}: ${body?.error ?? `HTTP ${res.status}`}`,
+            );
+            continue;
+          }
+
+          const body = await res.json();
+          type ProbeRow = {
+            ref?: string;
+            alive: boolean;
+            type: ProxyType | null;
+            speed_ms: number;
+          };
+          for (const r of body.data.results as ProbeRow[]) {
+            const lineNum = Number(r.ref);
+            if (Number.isFinite(lineNum)) {
+              updates.set(lineNum, {
+                detected_type: r.type,
+                alive: r.alive,
+                speed_ms: r.speed_ms,
+              });
+            }
+          }
+          setProbeProgress(
+            Math.min(100, Math.round(((i + chunk.length) / todo.length) * 100)),
+          );
+        } catch (err) {
+          // AbortError: admin cancelled — break cleanly, applying partial.
+          if (err instanceof DOMException && err.name === "AbortError") {
+            break;
+          }
+          errors.push(
+            `Chunk ${Math.floor(i / CHUNK) + 1}: ${
+              err instanceof Error ? err.message : "Lỗi không xác định"
+            }`,
+          );
+        }
+      }
+    } finally {
+      // Wave 26-A — apply EVERY partial update we collected, even on
+      // abort or network drop. Pre-fix the apply was outside try{} so
+      // a thrown error mid-loop discarded everything probed so far.
       setParsedProxies((rows) =>
         rows.map((r) => {
           const u = updates.get(r.line);
           return u ? { ...r, ...u } : r;
         }),
       );
+      probeAbortRef.current = null;
+      setProbing(false);
+      setProbeErrors(errors);
+
+      // Surface a summary regardless of how the loop exited.
       const aliveCount = Array.from(updates.values()).filter((u) => u.alive).length;
       const deadCount = updates.size - aliveCount;
-      toast.success(
-        `Probed ${updates.size} — ${aliveCount} alive, ${deadCount} dead. Loại đã detect tự fill mỗi row.`,
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Probe failed");
-    } finally {
-      setProbing(false);
+      const aborted = ac.signal.aborted;
+      const message =
+        `Đã probe ${updates.size}/${todo.length} — ` +
+        `${aliveCount} alive, ${deadCount} dead` +
+        (errors.length > 0 ? ` · ${errors.length} chunk lỗi` : "") +
+        (aborted ? " · đã huỷ giữa chừng" : "");
+      if (aborted || errors.length > 0) {
+        toast.warning(message, { duration: 8000 });
+      } else {
+        toast.success(message, { duration: 6000 });
+      }
     }
+  }
+
+  function handleAbortProbe() {
+    probeAbortRef.current?.abort();
   }
 
   /**
@@ -759,13 +835,44 @@ export function ProxyImport() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={handleProbe} disabled={probing || importing || validCount === 0}>
-                  {probing ? (
-                    <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang probe ({probeProgress}%)</>
-                  ) : (
-                    <><Radar className="size-4 mr-1.5" />Auto-detect loại + alive</>
-                  )}
-                </Button>
+                {/* Wave 26-A — three states for Auto-detect:
+                    1. Idle, no probes yet → "Auto-detect loại + alive"
+                    2. Idle, some probes done → "Probe rows mới" +
+                       optional "Probe lại tất cả" secondary button
+                    3. Probing → progress + Huỷ button
+                    Pre-fix only state 1 + 3 existed; re-clicking after
+                    a partial probe re-ran from scratch with no opt-in. */}
+                {probing ? (
+                  <>
+                    <Button variant="outline" disabled>
+                      <Loader2 className="size-4 mr-1.5 animate-spin" />
+                      Đang probe ({probeProgress}%)
+                    </Button>
+                    <Button variant="ghost" onClick={handleAbortProbe}>
+                      Huỷ
+                    </Button>
+                  </>
+                ) : probedCount > 0 && probedCount < validCount ? (
+                  <>
+                    <Button variant="outline" onClick={() => handleProbe(false)} disabled={importing}>
+                      <Radar className="size-4 mr-1.5" />
+                      Probe {validCount - probedCount} dòng mới
+                    </Button>
+                    <Button variant="ghost" onClick={() => handleProbe(true)} disabled={importing}>
+                      Probe lại tất cả
+                    </Button>
+                  </>
+                ) : probedCount > 0 ? (
+                  <Button variant="ghost" onClick={() => handleProbe(true)} disabled={importing}>
+                    <Radar className="size-4 mr-1.5" />
+                    Probe lại tất cả
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => handleProbe(false)} disabled={importing || validCount === 0}>
+                    <Radar className="size-4 mr-1.5" />
+                    Auto-detect loại + alive
+                  </Button>
+                )}
                 {/* Wave 26-A — explicit label "Import N proxy vào hệ
                     thống". Pre-fix "Import 19" was ambiguous (could
                     read as line number, not a count). User report
@@ -855,6 +962,27 @@ export function ProxyImport() {
                     </label>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* Wave 26-A — surface per-chunk probe errors. Pre-fix
+                a server hiccup midway through 1000-proxy probe was
+                visible only as a single toast and lost partial data;
+                now errors are listed inline, each chunk's failure is
+                explicit, and the rows that DID probe are still applied. */}
+            {probeErrors.length > 0 && (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+                <p className="font-medium text-amber-700 dark:text-amber-300">
+                  Probe có {probeErrors.length} chunk lỗi (các chunk khác đã apply):
+                </p>
+                <ul className="mt-1 list-disc pl-5 text-xs text-amber-700/80 dark:text-amber-300/80">
+                  {probeErrors.slice(0, 5).map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                  {probeErrors.length > 5 && (
+                    <li>… và {probeErrors.length - 5} chunk khác</li>
+                  )}
+                </ul>
               </div>
             )}
 
