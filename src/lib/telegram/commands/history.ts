@@ -1,3 +1,7 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: every interpolation
+// is a Markdown-safe value (UUID 8-char prefix, ISO date string, enum
+// status from a fixed map, proxy type enum). No user/admin-supplied
+// free-form string is interpolated.
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getUserLanguage } from "../user";

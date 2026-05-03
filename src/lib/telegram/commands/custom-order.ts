@@ -1,3 +1,6 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: every Markdown
+// interpolation here is a proxy type enum (uppercase) or an integer
+// quantity. No user/admin-controlled string is interpolated.
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -9,6 +12,7 @@ import { clearBotState, setBotState } from "../state";
 import { handleQuantitySelection } from "./bulk-proxy";
 import { CB } from "../callbacks";
 import { restartFlowKeyboard } from "../recovery-keyboard";
+import { loadGlobalCaps, ORDER_MODE_DEFAULTS } from "../rate-limit";
 
 /**
  * Wave 23B-bot UX — handle a number typed by the user while we are
@@ -23,8 +27,11 @@ import { restartFlowKeyboard } from "../recovery-keyboard";
  * Returns true when the message was consumed (caller should stop
  * processing further), false when no state was active.
  */
-const QUICK_MAX = 10;
-const CUSTOM_MAX = 100;
+// Wave 25-pre4 (Pass 7.2) — QUICK_MAX / CUSTOM_MAX moved to the
+// settings table (rows seeded by migration 054). Read at handler-
+// invocation time via `loadGlobalCaps`. ORDER_MODE_DEFAULTS in
+// rate-limit.ts holds the historical hardcoded values as fallback
+// for pre-migration deploys.
 
 export async function handleQtyTextInput(
   ctx: Context,
@@ -72,15 +79,20 @@ export async function handleQtyTextInput(
     return true;
   }
 
-  const max = step === "awaiting_quick_qty" ? QUICK_MAX : CUSTOM_MAX;
+  // Wave 25-pre4 (Pass 7.2) — read tunables from settings.
+  const caps = await loadGlobalCaps();
+  const quickMax = caps.quick_order_max ?? ORDER_MODE_DEFAULTS.quick_order_max;
+  const customMax = caps.custom_order_max ?? ORDER_MODE_DEFAULTS.custom_order_max;
+
+  const max = step === "awaiting_quick_qty" ? quickMax : customMax;
   if (qty > max) {
     const msg = lang === "vi"
       ? step === "awaiting_quick_qty"
-        ? `[!] Order nhanh tối đa ${QUICK_MAX}/lần. Dùng "Order riêng" cho số lớn hơn.`
-        : `[!] Tối đa ${CUSTOM_MAX} proxy/yêu cầu.`
+        ? `[!] Order nhanh tối đa ${quickMax}/lần. Dùng "Order riêng" cho số lớn hơn.`
+        : `[!] Tối đa ${customMax} proxy/yêu cầu.`
       : step === "awaiting_quick_qty"
-        ? `[!] Quick order max ${QUICK_MAX} per order. Use "Custom order" for larger.`
-        : `[!] Maximum ${CUSTOM_MAX} proxies per request.`;
+        ? `[!] Quick order max ${quickMax} per order. Use "Custom order" for larger.`
+        : `[!] Maximum ${customMax} proxies per request.`;
     await ctx.reply(msg);
     return true;
   }

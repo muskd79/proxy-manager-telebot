@@ -1,3 +1,9 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: only the
+// context-aware media-unsupported reply uses parse_mode: "Markdown",
+// and its strings are hardcoded literals (no interpolation). Other
+// ctx.reply calls in this file are plain-text. Future additions
+// that interpolate user-supplied strings into Markdown payloads
+// must import escapeMarkdown from "./format" and remove this opt-out.
 import { bot } from "./bot";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ChatDirection, MessageType } from "@/types/database";
@@ -34,7 +40,7 @@ import {
   handleConfirmCallback,
   handleCheckListInput,
 } from "./commands";
-import { getBotState, clearBotState } from "./state";
+import { getBotStateWithExpiry, clearBotState } from "./state";
 import type { BotStep, BotState } from "./state";
 import type { Context } from "grammy";
 import { parseCallback } from "./callbacks";
@@ -301,13 +307,24 @@ bot.on("callback_query:data", async (ctx) => {
 //   - awaiting_confirm: user is supposed to click Yes/No callback, not
 //     type. If they DO type, ignore + fall through.
 // ---------------------------------------------------------------------------
-type StateTextHandler = (
+/**
+ * Narrowed-state handler: each entry receives ONLY the union member
+ * matching its key, so `state.proxyType` etc. are typed correctly
+ * without a runtime guard. The lookup at the call site casts the
+ * incoming `BotState` to the narrowed shape — safe because the
+ * dispatch is keyed by `state.step`.
+ */
+type StateTextHandlerFor<S extends BotStep> = (
   ctx: Context,
-  state: BotState,
+  state: Extract<BotState, { step: S }>,
   text: string,
 ) => Promise<boolean>;
 
-const STATE_TEXT_HANDLERS: Record<BotStep, StateTextHandler> = {
+type StateTextHandlers = {
+  [K in BotStep]: StateTextHandlerFor<K>;
+};
+
+const STATE_TEXT_HANDLERS: StateTextHandlers = {
   idle: async () => false,
   awaiting_quick_qty: (ctx, state, text) =>
     handleQtyTextInput(ctx, "awaiting_quick_qty", state.proxyType, text),
@@ -316,6 +333,22 @@ const STATE_TEXT_HANDLERS: Record<BotStep, StateTextHandler> = {
   awaiting_confirm: async () => false,
   awaiting_check_list: (ctx, _state, text) => handleCheckListInput(ctx, text),
 };
+
+/**
+ * Type-safe dispatch helper: forwards `state` to the right handler
+ * with the right narrowed type. The single `as never` cast is the
+ * boundary between the runtime dispatch (which only knows
+ * `state.step`) and the per-step typed handlers; callers don't see
+ * any `any`/`as` themselves.
+ */
+async function dispatchStateTextHandler(
+  ctx: Context,
+  state: BotState,
+  text: string,
+): Promise<boolean> {
+  const handler = STATE_TEXT_HANDLERS[state.step];
+  return (handler as StateTextHandlerFor<BotStep>)(ctx, state as never, text);
+}
 
 // ---------------------------------------------------------------------------
 // Text message handler (non-command messages)
@@ -351,12 +384,22 @@ bot.on("message:text", async (ctx) => {
   // Wave 25-pre3 (Pass 2.A) — dispatch via STATE_TEXT_HANDLERS table.
   // Pre-fix this was a cascade of two `if` blocks; new states required
   // a new branch each. Now adding a state = adding a row to the table.
-  const state = await getBotState(user.id);
-  const stateHandler = STATE_TEXT_HANDLERS[state.step];
-  if (stateHandler) {
-    const consumed = await stateHandler(ctx, state, ctx.message.text);
-    if (consumed) return;
+  // Wave 25-pre4 — `state` is now a typed discriminated union; the
+  // `dispatchStateTextHandler` helper carries the per-step narrowing.
+  // Pass 2.3 — when the read just expired, surface a recovery hint
+  // before falling through to the /support/help generic fallback.
+  const { state, expired } = await getBotStateWithExpiry(user.id);
+
+  if (expired) {
+    const expiredMsg = lang === "vi"
+      ? "Phiên trước đã hết hạn (30 phút). Bấm /getproxy hoặc /checkproxy để bắt đầu lại."
+      : "Your previous session expired (30 minutes). Use /getproxy or /checkproxy to start again.";
+    await ctx.reply(expiredMsg);
+    return;
   }
+
+  const consumed = await dispatchStateTextHandler(ctx, state, ctx.message.text);
+  if (consumed) return;
 
   await supabaseAdmin.from("chat_messages").insert({
     tele_user_id: user.id,
@@ -462,10 +505,26 @@ bot.on(
       raw_data: null,
     });
 
-    const reply = lang === "vi"
-      ? "Bot chỉ hỗ trợ tin nhắn dạng văn bản. Gửi /help để xem các lệnh có sẵn."
-      : "This bot only supports text messages. Send /help to see available commands.";
-    await ctx.reply(reply);
+    // Wave 25-pre4 (Pass 4.B) — context-aware reply. If the user is
+    // mid-conversation (e.g. screenshot after /checkproxy prompt or
+    // a number screenshot during qty input) point them at what we
+    // actually need next, not the generic /help fallback.
+    const { state } = await getBotStateWithExpiry(user.id);
+    let reply: string;
+    if (state.step === "awaiting_check_list") {
+      reply = lang === "vi"
+        ? "Tôi cần văn bản, không phải ảnh. Hãy paste danh sách proxy dạng *text* (mỗi dòng 1 proxy)."
+        : "I need text, not an image. Please paste your proxy list as *text* (one proxy per line).";
+    } else if (state.step === "awaiting_quick_qty" || state.step === "awaiting_custom_qty") {
+      reply = lang === "vi"
+        ? "Hãy nhập 1 *số* (ví dụ: 5)."
+        : "Please type a *number* (e.g. 5).";
+    } else {
+      reply = lang === "vi"
+        ? "Bot chỉ hỗ trợ tin nhắn dạng văn bản. Gửi /help để xem các lệnh có sẵn."
+        : "This bot only supports text messages. Send /help to see available commands.";
+    }
+    await ctx.reply(reply, { parse_mode: "Markdown" });
 
     await supabaseAdmin.from("chat_messages").insert({
       tele_user_id: user.id,

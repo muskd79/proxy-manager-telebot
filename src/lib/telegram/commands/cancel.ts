@@ -1,3 +1,6 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: only ISO date
+// strings, proxy type enum, and integer counts are interpolated in
+// the Markdown payload. No user-supplied free-form string.
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";

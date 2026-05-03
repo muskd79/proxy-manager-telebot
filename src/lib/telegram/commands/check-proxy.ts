@@ -1,3 +1,13 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: result lines wrap
+// host:port in backticks (which Telegram parses literally inside
+// the code span) and otherwise interpolate integers (latency_ms,
+// counts) and pre-validated enum strings ("HTTP" / "HTTPS" /
+// "SOCKS5"). Hosts pasted by the user that contain backticks are
+// passed through as-is inside the code span — Telegram will not
+// 400 because backtick is the code delimiter, not a formatting
+// char. If any path here ever interpolates a user-supplied string
+// OUTSIDE a code span, import escapeMarkdown and remove this
+// opt-out.
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -8,6 +18,7 @@ import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
 import { setBotState, clearBotState } from "../state";
 import { CB } from "../callbacks";
+import { chunkMessage } from "../chunk";
 import { ChatDirection, MessageType } from "@/types/database";
 
 /**
@@ -33,11 +44,35 @@ const MAX_CHECK_PER_BATCH = 20;
  * 3 sockets per host, so 5×3 = 15 sockets in flight — safe on
  * Vercel hobby + courteous to the targets. */
 const PROBE_CONCURRENCY = 5;
-/** Wave 25-pre1 (P0 4.4) — wall-clock budget for the whole batch.
- * 20 unreachable proxies × 5s detect timeout / 5 concurrent ≈ 20s.
- * Vercel hobby caps at 10s but Pro is 60s. We cap at 25s so we
- * stay within Pro's window with margin. Rest reports as "timeout". */
-const BATCH_WALL_CLOCK_MS = 25_000;
+
+/**
+ * Wave 25-pre4 (Pass 2.C) — platform-aware wall-clock budget.
+ *
+ * Pre-pre4 hardcoded 25s (good for Vercel Pro 60s, but Vercel
+ * hobby kills functions at 10s → mid-probe SIGTERM, user got
+ * silence). Now we read `VERCEL_FUNCTION_MAX_DURATION` at module
+ * load time. Cap one second under that to give chunkMessage +
+ * ctx.reply room to flush before the platform pulls the plug.
+ *
+ *   hobby (no env var)  → fall back to 9_000ms
+ *   Pro default (15s)   → 14_000ms
+ *   Pro extended (60s)  → 59_000ms
+ *   Enterprise (900s)   → 59_000ms (we still cap at 59s; longer
+ *                         probes wedge the dispatcher)
+ *
+ * Anything we run out of time on reports as "[-] không kịp kiểm
+ * tra" / "[-] not tested" (tri-state summary from Wave 25-pre3).
+ */
+const SAFE_MARGIN_MS = 1_000;
+const HARD_CAP_MS = 59_000;
+const HOBBY_FALLBACK_MS = 9_000;
+const VERCEL_MAX_S = parseInt(
+  process.env.VERCEL_FUNCTION_MAX_DURATION ?? "0",
+  10,
+);
+const BATCH_WALL_CLOCK_MS = VERCEL_MAX_S > 0
+  ? Math.min(HARD_CAP_MS, Math.max(5_000, VERCEL_MAX_S * 1_000 - SAFE_MARGIN_MS))
+  : HOBBY_FALLBACK_MS;
 
 export async function handleCheckProxy(ctx: Context) {
   const from = ctx.from;
@@ -254,6 +289,12 @@ export async function handleCheckListInput(
     ? "\n\n_Loại giao thức tự động phát hiện qua handshake. Kết quả TCP có thể khác client thật khi proxy yêu cầu auth._"
     : "\n\n_Protocol detected via handshake. TCP-level result may differ from a real client when the proxy requires auth._";
 
-  await ctx.reply(`${header}\n\n${body}${footer}`, { parse_mode: "Markdown" });
+  // Wave 25-pre4 (Pass 2.1) — split on Telegram's 4096 ceiling.
+  // 20 proxies × 80-char rows + header + footer can easily blow
+  // past it; pre-fix the API returned 400 and the user saw silence.
+  const fullReport = `${header}\n\n${body}${footer}`;
+  for (const chunk of chunkMessage(fullReport)) {
+    await ctx.reply(chunk, { parse_mode: "Markdown" });
+  }
   return true;
 }

@@ -167,7 +167,10 @@ function NavContent({
 
       {/* Navigation */}
       <ScrollArea className="flex-1 px-2 py-3">
-        <nav className="flex flex-col gap-0.5">
+        {/* Wave 25-pre4 (Pass 6.3) — id matches the collapse button's
+            aria-controls below so screen readers can target the nav
+            region that the button toggles. */}
+        <nav id="sidebar-nav-region" className="flex flex-col gap-0.5">
           {filteredItems.map((item) => {
             // Wave 22U — sub-tab parents own multiple URL routes.
             // Match the canonical href + any altPaths declared on
@@ -306,6 +309,10 @@ export function Sidebar({ admin }: { admin: Admin }) {
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
             aria-expanded={!collapsed}
+            // Wave 25-pre4 (Pass 6.3) — point to the nav region this
+            // button collapses/expands so screen readers announce the
+            // relationship.
+            aria-controls="sidebar-nav-region"
             className="absolute -right-3 top-16 z-10 h-6 w-6 rounded-full border bg-card p-0 shadow-sm"
           >
             <ChevronLeft

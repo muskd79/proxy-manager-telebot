@@ -112,10 +112,17 @@ export interface TeleUser {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
-  /** AUP gate — set when the user explicitly accepts the Acceptable Use Policy. */
-  aup_accepted_at: string | null;
-  /** Version token of the AUP the user accepted (matches AUP_VERSION constant). */
-  aup_version: string | null;
+  /**
+   * Wave 25-pre4 (Pass 3.2) — first lifetime proxy assignment. Set
+   * once by milestones.ts; subsequent assignments don't change it.
+   * Drives the first-time delight footer.
+   */
+  first_proxy_at: string | null;
+  /**
+   * Wave 25-pre4 (Pass 7.4) — first /start admin notification.
+   * Replaces the brittle `created_at === updated_at` heuristic.
+   */
+  first_start_notified_at: string | null;
 }
 
 export interface ProxyCategory {
