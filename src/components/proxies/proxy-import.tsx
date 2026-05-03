@@ -39,6 +39,16 @@ import {
   ClipboardPaste,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
@@ -163,6 +173,12 @@ export function ProxyImport() {
   const [dragOver, setDragOver] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
   const [categories, setCategories] = useState<ProxyCategoryOption[]>([]);
+  // Wave 26-A — confirm dialog for bulk imports. Pre-fix a typo'd
+  // "Import 1000" was irreversible (admin would have to bulk-delete
+  // 1000 rows). Threshold 100 chosen so casual 1-30 imports stay
+  // friction-free.
+  const BULK_CONFIRM_THRESHOLD = 100;
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
   useEffect(() => {
     fetch("/api/proxies/stats")
@@ -313,19 +329,75 @@ export function ProxyImport() {
     }
   }
 
-  async function handleImport() {
+  /**
+   * Wave 26-A — clear every form-level field except categoryId.
+   *
+   * Pre-fix `handleImport` only set the result Card; pasted text,
+   * preview rows, country, vendor, prices, ghi chú, etc. all
+   * remained on screen. Admins importing batch after batch had to
+   * manually clear each input.
+   *
+   * categoryId is intentionally PRESERVED: admins commonly run
+   * many batches under the same category (e.g. "VN Mobile 4G") so
+   * forcing a re-pick after every batch was hostile UX.
+   */
+  function resetFormFields() {
+    setPasteText("");
+    setParsedProxies([]);
+    setNotes("");
+    setNetworkType("");
+    setVendorSource("");
+    setCountry("");
+    setPurchasePrice("");
+    setSalePrice("");
+    setExpiresAt("");
+    setPurchaseDate(today);
+    setProxyType(ProxyType.HTTP);
+    setProbeProgress(0);
+    setDropDead(true);
+  }
+
+  /**
+   * Wave 26-A — split confirm path from execution path.
+   *
+   * confirmAndImport: gatekeeper. Routes to doImport directly for
+   *   small batches; opens confirm AlertDialog for bulk imports.
+   *   The dialog's primary action calls doImport.
+   * doImport: the actual API call + toast + form reset.
+   */
+  async function confirmAndImport() {
     const valid = parsedProxies.filter((p) => p.valid);
-    // If user probed + opted to drop dead, exclude dead rows.
     const target = dropDead && valid.some((p) => p.alive !== undefined)
       ? valid.filter((p) => p.alive !== false)
       : valid;
 
     if (target.length === 0) {
-      toast.error("No proxies to import");
+      toast.error("Không có proxy hợp lệ để import");
+      return;
+    }
+
+    if (target.length >= BULK_CONFIRM_THRESHOLD) {
+      // Open the dialog; doImport runs on dialog confirm.
+      setShowBulkConfirm(true);
+      return;
+    }
+    return doImport();
+  }
+
+  async function doImport() {
+    const valid = parsedProxies.filter((p) => p.valid);
+    const target = dropDead && valid.some((p) => p.alive !== undefined)
+      ? valid.filter((p) => p.alive !== false)
+      : valid;
+
+    if (target.length === 0) {
+      toast.error("Không có proxy hợp lệ để import");
       return;
     }
 
     setImporting(true);
+    setShowBulkConfirm(false);
+
     try {
       const payloadProxies = target.map((p) => ({
         host: p.host,
@@ -360,16 +432,48 @@ export function ProxyImport() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setResult(data.data);
+      // Wave 26-A — robust error handling. Pre-fix `await res.json()`
+      // on a non-OK response could itself throw if the server
+      // returned an HTML 500 page. Wrap parse in try/catch.
+      let body: { data?: ImportProxyResult; error?: string } | null = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+
+      if (res.ok && body?.data) {
+        setResult(body.data);
+
+        // Wave 26-A — detailed success toast. User feedback: "cần có
+        // thêm toast thông báo đã import thành công bao nhiêu proxy,
+        // xịt bao nhiêu". Kept under 8s so admin has time to read
+        // the breakdown before next action.
+        const r = body.data;
+        const parts: string[] = [
+          `[OK] Đã import ${r.imported}/${r.total} proxy`,
+        ];
+        if (r.skipped > 0) parts.push(`bỏ qua ${r.skipped} dòng trùng`);
+        if (r.failed > 0) parts.push(`${r.failed} lỗi`);
+        const message = parts.join(" — ");
+
+        if (r.failed > 0) {
+          toast.warning(message, { duration: 8000 });
+        } else {
+          toast.success(message, { duration: 8000 });
+        }
+
+        // Wave 26-A — reset form (keeps categoryId per the
+        // resetFormFields rationale).
+        resetFormFields();
       } else {
-        const body = await res.json();
-        toast.error(body.error || "Import failed");
+        const errMsg = body?.error || `Import thất bại (HTTP ${res.status})`;
+        toast.error(errMsg);
       }
     } catch (err) {
       console.error("Failed to import proxies:", err);
-      toast.error("Failed to import proxies");
+      const msg = err instanceof Error ? err.message : "Import thất bại";
+      toast.error(`Lỗi mạng: ${msg}`);
     } finally {
       setImporting(false);
     }
@@ -662,11 +766,16 @@ export function ProxyImport() {
                     <><Radar className="size-4 mr-1.5" />Auto-detect loại + alive</>
                   )}
                 </Button>
-                <Button onClick={handleImport} disabled={importing || probing || validCount === 0}>
+                {/* Wave 26-A — explicit label "Import N proxy vào hệ
+                    thống". Pre-fix "Import 19" was ambiguous (could
+                    read as line number, not a count). User report
+                    2026-05-03: "nút Import để ghi rõ ràng là import
+                    vào hệ thống". */}
+                <Button onClick={confirmAndImport} disabled={importing || probing || validCount === 0}>
                   {importing ? (
                     <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang import...</>
                   ) : (
-                    <><Upload className="size-4 mr-1.5" />Import {dropDead && probedCount > 0 ? aliveCount : validCount}</>
+                    <><Upload className="size-4 mr-1.5" />Import {dropDead && probedCount > 0 ? aliveCount : validCount} proxy vào hệ thống</>
                   )}
                 </Button>
               </div>
@@ -940,6 +1049,47 @@ export function ProxyImport() {
           </CardContent>
         </Card>
       )}
+
+      {/* Wave 26-A — bulk-import confirm. Pre-fix a typo'd 1000-row
+          import was irreversible without manual bulk-delete. Threshold
+          set in BULK_CONFIRM_THRESHOLD (currently 100). Dialog reads
+          back the number AND the bulk fields so admin re-checks before
+          committing. */}
+      <AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận import hàng loạt</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const valid = parsedProxies.filter((p) => p.valid);
+                const target = dropDead && valid.some((p) => p.alive !== undefined)
+                  ? valid.filter((p) => p.alive !== false)
+                  : valid;
+                const cat = categories.find((c) => c.id === categoryId);
+                return (
+                  <>
+                    Sắp import <strong>{target.length}</strong> proxy vào hệ thống. Hành động này không thể tự động hoàn tác.
+                    <br /><br />
+                    <span className="block text-xs">
+                      Danh mục: <strong>{cat?.name ?? "Không phân loại"}</strong>
+                      {networkType && <> · Phân loại: <strong>{networkType}</strong></>}
+                      {vendorSource && <> · Nguồn: <strong>{vendorSource}</strong></>}
+                      {country && <> · Quốc gia: <strong>{country}</strong></>}
+                    </span>
+                    <span className="block text-xs mt-1">
+                      Loại proxy mặc định: <strong>{proxyType.toUpperCase()}</strong> (Auto-detect override per-row khi đã probe)
+                    </span>
+                  </>
+                );
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction onClick={doImport}>Xác nhận import</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
