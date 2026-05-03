@@ -10,6 +10,7 @@ import { autoAssignProxy, createManualRequest } from "./assign-proxy";
 import { ChatDirection, MessageType, ApprovalMode } from "@/types/database";
 import type { OrderMode } from "../keyboard";
 import { InlineKeyboard } from "grammy";
+import { CB } from "../callbacks";
 
 const BULK_AUTO_THRESHOLD = 5; // Above this, force manual approval
 
@@ -159,8 +160,8 @@ export async function handleQuantitySelection(
 
     if (request) {
       const keyboard = new InlineKeyboard()
-        .text("Approve", `admin_bulk_approve:${request.id}`)
-        .text("Reject", `admin_bulk_reject:${request.id}`);
+        .text("Approve", CB.admin("bulk_approve", request.id))
+        .text("Reject", CB.admin("bulk_reject", request.id));
       notifyAllAdmins(adminText, { inlineKeyboard: keyboard }).catch(console.error);
     }
 

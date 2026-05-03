@@ -5,6 +5,7 @@ import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { revokeProxy } from "../revoke";
 import { denyIfNotApproved } from "../guards";
+import { CB } from "../callbacks";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleRevoke(ctx: Context) {
@@ -72,12 +73,12 @@ export async function handleRevoke(ctx: Context) {
       keyboard
         .text(
           `${p.type.toUpperCase()} ${p.host}:${p.port}`,
-          `revoke:${p.id}`
+          CB.revoke(p.id),
         )
         .row();
     });
     keyboard
-      .text(lang === "vi" ? "Tr\u1EA3 t\u1EA5t c\u1EA3" : "Return all", `revoke_confirm:all:${proxies.length}`)
+      .text(lang === "vi" ? "Tr\u1EA3 t\u1EA5t c\u1EA3" : "Return all", CB.revokeConfirmAll(proxies.length))
       .row();
 
     const text =
@@ -110,8 +111,8 @@ export async function handleRevokeConfirm(ctx: Context, count: string) {
     : `Are you sure? This will return ALL ${count} proxies.`;
 
   const keyboard = new InlineKeyboard()
-    .text(lang === "vi" ? "Có" : "Yes", "revoke:all")
-    .text(lang === "vi" ? "Không" : "No", "revoke:cancel");
+    .text(lang === "vi" ? "Có" : "Yes", CB.revoke("all"))
+    .text(lang === "vi" ? "Không" : "No", CB.revokeCancel());
 
   await ctx.answerCallbackQuery();
   await ctx.editMessageText(confirmText, { reply_markup: keyboard });

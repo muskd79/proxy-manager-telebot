@@ -7,6 +7,7 @@ import { ChatDirection, MessageType } from "@/types/database";
 import type { BotStep } from "../state";
 import { clearBotState, setBotState } from "../state";
 import { handleQuantitySelection } from "./bulk-proxy";
+import { CB } from "../callbacks";
 
 /**
  * Wave 23B-bot UX — handle a number typed by the user while we are
@@ -119,8 +120,8 @@ export async function handleQtyTextInput(
       ].join("\n");
 
   const kb = new InlineKeyboard()
-    .text(lang === "vi" ? "Xác nhận" : "Confirm", "confirm:yes")
-    .text(lang === "vi" ? "Hủy" : "Cancel", "confirm:no");
+    .text(lang === "vi" ? "Xác nhận" : "Confirm", CB.confirm("yes"))
+    .text(lang === "vi" ? "Hủy" : "Cancel", CB.confirm("no"));
 
   await ctx.reply(confirmText, { parse_mode: "Markdown", reply_markup: kb });
   await logChatMessage(

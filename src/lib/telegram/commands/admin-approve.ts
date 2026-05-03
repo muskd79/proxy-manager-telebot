@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
 import { safeCredentialString } from "../format";
+import { CB } from "../callbacks";
 // DEFAULT_PROXY_EXPIRY_MS no longer needed: safe_assign_proxy RPC
 // is now the source of truth for proxy state on approval.
 
@@ -66,8 +67,8 @@ export async function handleAdminRequests(ctx: Context) {
 
     lines.push(`${name} - ${type} - ${date}`);
     keyboard
-      .text(`Approve ${name}`, `admin_approve:${req.id}`)
-      .text(`Reject`, `admin_reject:${req.id}`)
+      .text(`Approve ${name}`, CB.admin("approve", req.id))
+      .text(`Reject`, CB.admin("reject", req.id))
       .row();
   }
 

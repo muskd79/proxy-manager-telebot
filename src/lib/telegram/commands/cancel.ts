@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { clearBotState } from "../state";
+import { CB } from "../callbacks";
 import { ChatDirection, MessageType, RequestStatus } from "@/types/database";
 
 export async function handleCancel(ctx: Context) {
@@ -65,8 +66,8 @@ export async function handleCancel(ctx: Context) {
   const text = `${header}\n\n${lines.join("\n")}\n\n${confirmLabel}`;
 
   const keyboard = new InlineKeyboard()
-    .text(lang === "vi" ? "Có" : "Yes", "cancel_confirm:yes")
-    .text(lang === "vi" ? "Không" : "No", "cancel_confirm:no");
+    .text(lang === "vi" ? "Có" : "Yes", CB.cancelConfirm("yes"))
+    .text(lang === "vi" ? "Không" : "No", CB.cancelConfirm("no"));
 
   await ctx.reply(text, { parse_mode: "Markdown", reply_markup: keyboard });
   await logChatMessage(

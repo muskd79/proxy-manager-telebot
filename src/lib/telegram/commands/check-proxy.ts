@@ -7,6 +7,7 @@ import { getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
 import { setBotState, clearBotState } from "../state";
+import { CB } from "../callbacks";
 import { ChatDirection, MessageType } from "@/types/database";
 
 /**
@@ -82,7 +83,7 @@ export async function handleCheckProxy(ctx: Context) {
       ].join("\n");
 
   const cancelKb = new InlineKeyboard()
-    .text(lang === "vi" ? "Hủy" : "Cancel", "check:cancel");
+    .text(lang === "vi" ? "Hủy" : "Cancel", CB.checkCancel());
 
   await ctx.reply(text, { parse_mode: "Markdown", reply_markup: cancelKb });
   await logChatMessage(

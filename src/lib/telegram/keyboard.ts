@@ -1,5 +1,14 @@
 import { InlineKeyboard } from "grammy";
 import type { SupportedLanguage } from "@/types/telegram";
+import { CB } from "./callbacks";
+
+// Wave 25-pre3 (Pass 5.2) — every callback string in this file is now
+// constructed via the typed CB.* builders from callbacks.ts. Pre-fix
+// raw literals like `"menu:request"` and `"qty:quick:" + type + ":" + n`
+// were duplicated wire format that drifted (e.g. `proxy_type:` vs
+// `type:`). The builders are the only caller — parseCallback in
+// callbacks.ts is the only consumer. One round-trip test pins both
+// sides (callbacks.test.ts).
 
 /**
  * Wave 23B-bot — main inline menu shown after /start.
@@ -47,17 +56,17 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
       };
 
   return new InlineKeyboard()
-    .text(labels.request, "menu:request")
-    .text(labels.my, "menu:my")
+    .text(labels.request, CB.menu("request"))
+    .text(labels.my, CB.menu("my"))
     .row()
-    .text(labels.check, "menu:check")
-    .text(labels.limit, "menu:limit")
+    .text(labels.check, CB.menu("check"))
+    .text(labels.limit, CB.menu("limit"))
     .row()
-    .text(labels.return, "menu:return")
-    .text(labels.history, "menu:history")
+    .text(labels.return, CB.menu("return"))
+    .text(labels.history, CB.menu("history"))
     .row()
-    .text(labels.help, "menu:help")
-    .text(labels.language, "menu:language");
+    .text(labels.help, CB.menu("help"))
+    .text(labels.language, CB.menu("language"));
 }
 
 /** Proxy type selection keyboard */
@@ -67,18 +76,18 @@ export function proxyTypeKeyboard(lang: "vi" | "en"): InlineKeyboard {
   const cancel = lang === "vi" ? "Hủy" : "Cancel";
 
   return new InlineKeyboard()
-    .text("HTTP", "proxy_type:http")
-    .text("HTTPS", "proxy_type:https")
-    .text("SOCKS5", "proxy_type:socks5")
+    .text("HTTP", CB.type("http"))
+    .text("HTTPS", CB.type("https"))
+    .text("SOCKS5", CB.type("socks5"))
     .row()
-    .text(cancel, "proxy_type:cancel");
+    .text(cancel, CB.typeCancel());
 }
 
 /** Language selection keyboard */
 export function languageKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("Tiếng Việt", "lang:vi")
-    .text("English", "lang:en");
+    .text("Tiếng Việt", CB.lang("vi"))
+    .text("English", CB.lang("en"));
 }
 
 /**
@@ -106,22 +115,22 @@ export function quantityKeyboard(
   const cancel = lang === "vi" ? "Hủy" : "Cancel";
   if (mode === "custom") {
     return new InlineKeyboard()
-      .text("5", `qty:custom:${proxyType}:5`)
-      .text("10", `qty:custom:${proxyType}:10`)
-      .text("20", `qty:custom:${proxyType}:20`)
+      .text("5", CB.qty("custom", proxyType, 5))
+      .text("10", CB.qty("custom", proxyType, 10))
+      .text("20", CB.qty("custom", proxyType, 20))
       .row()
-      .text("50", `qty:custom:${proxyType}:50`)
-      .text("100", `qty:custom:${proxyType}:100`)
+      .text("50", CB.qty("custom", proxyType, 50))
+      .text("100", CB.qty("custom", proxyType, 100))
       .row()
-      .text(cancel, "qty:custom:cancel");
+      .text(cancel, CB.qtyCancel("custom"));
   }
   return new InlineKeyboard()
-    .text("1", `qty:quick:${proxyType}:1`)
-    .text("2", `qty:quick:${proxyType}:2`)
-    .text("5", `qty:quick:${proxyType}:5`)
+    .text("1", CB.qty("quick", proxyType, 1))
+    .text("2", CB.qty("quick", proxyType, 2))
+    .text("5", CB.qty("quick", proxyType, 5))
     .row()
-    .text("10", `qty:quick:${proxyType}:10`)
-    .text(cancel, "qty:quick:cancel");
+    .text("10", CB.qty("quick", proxyType, 10))
+    .text(cancel, CB.qtyCancel("quick"));
 }
 
 /**
@@ -137,10 +146,10 @@ export function orderTypeKeyboard(
     ? { quick: "Order nhanh", custom: "Order riêng", cancel: "Hủy" }
     : { quick: "Quick order", custom: "Custom order", cancel: "Cancel" };
   return new InlineKeyboard()
-    .text(labels.quick, `order_quick:${proxyType}`)
-    .text(labels.custom, `order_custom:${proxyType}`)
+    .text(labels.quick, CB.order("quick", proxyType))
+    .text(labels.custom, CB.order("custom", proxyType))
     .row()
-    .text(labels.cancel, "order_type:cancel");
+    .text(labels.cancel, CB.orderCancel());
 }
 
 /** Confirmation keyboard */
@@ -149,6 +158,6 @@ export function confirmKeyboard(lang: "vi" | "en"): InlineKeyboard {
   const no = lang === "vi" ? "Không" : "No";
 
   return new InlineKeyboard()
-    .text(yes, "confirm:yes")
-    .text(no, "confirm:no");
+    .text(yes, CB.confirm("yes"))
+    .text(no, CB.confirm("no"));
 }
