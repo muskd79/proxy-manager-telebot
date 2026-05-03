@@ -430,6 +430,107 @@ Total ~7-8 days of work end-to-end.
 
 ---
 
+## Đáp án vòng 1 (2026-05-03)
+
+| Câu | Bro chốt | Kéo theo decision/schema |
+|-----|----------|---------------------------|
+| **A1 — replacement giới hạn** | (a) KHÔNG trừ | `warranty_claims.replacement_proxy_id` track riêng; counter `proxies_used_*` không cộng |
+| **A2 — eligibility window** | **HYBRID:** setting `warranty_unlimited_window` boolean (admin toggle ở /settings). Default = false → eligibility = 1 ngày sau `assigned_at`. Khi toggle = true → bất kỳ proxy đang giao đều được báo lỗi. **CỘNG THÊM:** state machine — khi user báo lỗi → proxy.status `assigned` → `reported_broken` (status mới, cần thêm vào enum) | (1) Migration mở rộng enum `proxy_status` thêm `reported_broken`. (2) Settings row `warranty_unlimited_window`. (3) State machine `proxy.ts` thêm transition `assigned → reported_broken` (user-triggered), `reported_broken → banned` (admin approve), `reported_broken → assigned` (admin reject = phục hồi) |
+| **B2 — health-check history** | (b) N=20 lần gần nhất | Bảng mới `proxy_health_logs (proxy_id, ok, speed_ms, error_msg, checked_at)`. Trigger sau insert: keep last 20 per proxy_id, delete older |
+| **C1 — assignment + audit history** | **FULL AUDIT** — không chỉ assign/revoke. Bro: "1 proxy có thể giao cho vài người, người này báo lỗi xong có khi tao lại giao cho người khác — cần biết lịch sử chi tiết, ai giao ai dùng khi nào, trạng thái ra sao, mọi thay đổi" | Tạo bảng mới `proxy_events` consolidate mọi event lifecycle (xem schema dưới). Hiển thị timeline ở /proxies/[id] |
+| **G2 — import batches metadata** | KHÔNG — "chỉ cần import như hiện tại" | Giữ nguyên Wave 26-C. KHÔNG đẻ bảng `proxy_import_batches`. Filter `?import_batch_id=` đã đủ |
+
+### Schema sketch cho `proxy_events` (đáp ứng C1)
+
+Hiện trạng codebase sau audit:
+- `activity_logs` ghi `proxy.create / proxy.update / proxy.delete / proxy.bulk_edit / proxy.import` từ web admin.
+- Bot ghi `proxy_auto_assigned / proxy_request_created / proxy_revoked / proxy_revoke_failed`.
+- **Vấn đề:** `proxy.update` overloaded — không phân biệt "đổi status banned→available" vs "sửa country". Detail JSONB không structured. Web UI hiện không có timeline page.
+
+Đề xuất bảng mới — không thay thế `activity_logs` (vẫn dùng cho audit chung) mà specialized cho proxy lifecycle:
+
+```sql
+CREATE TYPE proxy_event_type AS ENUM (
+  'created',                  -- admin tạo proxy mới (manual hoặc import)
+  'imported',                 -- thuộc lô import (kèm import_batch_id trong details)
+  'edited',                   -- field thay đổi (chi tiết before/after trong details JSONB)
+  'category_changed',         -- riêng — vì hay query "proxy đã chuyển category nào"
+  'status_changed',           -- riêng — vì user thường tra "proxy này từng banned chưa"
+  'assigned',                 -- giao cho 1 user (kèm user_id + assigned_at)
+  'unassigned',               -- thu hồi (kèm reason: expired/revoked_by_user/admin_unassign/banned)
+  'reported_broken',          -- user báo lỗi qua bot → status=reported_broken
+  'warranty_approved',        -- admin duyệt warranty → tạo replacement
+  'warranty_rejected',        -- admin từ chối warranty
+  'warranty_replacement_for', -- proxy này được cấp THAY THẾ cho proxy hỏng nào (link 2 chiều)
+  'health_check_passed',
+  'health_check_failed',
+  'expired',                  -- trigger cron khi expires_at < now
+  'soft_deleted',             -- chuyển vào thùng rác
+  'restored'                  -- khôi phục từ thùng rác
+);
+
+CREATE TABLE proxy_events (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  proxy_id      uuid NOT NULL REFERENCES proxies(id) ON DELETE CASCADE,
+  event_type    proxy_event_type NOT NULL,
+  actor_type    actor_type,                                            -- 'admin' / 'user' / 'system' (cron)
+  actor_id      uuid,                                                  -- admin id hoặc tele_user id
+  related_user_id uuid REFERENCES tele_users(id) ON DELETE SET NULL, -- "ai dùng proxy này khi sự kiện xảy ra"
+  related_proxy_id uuid REFERENCES proxies(id) ON DELETE SET NULL,    -- linkage sang proxy thay thế (warranty)
+  details       jsonb NOT NULL DEFAULT '{}',                          -- before/after diff cho 'edited'; reason cho 'unassigned'; speed_ms cho health
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX proxy_events_proxy_idx ON proxy_events (proxy_id, created_at DESC);
+CREATE INDEX proxy_events_user_idx  ON proxy_events (related_user_id, created_at DESC) WHERE related_user_id IS NOT NULL;
+CREATE INDEX proxy_events_type_idx  ON proxy_events (event_type, created_at DESC);
+```
+
+UI: trong `/proxies/[id]` tab "Lịch sử" hiển thị timeline (newest first) — mỗi event 1 dòng:
+- icon theo event_type
+- "User X nhận proxy lúc 2026-04-25 14:32"
+- "User X báo lỗi proxy lúc 2026-04-26 09:15 (lý do: chậm)"
+- "Admin Y duyệt bảo hành — cấp proxy thay thế Z lúc 2026-04-26 11:00"
+- "Proxy này thay thế cho proxy ABC (warranty)" (cross-link 2 chiều)
+- "Admin Y giao lại cho User M lúc 2026-04-30 10:00"
+- "User M /return proxy lúc 2026-05-01 14:00"
+- "Field 'expires_at' đổi từ 2026-05-15 sang 2026-05-30 (admin Y)"
+
+Cộng thêm: filter trong tab Lịch sử (theo loại event, theo user, theo khoảng thời gian).
+
+### State machine `proxies.status` mới (đáp ứng A2)
+
+Migration `057_wave26d_warranty.sql`:
+```sql
+ALTER TYPE proxy_status ADD VALUE IF NOT EXISTS 'reported_broken' BEFORE 'expired';
+```
+
+State machine cập nhật ở `src/lib/state-machine/proxy.ts`:
+```
+available  ──[admin assign|getproxy]──> assigned
+assigned   ──[user /return|admin unassign|expired]──> available
+assigned   ──[user "Báo lỗi" (bot)]──> reported_broken    ← MỚI
+reported_broken ──[admin duyệt warranty]──> banned        ← MỚI (proxy gốc bị ban, không cấp lại)
+reported_broken ──[admin từ chối warranty]──> assigned    ← MỚI (revert, user vẫn giữ proxy đó)
+assigned   ──[admin "Mark banned"]──> banned
+banned     ──[admin "Restore"]──> available
+* (any)    ──[admin maintenance toggle]──> maintenance
+maintenance ──> available
+```
+
+Settings row mới:
+```sql
+INSERT INTO settings (key, value, description) VALUES (
+  'warranty_eligibility_unlimited',
+  '{"value": false}'::jsonb,
+  'Wave 26-D — Khi true: user được báo lỗi proxy bất kỳ lúc nào còn HSD. Khi false (default): chỉ trong 24h sau assigned_at.'
+);
+```
+
+UI badge mới ở proxy table cho status `reported_broken`: badge màu cam "Đang báo lỗi" với tooltip "User đã báo lỗi, đang chờ admin xử lý".
+
+---
+
 ## Câu hỏi cần bro chốt trước khi code
 
 ### A. Cơ chế bảo hành (Wave 26-D)
