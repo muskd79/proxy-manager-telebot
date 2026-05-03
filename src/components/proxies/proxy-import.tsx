@@ -43,6 +43,8 @@ import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
 import { parseProxyLine as parseProxyLineLib } from "@/lib/proxy-parse";
+import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 
 /**
  * Wave 22I — Smart proxy import wizard.
@@ -590,11 +592,35 @@ export function ProxyImport() {
                 value={salePrice}
                 onChange={(e) => setSalePrice(e.target.value)}
               />
-              {purchasePrice && salePrice && Number(salePrice) > Number(purchasePrice) && (
-                <p className="text-xs text-emerald-500">
-                  Lãi: ${(Number(salePrice) - Number(purchasePrice)).toFixed(2)}/proxy
-                </p>
-              )}
+              {/* Wave 26-A — lo/lai warning. Pre-fix only showed lãi
+                  when sale > purchase; if admin typo'd them swapped
+                  (mua 5, bán 1) there was no signal. Now: gain green,
+                  break-even neutral, loss amber. */}
+              {purchasePrice && salePrice && (() => {
+                const buy = Number(purchasePrice);
+                const sell = Number(salePrice);
+                if (!Number.isFinite(buy) || !Number.isFinite(sell)) return null;
+                const diff = sell - buy;
+                if (diff > 0) {
+                  return (
+                    <p className="text-xs text-emerald-500">
+                      Lãi: ${diff.toFixed(2)}/proxy
+                    </p>
+                  );
+                }
+                if (diff < 0) {
+                  return (
+                    <p className="text-xs text-amber-600">
+                      [!] Bán &lt; mua — lỗ ${Math.abs(diff).toFixed(2)}/proxy. Kiểm tra lại?
+                    </p>
+                  );
+                }
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Hoà vốn (chưa có lãi).
+                  </p>
+                );
+              })()}
             </div>
             {/* Wave 22AB — ISP input removed (column dropped from UI in Wave 22Y) */}
           </div>
@@ -647,6 +673,61 @@ export function ProxyImport() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* Wave 26-A — "Sẽ áp dụng cho tất cả" banner. User report
+                2026-05-03: "cột nguồn và tất cả các cột khác khi thêm
+                vào có điền ở trên thì ở dưới preview cần hiện đầy đủ".
+                Pre-fix the form fields at the top (country, vendor,
+                phân loại, dates, prices, notes) didn't appear anywhere
+                in the preview — admin had to scroll back up to verify.
+                Now: a compact summary card lists every non-empty bulk
+                field so admin sees AT A GLANCE what will be applied to
+                all {validCount} rows. */}
+            {(() => {
+              const selectedCategory = categories.find((c) => c.id === categoryId);
+              const bulkRows: Array<{ label: string; value: React.ReactNode }> = [];
+              if (selectedCategory) {
+                bulkRows.push({
+                  label: "Danh mục",
+                  value: <span className="font-medium">{selectedCategory.name}</span>,
+                });
+              }
+              bulkRows.push({
+                label: "Loại proxy mặc định",
+                value: <span className="font-mono">{proxyType.toUpperCase()}</span>,
+              });
+              if (networkType) bulkRows.push({ label: "Phân loại", value: <span className="font-mono">{networkType}</span> });
+              if (vendorSource) bulkRows.push({ label: "Nguồn", value: <span className="font-mono">{vendorSource}</span> });
+              if (country) bulkRows.push({ label: "Quốc gia", value: <span className="font-mono">{country}</span> });
+              if (purchaseDate) bulkRows.push({ label: "Ngày mua", value: <span className="font-mono">{purchaseDate}</span> });
+              if (expiresAt) bulkRows.push({ label: "Ngày hết hạn", value: <span className="font-mono">{expiresAt}</span> });
+              if (purchasePrice) bulkRows.push({ label: "Giá mua", value: <span className="font-mono">${purchasePrice}</span> });
+              if (salePrice) bulkRows.push({ label: "Giá bán", value: <span className="font-mono">${salePrice}</span> });
+              return (
+                <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-primary">
+                    Sẽ áp dụng cho TẤT CẢ {validCount} proxy hợp lệ
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2 md:grid-cols-3">
+                    {bulkRows.map((r) => (
+                      <div key={r.label} className="flex gap-2">
+                        <span className="text-muted-foreground">{r.label}:</span>
+                        {r.value}
+                      </div>
+                    ))}
+                  </div>
+                  {notes && (
+                    <p className="mt-2 border-t border-primary/20 pt-2 text-xs">
+                      <span className="text-muted-foreground">Ghi chú:</span>{" "}
+                      <span className="italic">{notes}</span>
+                    </p>
+                  )}
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Auto-detect (nếu probe) sẽ override <span className="font-mono">Loại proxy mặc định</span> per-row.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Probe summary */}
             {probedCount > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 p-3 text-sm">
@@ -671,29 +752,32 @@ export function ProxyImport() {
             {/* Wave 23B-fix — preview legend bar. Pre-fix the table had
                 7 columns with terse headers and no explanation of what
                 "-" meant. User feedback: "cần mô tả rõ ở phần xem
-                trước có những cột gì và cột gì trống". */}
+                trước có những cột gì và cột gì trống".
+                Wave 26-A — drop the "không auth" entry until user/pass
+                actually appears blank in any row, and only mention
+                "dead" semantics when the user has actually probed
+                (otherwise the legend describes columns the table
+                doesn't even render). */}
             <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
               <span className="font-medium text-foreground">Chú giải:</span>
-              <span className="flex items-center gap-1">
-                <span className="font-mono text-muted-foreground">—</span>
-                <span>trống / chưa có</span>
-              </span>
               <span className="flex items-center gap-1">
                 <span className="font-mono text-amber-600">—</span>
                 <span>không auth (user/pass trống — proxy public)</span>
               </span>
               <span className="flex items-center gap-1">
                 <CheckCircle className="size-3 text-emerald-500" />
-                <span>hợp lệ / alive</span>
+                <span>hợp lệ{probedCount > 0 ? " / alive" : ""}</span>
               </span>
               <span className="flex items-center gap-1">
                 <XCircle className="size-3 text-red-500" />
                 <span>format lỗi (dòng đỏ, không import)</span>
               </span>
-              <span className="flex items-center gap-1">
-                <AlertCircle className="size-3 text-red-500" />
-                <span>dead (mờ, sẽ bị bỏ nếu bật &quot;dropDead&quot;)</span>
-              </span>
+              {probedCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <AlertCircle className="size-3 text-red-500" />
+                  <span>dead (mờ, sẽ bị bỏ nếu bật &quot;Bỏ qua proxy chết&quot;)</span>
+                </span>
+              )}
             </div>
 
             <div className="max-h-[400px] overflow-y-auto rounded-md border">
@@ -705,8 +789,17 @@ export function ProxyImport() {
                     <TableHead className="w-20" title="Cổng (1-65535, bắt buộc)">Cổng</TableHead>
                     <TableHead className="w-32" title="Tên đăng nhập của proxy (có thể trống nếu proxy public)">User</TableHead>
                     <TableHead className="w-24" title="Mật khẩu (đi kèm User)">Pass</TableHead>
-                    <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
-                    <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
+                    {/* Wave 26-A — "Loại detect" + "Tốc độ" only render
+                        AFTER the user clicks Auto-detect. Pre-fix two
+                        empty "—" columns took table width before any
+                        probe ran (user feedback: "tốc độ lúc thêm vào
+                        chưa quét được thì không cần có trong preview"). */}
+                    {probedCount > 0 && (
+                      <>
+                        <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
+                        <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
+                      </>
+                    )}
                     <TableHead className="w-32" title="Trạng thái dòng: hợp lệ / lỗi format / alive / dead">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -744,20 +837,26 @@ export function ProxyImport() {
                             <span className="text-amber-600" title="Không có pass">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {proxy.detected_type ? (
-                            <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground" title="Chưa probe">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {proxy.speed_ms != null ? (
-                            `${proxy.speed_ms}ms`
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
+                        {/* Wave 26-A — match the conditional header
+                            above. Cells only render when probe ran. */}
+                        {probedCount > 0 && (
+                          <>
+                            <TableCell className="font-mono text-xs">
+                              {proxy.detected_type ? (
+                                <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground" title="Chưa probe được">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {proxy.speed_ms != null ? (
+                                `${proxy.speed_ms}ms`
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell>
                           {!proxy.valid ? (
                             <span className="flex items-center gap-1 text-red-500 text-xs" title={proxy.error}>
@@ -824,6 +923,20 @@ export function ProxyImport() {
                 )}
               </div>
             )}
+            {/* Wave 26-A — next-action CTAs. Pre-fix admin had to
+                navigate sidebar manually after import. Two buttons:
+                  - primary: jump to the proxies list (with success
+                    toast already fired earlier)
+                  - secondary: "Import thêm" — keeps the user on this
+                    page, the form was already cleared in handleImport. */}
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+              <Link href="/proxies" className={buttonVariants()}>
+                Xem danh sách proxy
+              </Link>
+              <Button variant="outline" onClick={() => setResult(null)}>
+                Import thêm
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
