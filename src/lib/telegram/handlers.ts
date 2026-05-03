@@ -105,10 +105,13 @@ bot.on("callback_query:data", async (ctx) => {
       case "limit":
         await handleStatus(ctx);
         return;
-      case "warranty":
-        // Wave 23B-bot rename only — full warranty schema (see
-        // docs/WARRANTY_RENAME_ANALYSIS.md Option C) deferred to
-        // Wave 24. /revoke flow handles the user-side action today.
+      case "return":
+        // Wave 25-pre2 (P0 1.1) — renamed from `case "warranty"`.
+        // Pre-25 the label said "Bảo hành proxy" / "Warranty claim"
+        // but ran the revoke flow — confusing two distinct mental
+        // models. New label says "Trả proxy" / "Return proxy" so
+        // behaviour matches name. Real warranty schema is tracked
+        // in docs/decision-log.md#warranty-schema (Wave 26).
         await handleRevoke(ctx);
         return;
       case "history":
@@ -252,7 +255,9 @@ bot.on("callback_query:data", async (ctx) => {
         .single();
       if (u) await clearBotState(u.id);
     }
-    await ctx.reply("Đã huỷ.");
+    // Wave 25-pre2 (P0 5.4) — diacritic spelling unified to "hủy"
+    // (matches the rest of the codebase; was "huỷ" only here).
+    await ctx.reply("Đã hủy.");
     return;
   }
   if (data.startsWith("qty:")) {

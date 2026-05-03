@@ -191,8 +191,14 @@ function NavContent({
                 )}
               <Link
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  // Wave 25-pre2 (Pass 6.5) — keyboard-only users (Tab nav)
+                  // had no visible focus indicator on sidebar items.
+                  // focus-visible:ring-* renders ONLY on keyboard focus,
+                  // not mouse click — preserves the clean look for mouse
+                  // users while restoring the affordance for the rest.
+                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -212,7 +218,11 @@ function NavContent({
                       <Badge
                         variant="default"
                         className="h-5 min-w-5 px-1.5 text-xs bg-primary text-primary-foreground"
-                        aria-label={`${item.badge} chưa duyệt`}
+                        // Wave 25-pre2 (Pass 5.A) — pre-fix the aria-label
+                        // was hardcoded Vietnamese "{N} chưa duyệt" so en
+                        // screen-reader users heard Vietnamese. Now i18n'd
+                        // via sidebar.pendingBadge with {count} placeholder.
+                        aria-label={t("sidebar.pendingBadge").replace("{count}", String(item.badge))}
                       >
                         {item.badge > 99 ? "99+" : item.badge}
                       </Badge>
@@ -223,7 +233,7 @@ function NavContent({
                 {collapsed && item.badge !== undefined && item.badge > 0 && (
                   <span
                     className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary"
-                    aria-label={`${item.badge} chưa duyệt`}
+                    aria-label={t("sidebar.pendingBadge").replace("{count}", String(item.badge))}
                   />
                 )}
               </Link>

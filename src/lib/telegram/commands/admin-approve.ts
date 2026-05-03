@@ -241,28 +241,36 @@ export async function handleAdminRejectCallback(
     const user = (request.tele_users as unknown) as JoinedTeleUser;
     if (user) {
       const lang = (user.language === "vi" || user.language === "en") ? user.language : "en";
+      // Wave 25-pre2 (P0 4.A + Pass 3.4) — restore Vietnamese
+      // diacritics AND append /support hint. Pre-fix shipped
+      // "Yeu cau proxy bi tu choi." (no diacritics, terse, no
+      // recovery path). Now: accented + /support hint so a user
+      // who thinks the rejection was a mistake has somewhere to go.
+      // Reason-picker (3-button reject reasons) deferred to Wave 26.
       const text =
         lang === "vi"
-          ? "Yeu cau proxy bi tu choi."
-          : "Proxy request rejected.";
+          ? "Yêu cầu proxy đã bị từ chối.\n\nLiên hệ /support nếu bạn cho rằng đây là nhầm lẫn."
+          : "Proxy request rejected.\n\nUse /support if you believe this is a mistake.";
       await sendTelegramMessage(user.telegram_id, text);
     }
   }
 
+  // Wave 25-pre2 (Pass 7.6) — attribute the reject in the admin
+  // message. Pre-fix approve/block_user attached "- by <admin label>"
+  // but reject was the only action that didn't, so the audit trail
+  // for "who rejected this?" required cross-referencing the DB.
+  // Standardise: every admin action ends with "- by <label>".
+  const rejectAdminInfo = await getAdminByTelegramId(from.id);
   await ctx.answerCallbackQuery("Rejected");
-  await ctx.editMessageText("Request rejected.");
+  await ctx.editMessageText(
+    `Request rejected - by ${rejectAdminInfo.label || "Admin"}`,
+  );
 
   // Notify other admins about this rejection
-  if (from) {
-    const adminInfo = await getAdminByTelegramId(from.id);
-    const userName = request
-      ? `user request ${requestId}`
-      : "unknown request";
-    notifyOtherAdmins(
-      from.id,
-      `${adminInfo.label || "Admin"} rejected proxy request ${requestId}`
-    ).catch(console.error);
-  }
+  notifyOtherAdmins(
+    from.id,
+    `${rejectAdminInfo.label || "Admin"} rejected proxy request ${requestId}`,
+  ).catch(console.error);
 }
 
 // ---------------------------------------------------------------------------

@@ -892,7 +892,8 @@ Total now: 7.5 days for all 53 fixes. Wave 26 starts on a maintainability founda
 | Date | Reviewer | Wave audited | Outcome |
 |---|---|---|---|
 | 2026-05-03 | Claude (primary) + brainstormer (outside voice, parallel) | 23A → 25-pre1 | This document. **53 findings** (4 critical, 26 medium, 23 low). Recommended split into Wave 25-pre2/pre3/pre4 (7.5 days total). Convergence on 8 findings — high-confidence ship targets. Diacritic bug `admin-approve.ts:246` is the only same-day critical. |
-| TBD | (next) | 25-pre2 | append after Wave 25-pre2 ships |
+| 2026-05-03 | Claude | Wave 25-pre2 shipped on branch `wave-25-pre2` | **18 fixes landed across 5 commits.** Critical: P0 4.A diacritic restored in `admin-approve.ts:246` + 2 extra unaccented strings swept in `bulk-proxy.ts`. IA: warranty rename (label + callback `menu:warranty` → `menu:return`), canonical command order (BOT_COMMANDS + welcome + help in lock-step). Recovery copy: pending hint, bad-paste recovery, reject `/support` hint, language clear-state, truthful `/support` window, zero-pool contingency, reject attribution. A11y: trend-sign prefix, sidebar focus-ring, sidebar Badge i18n + aria-current, status-bar percentage prefix. Foundations: `routes.ts` URL builder + 14 tests, dashboard cards i18n, command-order parity test, label-length budget test (≤14), command-files diacritic lint, `decision-log.md` (12 deferred items). Tests: 718 → 741 (+23). Typecheck 0. Build green. Diff 713 / 88. Lint count 25 → 24 (one pre-existing unused-var fixed as side effect). 12 items deferred to 25-pre3/pre4 with rows in `decision-log.md`. |
+| TBD | (next) | 25-pre3 | append after Wave 25-pre3 ships |
 
 > **Convention:** every subsequent design review appends a row here AND links its own DESIGN_REVIEW_LIVE_<DATE>.md. Don't overwrite this file — fork it. The trail matters.
 

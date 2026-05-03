@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { msg } from "../messages";
 import { BOT_COMMANDS } from "@/lib/constants";
 
@@ -118,5 +121,50 @@ describe("Wave 23E — Vietnamese accents (VIA-format port)", () => {
   it("bulkPartialAssigned uses 'không khả dụng'", () => {
     expect(msg.bulkPartialAssigned.vi).toContain("Đã cấp");
     expect(msg.bulkPartialAssigned.vi).toContain("không khả dụng");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 25-pre2 (P0 4.A) — extend the banlist scan to ALL bot command files,
+// not just messages.ts. The Wave 23E test only caught strings IN messages.ts,
+// but the diacritic regression in admin-approve.ts:246 ("Yeu cau proxy bi
+// tu choi.") sat in an inline string in a command file and slipped through
+// for two waves. Walk every .ts file under src/lib/telegram/commands/ and
+// fail on any banlist hit.
+// ---------------------------------------------------------------------------
+
+describe("Wave 25-pre2 — diacritic lint across bot command files", () => {
+  function listCommandFiles(): string[] {
+    // Resolve `<this-test-file>/../../commands` cross-platform.
+    // fileURLToPath handles Windows drive letters correctly where
+    // URL.pathname does not.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const dir = join(here, "..", "commands");
+    const out: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".ts")) continue;
+      const full = join(dir, name);
+      if (statSync(full).isFile()) out.push(full);
+    }
+    return out;
+  }
+
+  it("regression: command files have zero unaccented Vietnamese in 'vi' branches", () => {
+    const offenders: string[] = [];
+    for (const file of listCommandFiles()) {
+      const content = readFileSync(file, "utf-8");
+      // Strip comments — banlist entries in the rationale comment of a
+      // 25-pre2 fix shouldn't trip the test. Keep it simple: drop
+      // // line comments and /* block */ comments before scanning.
+      const stripped = content
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      for (const banned of UNACCENTED_BANLIST) {
+        if (stripped.includes(banned)) {
+          offenders.push(`${file.split(/[\\/]/).pop()}: "${banned}"`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

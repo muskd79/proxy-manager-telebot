@@ -90,9 +90,15 @@ export async function handleQuantitySelection(
     });
     if (data.assigned < quantity) {
       const missing = quantity - data.assigned;
-      resultMsg = lang === "vi"
-        ? `[OK] ${data.assigned}/${quantity} proxy ${proxyType.toUpperCase()} da cap! (${missing} khong kha dung - thu lai sau)`
-        : `[OK] ${data.assigned}/${quantity} proxies assigned! (${missing} not available - try again later)`;
+      // Wave 25-pre2 (P0 4.A) — restore diacritics. The bulkPartialAssigned
+      // template in messages.ts already has the accented version; reuse it
+      // via fillTemplate instead of duplicating an inline string here.
+      resultMsg = fillTemplate(t("bulkPartialAssigned", lang), {
+        assigned: String(data.assigned),
+        requested: String(quantity),
+        type: proxyType.toUpperCase(),
+        missing: String(missing),
+      });
     }
 
     if (proxies.length <= 3) {

@@ -27,6 +27,33 @@ export const TRASH_AUTO_CLEAN_DAYS = 30;
 // via `bot.api.setMyCommands(...)` in src/lib/telegram/handlers.ts;
 // changes propagate the next time setMyCommands runs (on cold
 // start of the webhook lambda).
+//
+// ORDER POLICY (Wave 25-pre2 / Pass 1.4)
+// --------------------------------------
+// Surface order is grouped by user-task urgency, NOT alphabetised.
+// Three lists must stay in sync:
+//   (1) BOT_COMMANDS (this array — drives Telegram setMyCommands)
+//   (2) src/lib/telegram/messages.ts msg.welcome.{vi,en}
+//   (3) src/lib/telegram/messages.ts msg.help.{vi,en}
+// The order is enforced by __tests__/commands.test.ts.
+//
+// Canonical sequence:
+//   1.  start      — entry
+//   2.  getproxy   — main flow
+//   3.  myproxies
+//   4.  checkproxy
+//   5.  status
+//   6.  history
+//   7.  revoke
+//   8.  cancel     — recovery
+//   9.  support
+//   10. language   — settings
+//   11. help
+//   12. requests   — admin-only
+//
+// When adding a new command, decide which group it belongs to and
+// insert it at the right position; update both messages.ts blocks;
+// run the parity test.
 export const BOT_COMMANDS = [
   { command: "start", description_vi: "Bắt đầu và đăng ký", description_en: "Start and register" },
   { command: "getproxy", description_vi: "Yêu cầu proxy mới", description_en: "Request a new proxy" },

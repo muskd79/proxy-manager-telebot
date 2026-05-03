@@ -36,9 +36,22 @@ export async function handleStatus(ctx: Context) {
     return "[" + "#".repeat(filled) + "-".repeat(10 - filled) + "]";
   }
 
+  // Wave 25-pre2 (Pass 6.A) — lead with the percentage so a screen
+  // reader (or a fast-scanning human) gets the meaningful number FIRST,
+  // before the bar-art "open square pound pound dash dash...". Falls
+  // back to "—%" when limit ≤ 0 (admin-disabled quota).
+  function pct(used: number, limit: number): string {
+    if (!Number.isFinite(limit) || limit <= 0) return "—%";
+    const safeUsed = Number.isFinite(used) && used > 0 ? used : 0;
+    return `${Math.min(100, Math.round((safeUsed / limit) * 100))}%`;
+  }
+
   const hBar = progressBar(user.proxies_used_hourly, user.rate_limit_hourly);
   const dBar = progressBar(user.proxies_used_daily, user.rate_limit_daily);
   const tBar = progressBar(user.proxies_used_total, user.rate_limit_total);
+  const hPct = pct(user.proxies_used_hourly, user.rate_limit_hourly);
+  const dPct = pct(user.proxies_used_daily, user.rate_limit_daily);
+  const tPct = pct(user.proxies_used_total, user.rate_limit_total);
 
   const statusLines =
     lang === "vi"
@@ -50,9 +63,9 @@ export async function handleStatus(ctx: Context) {
           `Proxy hiện tại: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
           "*Giới hạn yêu cầu:*",
-          `Theo giờ: ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset mỗi giờ)`,
-          `Theo ngày: ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset mỗi 24 giờ)`,
-          `Tổng cộng: ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (giới hạn trọn đời)`,
+          `Theo giờ: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset mỗi giờ)`,
+          `Theo ngày: ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset mỗi 24 giờ)`,
+          `Tổng cộng: ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (giới hạn trọn đời)`,
         ]
       : [
           "*Account Status*",
@@ -62,9 +75,9 @@ export async function handleStatus(ctx: Context) {
           `Current proxies: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
           "*Rate limits:*",
-          `Hourly:  ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (resets every hour)`,
-          `Daily:   ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (resets every 24 hours)`,
-          `Total:   ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (lifetime limit)`,
+          `Hourly: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (resets every hour)`,
+          `Daily:  ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (resets every 24 hours)`,
+          `Total:  ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (lifetime limit)`,
         ];
 
   // Add reset time info

@@ -23,12 +23,14 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
       expect(rows.every((r) => r.length === 2)).toBe(true);
 
       const labels = rows.flat().map((b) => b.text);
+      // Wave 25-pre2 (P0 1.1) — "Bảo hành proxy" → "Trả proxy".
+      // Real warranty deferred to Wave 26 (decision-log.md).
       expect(labels).toEqual([
         "Yêu cầu proxy",
         "Proxy của tôi",
         "Kiểm tra proxy",
         "Limit yêu cầu",
-        "Bảo hành proxy",
+        "Trả proxy",
         "Lịch sử",
         "Hướng dẫn",
         "English",
@@ -38,12 +40,13 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
     it("English — labels translated", () => {
       const kb = mainMenuKeyboard("en");
       const labels = kb.inline_keyboard.flat().map((b) => b.text);
+      // Wave 25-pre2 (P0 1.1) — "Warranty claim" → "Return proxy".
       expect(labels).toEqual([
         "Request proxy",
         "My proxies",
         "Check proxy",
         "Quota & limits",
-        "Warranty claim",
+        "Return proxy",
         "History",
         "Help",
         "Tiếng Việt",
@@ -56,27 +59,31 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
         // grammy InlineKeyboardButton.text variant
         return "callback_data" in b ? b.callback_data : null;
       });
+      // Wave 25-pre2 (P0 1.1) — `menu:warranty` → `menu:return` so
+      // a future Wave 26 warranty schema can claim `menu:warranty`
+      // for itself without colliding with the revoke flow.
       expect(data).toEqual([
         "menu:request",
         "menu:my",
         "menu:check",
         "menu:limit",
-        "menu:warranty",
+        "menu:return",
         "menu:history",
         "menu:help",
         "menu:language",
       ]);
     });
 
-    it("regression: warranty button maps to menu:warranty (not menu:revoke)", () => {
-      // The warranty button reuses the /revoke handler at runtime, but
-      // its callback_data MUST stay menu:warranty so future warranty
-      // schema (Wave 24, Option C) can swap the handler without
-      // changing the keyboard.
+    it("regression: return button maps to menu:return (not menu:revoke or menu:warranty)", () => {
+      // Wave 25-pre2 (P0 1.1) — replaces the pre-25 "warranty button
+      // maps to menu:warranty" regression. The label and callback
+      // both now say "return" so the user mental model and the code
+      // agree. Wave 26 warranty schema will introduce a new button
+      // with callback `menu:warranty` (or its own namespace).
       const kb = mainMenuKeyboard("vi");
-      const warrantyBtn = kb.inline_keyboard[2][0];
-      expect("callback_data" in warrantyBtn ? warrantyBtn.callback_data : null).toBe(
-        "menu:warranty",
+      const returnBtn = kb.inline_keyboard[2][0];
+      expect("callback_data" in returnBtn ? returnBtn.callback_data : null).toBe(
+        "menu:return",
       );
     });
   });
@@ -191,5 +198,92 @@ describe("quantityKeyboard with mode (Wave 23B-bot)", () => {
     // existing slash-command tests that haven't migrated yet.
     const kb = quantityKeyboard("http", "vi");
     expect(kb.inline_keyboard.flat().map((b) => b.text)[0]).toBe("1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 25-pre2 (Pass 6.2) — inline button label length budget.
+//
+// Telegram mobile renders inline buttons in 2 columns at ~140px each on
+// 320px-wide phones. Empirically, labels ≤ 12 chars never wrap; 13-14
+// occasionally wrap to two lines depending on font; ≥ 15 always wrap.
+// Two-line buttons look broken.
+//
+// We enforce a TEMPORARY ceiling of 14 chars to match what currently
+// ships ("Bảo hành proxy" / "Warranty claim" — both 14 — were renamed
+// to "Trả proxy" / "Return proxy" in 2.A but other 13-char labels like
+// "Yêu cầu proxy" remain). Future Wave 25-pre3 may tighten the budget
+// to 12 once labels are shortened with user input. Tracked in
+// docs/decision-log.md#button-label-length.
+//
+// New buttons must respect the 14-char ceiling FROM DAY ONE — that's
+// the entire point of having this test.
+// ---------------------------------------------------------------------------
+describe("Wave 25-pre2 — inline button label length budget", () => {
+  const MAX_LABEL_LEN = 14;
+
+  function assertLabels(label: string, value: string) {
+    expect(value.length, `${label}: "${value}" exceeds ${MAX_LABEL_LEN} chars`).toBeLessThanOrEqual(
+      MAX_LABEL_LEN,
+    );
+  }
+
+  it("mainMenuKeyboard labels (vi) fit the budget", () => {
+    const kb = mainMenuKeyboard("vi");
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("mainMenuKeyboard.vi", btn.text);
+    }
+  });
+
+  it("mainMenuKeyboard labels (en) fit the budget", () => {
+    const kb = mainMenuKeyboard("en");
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("mainMenuKeyboard.en", btn.text);
+    }
+  });
+
+  it("orderTypeKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = orderTypeKeyboard("http", lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`orderTypeKeyboard.${lang}`, btn.text);
+      }
+    }
+  });
+
+  it("quantityKeyboard labels fit the budget (both modes, both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      for (const mode of ["quick", "custom"] as const) {
+        const kb = quantityKeyboard("http", lang, mode);
+        for (const btn of kb.inline_keyboard.flat()) {
+          assertLabels(`quantityKeyboard.${mode}.${lang}`, btn.text);
+        }
+      }
+    }
+  });
+
+  it("proxyTypeKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = proxyTypeKeyboard(lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`proxyTypeKeyboard.${lang}`, btn.text);
+      }
+    }
+  });
+
+  it("languageKeyboard labels fit the budget", () => {
+    const kb = languageKeyboard();
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("languageKeyboard", btn.text);
+    }
+  });
+
+  it("confirmKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = confirmKeyboard(lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`confirmKeyboard.${lang}`, btn.text);
+      }
+    }
   });
 });
