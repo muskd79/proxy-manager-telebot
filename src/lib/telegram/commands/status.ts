@@ -34,7 +34,7 @@ export async function handleStatus(ctx: Context) {
   function progressBar(used: number, limit: number): string {
     // Wave 25-pre1 (P0 5.1) — admin can set rate_limit_*=0 which used
     // to throw RangeError("Invalid count value") via NaN.repeat().
-    // Treat zero/negative limit as "no quota" → render as full empty.
+    // Treat zero/negative limit as "no remaining slots" → render as full empty.
     if (!Number.isFinite(limit) || limit <= 0) {
       return "[----------]";
     }
@@ -46,25 +46,29 @@ export async function handleStatus(ctx: Context) {
   // Wave 25-pre2 (Pass 6.A) — lead with the percentage so a screen
   // reader (or a fast-scanning human) gets the meaningful number FIRST,
   // before the bar-art "open square pound pound dash dash...". Falls
-  // back to "—%" when limit ≤ 0 (admin-disabled quota).
+  // back to "—%" when limit ≤ 0 (admin-disabled).
   function pct(used: number, limit: number): string {
     if (!Number.isFinite(limit) || limit <= 0) return "—%";
     const safeUsed = Number.isFinite(used) && used > 0 ? used : 0;
     return `${Math.min(100, Math.round((safeUsed / limit) * 100))}%`;
   }
 
-  // Wave 25-pre3 (Pass 2.2) — quota state hint. Pre-fix the bar
-  // `[----------]` was ambiguous: limit=0 (admin disabled) vs
-  // used=limit (exhausted) both rendered as full empty. Now append
-  // the cause so the user knows whether to retry later or contact
-  // admin.
-  function quotaState(used: number, limit: number, lng: "vi" | "en"): string {
+  // Wave 25-pre3 (Pass 2.2) → 26-D-post1/B — limit-state hint.
+  // Pre-fix the bar `[----------]` was ambiguous: limit=0 (admin
+  // disabled) vs used=limit (exhausted) both rendered as full empty.
+  // Now append the cause so the user knows whether to retry later or
+  // contact admin.
+  //
+  // Wave 26-D-post1/B vocab sweep: tiếng Việt dùng "giới hạn yêu cầu"
+  // thay cho "quota" để khớp với label nút "Limit yêu cầu" trong main
+  // menu keyboard và doc admin (BRAINSTORM_PROXIES_2026-05-03 Glossary).
+  function limitState(used: number, limit: number, lng: "vi" | "en"): string {
     if (!Number.isFinite(limit) || limit <= 0) {
       return lng === "vi" ? " (không khả dụng)" : " (disabled)";
     }
     const safeUsed = Number.isFinite(used) && used > 0 ? used : 0;
     if (safeUsed >= limit) {
-      return lng === "vi" ? " (đã hết quota)" : " (quota exhausted)";
+      return lng === "vi" ? " (đã hết giới hạn)" : " (limit reached)";
     }
     return "";
   }
@@ -75,9 +79,9 @@ export async function handleStatus(ctx: Context) {
   const hPct = pct(user.proxies_used_hourly, user.rate_limit_hourly);
   const dPct = pct(user.proxies_used_daily, user.rate_limit_daily);
   const tPct = pct(user.proxies_used_total, user.rate_limit_total);
-  const hState = quotaState(user.proxies_used_hourly, user.rate_limit_hourly, lang);
-  const dState = quotaState(user.proxies_used_daily, user.rate_limit_daily, lang);
-  const tState = quotaState(user.proxies_used_total, user.rate_limit_total, lang);
+  const hState = limitState(user.proxies_used_hourly, user.rate_limit_hourly, lang);
+  const dState = limitState(user.proxies_used_daily, user.rate_limit_daily, lang);
+  const tState = limitState(user.proxies_used_total, user.rate_limit_total, lang);
 
   const statusLines =
     lang === "vi"

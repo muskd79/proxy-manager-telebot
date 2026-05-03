@@ -1,19 +1,37 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+/**
+ * Wave 26-D-post1 — /requests page rebuild.
+ *
+ * User feedback (verbatim 2026-05-03):
+ *   "tao chỉ cần 2 sub-tab này [Yêu cầu + Bảo hành] và mọi thứ có thể
+ *    lọc và xem trong 2 sub-tab từ những yêu cầu đang đợi, yêu cầu đã
+ *    từ chối, yêu cầu đã duyệt, … và lọc filter của 2 sub-tab cần thật
+ *    sự mạnh"
+ *
+ * Pre-fix: page had 2 hardcoded tabs ("Chờ xử lý" / "Gần đây 7 ngày")
+ * + 1 search input. Admin couldn't filter by date range, by approval
+ * mode (auto vs manual), couldn't combine multiple statuses, no URL
+ * state, no shareable filtered views.
+ *
+ * Now: single table + powerful filter row (5 dropdowns + search),
+ * URL state encoded, default = "Đang đợi + 7 ngày" (the action queue),
+ * bulk operations move OUT of the tab guard so admin can bulk-act on
+ * any selection.
+ *
+ * Wave 26-D will repeat this pattern for /warranty (sibling page).
+ */
+
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   FileText,
-  Search,
   XCircle,
   Zap,
-  Filter,
   RefreshCw,
 } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { RequestTable } from "@/components/requests/request-table";
 import { Pagination } from "@/components/shared/pagination";
@@ -22,10 +40,22 @@ import {
   RejectDialog,
   BatchApproveDialog,
 } from "@/components/requests/request-actions";
-import type { ProxyRequest, RequestStatus } from "@/types/database";
-import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
+import {
+  RequestFilters,
+  countActiveFilters,
+  DEFAULT_REQUEST_FILTERS,
+  type RequestPageFilters,
+} from "@/components/requests/request-filters";
+import {
+  parseFiltersFromSearchParams,
+  formatFiltersToSearchParams,
+  resolveTimeBucket,
+} from "@/components/requests/request-filters-url";
+import type { ProxyRequest } from "@/types/database";
+import type { RequestFilters as RequestFiltersType, PaginatedResponse, ApiResponse } from "@/types/api";
 import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
+import { useSharedQuery } from "@/lib/shared-cache";
 
 interface RequestWithUser extends ProxyRequest {
   tele_user?: {
@@ -41,59 +71,92 @@ interface RequestWithUser extends ProxyRequest {
   };
 }
 
+const PAGE_SIZE = 20;
+
 export default function RequestsPage() {
   const { t } = useI18n();
   const { canWrite } = useRole();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ─── Filter state (URL ↔ component) ──────────────────────────────
+  const [filters, setFilters] = useState<RequestPageFilters>(() => {
+    return parseFiltersFromSearchParams(
+      new URLSearchParams(searchParams.toString()),
+    );
+  });
+  // Pagination is intentionally NOT URL-bound — admins never bookmark
+  // "page 7"; refresh-on-filter resets to 1 anyway.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+
+  // Push filter state to URL whenever it changes. router.replace so we
+  // don't pollute browser history with every dropdown tweak.
+  useEffect(() => {
+    const params = formatFiltersToSearchParams(filters);
+    const url = params.toString() ? `/requests?${params.toString()}` : "/requests";
+    router.replace(url, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
+
+  // Reset page to 1 whenever filters change.
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
+  // ─── Data state ────────────────────────────────────────────────
   const [requests, setRequests] = useState<RequestWithUser[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Phase 3 (PM UX) — honor ?status= from URL on first mount so
-  // dashboard drill-down + bookmarked filter URLs land correctly.
-  // Defaults to "pending" if no param given. activeTab is string-
-  // typed because the component also has a "recent" pseudo-tab
-  // that doesn't map to a RequestStatus.
-  const searchParams = useSearchParams();
-  const initialStatus = (searchParams.get("status") as RequestStatus) || "pending";
-  const [filters, setFilters] = useState<RequestFilters>({
-    page: 1,
-    pageSize: 20,
-    sortBy: "requested_at",
-    sortOrder: "desc",
-    status: initialStatus,
-  });
-  const [activeTab, setActiveTab] = useState<string>(initialStatus);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [searchValue, setSearchValue] = useState("");
 
-  // Dialog states
+  // Dialogs
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [batchApproveOpen, setBatchApproveOpen] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string>("");
 
+  // Country list — share with /proxies via Wave 26-C cache.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>("api:proxies:stats", async () => {
+    const r = await fetch("/api/proxies/stats");
+    if (!r.ok) return {};
+    const d = await r.json();
+    return (d?.data ?? {}) as { countries?: string[]; byCountry?: Record<string, number> };
+  });
+  const countries: string[] = stats?.byCountry
+    ? Object.keys(stats.byCountry).sort()
+    : stats?.countries ?? [];
+
+  // ─── Fetch requests for the current filter window ─────────────────
   const fetchRequests = useCallback(async () => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          params.set(key, String(value));
-        }
-      });
+      const apiParams = new URLSearchParams();
 
-      // For the "recent" tab, fetch last 7 days of approved + rejected
-      if (activeTab === "recent") {
-        params.set("status", "approved,auto_approved,rejected");
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        params.set("dateFrom", sevenDaysAgo.toISOString().split("T")[0]);
-        params.set("sortBy", "processed_at");
-        params.set("sortOrder", "desc");
-      }
+      // Status — translate "all" → omit. Otherwise pass through (server
+      // already supports comma-separated values).
+      if (filters.status !== "all") apiParams.set("status", filters.status);
 
-      const res = await fetch(`/api/requests?${params.toString()}`);
+      // Time bucket → dateFrom/dateTo
+      const range = resolveTimeBucket(filters);
+      if (range.dateFrom) apiParams.set("dateFrom", range.dateFrom);
+      if (range.dateTo) apiParams.set("dateTo", range.dateTo);
+
+      if (filters.proxyType !== "all") apiParams.set("proxyType", filters.proxyType);
+      if (filters.approvalMode !== "all") apiParams.set("approvalMode", filters.approvalMode);
+      if (filters.country) apiParams.set("country", filters.country);
+      if (filters.search) apiParams.set("search", filters.search);
+
+      apiParams.set("page", String(page));
+      apiParams.set("pageSize", String(pageSize));
+      apiParams.set("sortBy", "requested_at");
+      apiParams.set("sortOrder", "desc");
+
+      const res = await fetch(`/api/requests?${apiParams.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch requests");
       const json: ApiResponse<PaginatedResponse<RequestWithUser>> = await res.json();
       if (json.success && json.data) {
@@ -107,76 +170,98 @@ export default function RequestsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters, activeTab]);
+  }, [filters, page, pageSize, t]);
 
   useEffect(() => {
-    fetchRequests();
+    void fetchRequests();
   }, [fetchRequests]);
 
-  // Realtime sync: re-fetch when proxy_requests table changes (debounced to reduce load)
-  const requestsDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // ─── Realtime: re-fetch on proxy_requests changes (debounced) ─────
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fetchRef = useRef(fetchRequests);
+  fetchRef.current = fetchRequests;
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("requests-changes")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API
       .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, () => {
-        clearTimeout(requestsDebounceRef.current);
-        requestsDebounceRef.current = setTimeout(() => {
-          fetchRequests();
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          fetchRef.current?.();
         }, 2000);
       })
       .subscribe();
 
     return () => {
-      clearTimeout(requestsDebounceRef.current);
+      clearTimeout(debounceRef.current);
       supabase.removeChannel(channel);
     };
-  }, [fetchRequests]);
+  }, []);
 
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
-    if (tab === "pending") {
-      setFilters({
-        ...filters,
-        status: "pending" as RequestStatus,
-        dateFrom: undefined,
-        sortBy: "requested_at",
-        sortOrder: "desc",
-        page: 1,
-      });
-    } else {
-      // "recent" tab - status handled in fetchRequests
-      setFilters({
-        ...filters,
-        status: undefined,
-        page: 1,
-      });
+  // ─── Per-status counts (badge inside Trạng thái dropdown) ─────────
+  // Cheap: 1 extra request that fetches counts grouped by status.
+  // Falls back gracefully if endpoint doesn't exist (the badge just
+  // disappears, no crash).
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        // Reuse the same /api/requests endpoint with pageSize=0 + group?
+        // Simpler: fire 5 small requests in parallel with pageSize=1 each.
+        // The total counter on each tells us bucket size without
+        // pulling actual rows. Skip the time-window so the badge
+        // reflects "all-time" status totals which match what admin
+        // sees if they switch dropdown.
+        const buckets = ["pending", "approved", "auto_approved", "rejected", "expired"];
+        const responses = await Promise.all(
+          buckets.map((s) =>
+            fetch(`/api/requests?status=${s}&pageSize=1&sortBy=requested_at`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null),
+          ),
+        );
+        if (cancelled) return;
+        const next: Record<string, number> = {};
+        buckets.forEach((s, i) => {
+          const body = responses[i];
+          const total = body?.data?.total;
+          if (typeof total === "number") next[s] = total;
+        });
+        // also approximate "all" by summing the 5 buckets — close enough
+        if (Object.keys(next).length > 0) {
+          next.all = Object.values(next).reduce((a, b) => a + b, 0);
+        }
+        setStatusCounts(next);
+      } catch {
+        /* swallow — badge just disappears */
+      }
     }
-    setSelectedIds([]);
-  };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const handleSearch = () => {
-    setFilters({ ...filters, search: searchValue, page: 1 });
-  };
+  const activeCount = useMemo(() => countActiveFilters(filters), [filters]);
 
-  const handleApprove = (id: string) => {
+  // ─── Handlers ─────────────────────────────────────────────────────
+  function handleApprove(id: string) {
     setActiveRequestId(id);
     setApproveDialogOpen(true);
-  };
-
-  const handleReject = (id: string) => {
+  }
+  function handleReject(id: string) {
     setActiveRequestId(id);
     setRejectDialogOpen(true);
-  };
-
-  const handleView = (id: string) => {
+  }
+  function handleView(id: string) {
     setActiveRequestId(id);
     setApproveDialogOpen(false);
     setRejectDialogOpen(false);
-  };
+  }
 
-  const handleBatchReject = async () => {
+  async function handleBatchReject() {
     let successCount = 0;
     for (const id of selectedIds) {
       try {
@@ -190,13 +275,18 @@ export default function RequestsPage() {
         console.error(`Failed to reject request ${id}:`, err);
       }
     }
-    toast.success(t("requests.batchRejectResult").replace("{success}", String(successCount)).replace("{total}", String(selectedIds.length)));
+    toast.success(
+      t("requests.batchRejectResult")
+        .replace("{success}", String(successCount))
+        .replace("{total}", String(selectedIds.length)),
+    );
     setSelectedIds([]);
-    fetchRequests();
-  };
+    void fetchRequests();
+  }
 
+  // Only PENDING requests are approvable / rejectable in bulk.
   const pendingSelected = selectedIds.filter((id) =>
-    requests.find((r) => r.id === id && r.status === "pending")
+    requests.find((r) => r.id === id && r.status === "pending"),
   );
 
   return (
@@ -219,97 +309,123 @@ export default function RequestsPage() {
           onClick={() => fetchRequests()}
           disabled={isLoading}
           title="Tải lại"
+          aria-label="Tải lại danh sách"
         >
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <TabsList className="bg-muted">
-            <TabsTrigger value="pending">{t("requests.pendingTab")}</TabsTrigger>
-            <TabsTrigger value="recent">{t("requests.recentTab")}</TabsTrigger>
-          </TabsList>
+      {/* Filter row */}
+      <RequestFilters
+        filters={filters}
+        onFiltersChange={setFilters}
+        counts={statusCounts}
+        countries={countries}
+        activeCount={activeCount}
+      />
 
-          {/* Filters */}
-          <div className="flex gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder={t("requests.searchByUser")}
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="bg-background pl-10"
-              />
-            </div>
-            <Button onClick={handleSearch} size="sm">
-              <Filter className="mr-1 h-3.5 w-3.5" />
-              {t("common.filter")}
+      {/* Bulk actions bar — only shows when admin has at least 1 pending
+          row selected. Decoupled from the (now removed) tab guard so
+          admin can bulk-act on any selection in any filter view. */}
+      {pendingSelected.length > 0 && canWrite && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
+          <span className="text-sm font-medium">
+            {t("requests.pendingSelected").replace(
+              "{count}",
+              String(pendingSelected.length),
+            )}
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" onClick={() => setBatchApproveOpen(true)}>
+              <Zap className="mr-1 h-3.5 w-3.5" />
+              {t("requests.batchApprove")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBatchReject}
+            >
+              <XCircle className="mr-1 h-3.5 w-3.5" />
+              {t("requests.batchReject")}
             </Button>
           </div>
         </div>
+      )}
 
-        {/* Bulk Actions for pending */}
-        {activeTab === "pending" && pendingSelected.length > 0 && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
-            <span className="text-sm font-medium">
-              {t("requests.pendingSelected").replace("{count}", String(pendingSelected.length))}
-            </span>
-            {canWrite && (
-              <div className="ml-auto flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => setBatchApproveOpen(true)}
-                >
-                  <Zap className="mr-1 h-3.5 w-3.5" />
-                  {t("requests.batchApprove")}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBatchReject}
-                >
-                  <XCircle className="mr-1 h-3.5 w-3.5" />
-                  {t("requests.batchReject")}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+      {/* Empty state — when filter returns 0 + user has filters active. */}
+      {!isLoading && requests.length === 0 && activeCount > 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
+          <p className="text-sm font-medium">Không có yêu cầu nào khớp bộ lọc</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Thử bỏ bớt tiêu chí, hoặc đổi sang khoảng thời gian rộng hơn.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => setFilters({ ...DEFAULT_REQUEST_FILTERS })}
+          >
+            Xoá hết bộ lọc
+          </Button>
+        </div>
+      )}
 
-        {/* Content for tabs */}
-        {["pending", "recent"].map((tab) => (
-          <TabsContent key={tab} value={tab} className="mt-4">
-            <RequestTable
-              requests={requests}
-              total={total}
-              page={filters.page ?? 1}
-              pageSize={filters.pageSize ?? 20}
-              totalPages={totalPages}
-              isLoading={isLoading}
-              filters={filters}
-              onFiltersChange={setFilters}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onView={handleView}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-            />
-          </TabsContent>
-        ))}
+      {/* Empty state — no requests at all (fresh install). */}
+      {!isLoading && requests.length === 0 && activeCount === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
+          <p className="text-sm font-medium">Chưa có yêu cầu nào</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Yêu cầu sẽ xuất hiện ở đây khi user bot dùng /getproxy.
+          </p>
+        </div>
+      )}
 
-        {/* Pagination */}
-        <Pagination
-          page={filters.page ?? 1}
-          pageSize={filters.pageSize ?? 20}
-          total={total}
-          totalPages={totalPages}
-          onPageChange={(p) => setFilters({ ...filters, page: p })}
-          onPageSizeChange={(size) => setFilters({ ...filters, pageSize: size, page: 1 })}
-        />
-      </Tabs>
+      {/* Table — only renders when we have data OR loading */}
+      {(isLoading || requests.length > 0) && (
+        <>
+          <RequestTable
+            requests={requests}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            isLoading={isLoading}
+            // Adapter — RequestTable expects RequestFiltersType (server shape),
+            // not the page-local RequestPageFilters. We don't actually use
+            // its filter callbacks for the new flow (RequestFilters
+            // owns it), but keeping the prop wired prevents a regression
+            // if RequestTable ever needs to read sort state.
+            filters={
+              {
+                page,
+                pageSize,
+                sortBy: "requested_at",
+                sortOrder: "desc",
+              } satisfies RequestFiltersType
+            }
+            onFiltersChange={() => {
+              /* no-op — filtering owned by RequestFilters above */
+            }}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onView={handleView}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+          />
+
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+          />
+        </>
+      )}
 
       {/* Dialogs */}
       <ApproveDialog
@@ -317,7 +433,7 @@ export default function RequestsPage() {
         onOpenChange={setApproveDialogOpen}
         requestId={activeRequestId}
         onApproved={() => {
-          fetchRequests();
+          void fetchRequests();
           setSelectedIds([]);
         }}
       />
@@ -326,7 +442,7 @@ export default function RequestsPage() {
         onOpenChange={setRejectDialogOpen}
         requestId={activeRequestId}
         onRejected={() => {
-          fetchRequests();
+          void fetchRequests();
           setSelectedIds([]);
         }}
       />
@@ -335,7 +451,7 @@ export default function RequestsPage() {
         onOpenChange={setBatchApproveOpen}
         requestIds={pendingSelected}
         onApproved={() => {
-          fetchRequests();
+          void fetchRequests();
           setSelectedIds([]);
         }}
       />

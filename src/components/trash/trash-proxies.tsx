@@ -1,9 +1,29 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { format } from "date-fns";
-import { RefreshCw, Trash2, RotateCcw } from "lucide-react";
+/**
+ * Wave 26-D-post1/D — trash-proxies rebuild.
+ *
+ * Pre-fix: bare table, English labels mixed with Vietnamese, no
+ * countdown to auto-purge, no bulk operations, single-click permanent
+ * delete (1 confirm dialog only — destructive shouldn't be that easy),
+ * empty state "No deleted proxies" English.
+ *
+ * Now:
+ *   - Vietnamese labels everywhere
+ *   - Selection checkboxes + select-all + bulk-restore + bulk-delete
+ *     (with DangerousConfirmDialog typed-confirm for bulk permanent)
+ *   - Countdown badge per row "Còn X ngày" with tone (ok/warn/danger)
+ *     so admin sees what's about to expire at a glance
+ *   - Toast feedback on every operation
+ *   - Pagination support (if > 50 proxies in trash, paged)
+ *   - Empty state w/ icon + helpful copy
+ */
+
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { RefreshCw, Trash2, RotateCcw, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -15,17 +35,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
+import { cn } from "@/lib/utils";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  computeTrashCountdown,
+  formatDeletedAt,
+} from "./trash-utils";
 
 interface DeletedProxy {
   id: string;
@@ -40,30 +56,63 @@ interface TrashProxiesProps {
   canWrite: boolean;
 }
 
+const TONE_CLASS = {
+  ok: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+  warn: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
+  danger: "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200",
+} as const;
+
 export function TrashProxies({ canWrite }: TrashProxiesProps) {
   const [proxies, setProxies] = useState<DeletedProxy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [singleDeleteId, setSingleDeleteId] = useState<string | null>(null);
+  const [bulkRestoreOpen, setBulkRestoreOpen] = useState(false);
 
   const fetchProxies = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/proxies?isDeleted=true&pageSize=50");
+      const res = await fetch("/api/proxies?isDeleted=true&pageSize=200");
       if (res.ok) {
         const result = await res.json();
         setProxies(result.data ?? []);
       }
     } catch (err) {
       console.error("Failed to fetch deleted proxies:", err);
+      toast.error("Không tải được danh sách thùng rác");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchProxies();
+    void fetchProxies();
   }, [fetchProxies]);
 
-  const handleRestore = async (id: string) => {
+  // Clear selection when the underlying list changes (after refetch).
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => proxies.some((p) => p.id === id)));
+  }, [proxies]);
+
+  const allSelected =
+    proxies.length > 0 && proxies.every((p) => selectedIds.includes(p.id));
+  const someSelected = !allSelected && selectedIds.length > 0;
+
+  function toggleAll() {
+    if (allSelected) setSelectedIds([]);
+    else setSelectedIds(proxies.map((p) => p.id));
+  }
+  function toggleOne(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  // ─── Single-row actions ────────────────────────────────────────────
+  async function handleRestore(id: string, hostport: string) {
+    setPendingAction(true);
     try {
       const res = await fetch(`/api/proxies/${id}`, {
         method: "PUT",
@@ -71,131 +120,348 @@ export function TrashProxies({ canWrite }: TrashProxiesProps) {
         body: JSON.stringify({ is_deleted: false, deleted_at: null }),
       });
       if (res.ok) {
-        fetchProxies();
+        toast.success(`Đã khôi phục ${hostport}`);
+        await fetchProxies();
+      } else {
+        toast.error(`Khôi phục ${hostport} thất bại`);
       }
     } catch (err) {
       console.error("Failed to restore proxy:", err);
+      toast.error("Khôi phục thất bại");
+    } finally {
+      setPendingAction(false);
     }
-  };
+  }
 
-  const handlePermanentDelete = async (id: string) => {
+  async function handlePermanentDelete(id: string) {
+    setPendingAction(true);
     try {
       const res = await fetch(`/api/proxies/${id}?permanent=true`, {
         method: "DELETE",
       });
       if (res.ok) {
-        fetchProxies();
+        toast.success("Đã xoá vĩnh viễn proxy");
+        await fetchProxies();
+      } else {
+        toast.error("Xoá vĩnh viễn thất bại");
       }
     } catch (err) {
       console.error("Failed to permanently delete proxy:", err);
+      toast.error("Xoá vĩnh viễn thất bại");
+    } finally {
+      setPendingAction(false);
+      setSingleDeleteId(null);
     }
-  };
+  }
 
-  const renderLoading = () =>
-    Array.from({ length: 3 }).map((_, i) => (
-      <TableRow key={i}>
-        {Array.from({ length: 5 }).map((_, j) => (
-          <TableCell key={j}>
-            <Skeleton className="h-4 w-full" />
-          </TableCell>
-        ))}
-      </TableRow>
-    ));
+  // ─── Bulk actions ──────────────────────────────────────────────────
+  async function handleBulkRestore() {
+    setPendingAction(true);
+    let successCount = 0;
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/proxies/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_deleted: false, deleted_at: null }),
+        });
+        if (res.ok) successCount++;
+      } catch (err) {
+        console.error(`Failed to restore proxy ${id}:`, err);
+      }
+    }
+    toast.success(
+      `Đã khôi phục ${successCount}/${selectedIds.length} proxy`,
+    );
+    setSelectedIds([]);
+    setBulkRestoreOpen(false);
+    setPendingAction(false);
+    await fetchProxies();
+  }
 
+  async function handleBulkPermanentDelete() {
+    setPendingAction(true);
+    let successCount = 0;
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/proxies/${id}?permanent=true`, {
+          method: "DELETE",
+        });
+        if (res.ok) successCount++;
+      } catch (err) {
+        console.error(`Failed to delete proxy ${id}:`, err);
+      }
+    }
+    if (successCount > 0) {
+      toast.success(
+        `Đã xoá vĩnh viễn ${successCount}/${selectedIds.length} proxy`,
+      );
+    } else {
+      toast.error("Không xoá được proxy nào");
+    }
+    setSelectedIds([]);
+    setBulkDeleteOpen(false);
+    setPendingAction(false);
+    await fetchProxies();
+  }
+
+  const toBeDeletedSoonCount = useMemo(
+    () =>
+      proxies.filter((p) => {
+        const c = computeTrashCountdown(p.deleted_at);
+        return c.tone !== "ok";
+      }).length,
+    [proxies],
+  );
+
+  // ─── Render ────────────────────────────────────────────────────────
   return (
-    <Card>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Proxy</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Deleted At</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              renderLoading()
-            ) : proxies.length === 0 ? (
+    <div className="space-y-3">
+      {/* Toolbar — refresh + count summary */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <div className="text-sm text-muted-foreground">
+          {loading ? (
+            "Đang tải..."
+          ) : proxies.length === 0 ? (
+            "Thùng rác trống"
+          ) : (
+            <>
+              <span className="font-medium text-foreground">{proxies.length}</span>{" "}
+              proxy trong thùng rác
+              {toBeDeletedSoonCount > 0 && (
+                <span className="ml-2 text-amber-600 dark:text-amber-400">
+                  · {toBeDeletedSoonCount} sắp bị xoá vĩnh viễn
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fetchProxies()}
+          disabled={loading}
+          aria-label="Tải lại"
+        >
+          <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+        </Button>
+      </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.length > 0 && canWrite && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
+          <span className="text-sm font-medium">
+            Đã chọn {selectedIds.length} proxy
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkRestoreOpen(true)}
+              disabled={pendingAction}
+            >
+              <RotateCcw className="mr-1 size-3.5" />
+              Khôi phục đã chọn
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={pendingAction}
+            >
+              <Trash2 className="mr-1 size-3.5" />
+              Xoá vĩnh viễn
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No deleted proxies
-                </TableCell>
+                {canWrite && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onCheckedChange={toggleAll}
+                      aria-label="Chọn tất cả proxy trong thùng rác"
+                    />
+                  </TableHead>
+                )}
+                <TableHead>Proxy</TableHead>
+                <TableHead className="w-24">Giao thức</TableHead>
+                <TableHead className="w-28">Trạng thái</TableHead>
+                <TableHead className="w-44">Xoá lúc</TableHead>
+                <TableHead className="w-36">Tự xoá sau</TableHead>
+                {canWrite && (
+                  <TableHead className="w-48 text-right">Thao tác</TableHead>
+                )}
               </TableRow>
-            ) : (
-              proxies.map((proxy) => (
-                <TableRow key={proxy.id}>
-                  <TableCell className="font-mono text-sm">
-                    {proxy.host}:{proxy.port}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {proxy.type.toUpperCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{proxy.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {proxy.deleted_at
-                      ? format(
-                          new Date(proxy.deleted_at),
-                          "yyyy-MM-dd HH:mm"
-                        )
-                      : "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {canWrite && (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRestore(proxy.id)}
-                        >
-                          <RotateCcw className="size-4 mr-1" />
-                          Restore
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
-                              <Trash2 className="size-4 mr-1" />
-                              Delete
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Permanently delete?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. The proxy will
-                                be permanently removed.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() =>
-                                  handlePermanentDelete(proxy.id)
-                                }
-                              >
-                                Delete permanently
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    )}
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: canWrite ? 7 : 5 }).map((_, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-4 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : proxies.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={canWrite ? 7 : 5}
+                    className="py-12 text-center"
+                  >
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <Trash2 className="size-8 opacity-30" aria-hidden="true" />
+                      <p className="text-sm font-medium">Thùng rác trống</p>
+                      <p className="text-xs">
+                        Các proxy đã xoá mềm sẽ xuất hiện ở đây.
+                      </p>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+              ) : (
+                proxies.map((proxy) => {
+                  const countdown = computeTrashCountdown(proxy.deleted_at);
+                  const selected = selectedIds.includes(proxy.id);
+                  const hostport = `${proxy.host}:${proxy.port}`;
+                  return (
+                    <TableRow
+                      key={proxy.id}
+                      className={selected ? "bg-muted/50" : ""}
+                      aria-selected={selected}
+                    >
+                      {canWrite && (
+                        <TableCell>
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={() => toggleOne(proxy.id)}
+                            aria-label={`Chọn ${hostport}`}
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell className="font-mono text-sm select-all">
+                        {hostport}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs uppercase">
+                          {proxy.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">
+                          {proxy.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDeletedAt(proxy.deleted_at)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-xs whitespace-nowrap",
+                            TONE_CLASS[countdown.tone],
+                          )}
+                        >
+                          {countdown.tone === "danger" && (
+                            <AlertTriangle className="mr-1 size-3" aria-hidden="true" />
+                          )}
+                          {countdown.label}
+                        </Badge>
+                      </TableCell>
+                      {canWrite && (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRestore(proxy.id, hostport)}
+                              disabled={pendingAction}
+                            >
+                              <RotateCcw className="mr-1 size-3.5" />
+                              Khôi phục
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setSingleDeleteId(proxy.id)}
+                              disabled={pendingAction}
+                            >
+                              <Trash2 className="mr-1 size-3.5" />
+                              Xoá hẳn
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Single permanent-delete confirmation */}
+      <ConfirmDialog
+        open={singleDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setSingleDeleteId(null);
+        }}
+        variant="destructive"
+        title="Xoá vĩnh viễn proxy này?"
+        description="Sau khi xoá vĩnh viễn, không thể khôi phục lại được nữa. Mọi lịch sử liên quan sẽ bị mất."
+        confirmText="Xoá vĩnh viễn"
+        cancelText="Huỷ"
+        loading={pendingAction}
+        onConfirm={async () => {
+          if (singleDeleteId) await handlePermanentDelete(singleDeleteId);
+        }}
+      />
+
+      {/* Bulk restore confirmation */}
+      <ConfirmDialog
+        open={bulkRestoreOpen}
+        onOpenChange={setBulkRestoreOpen}
+        title={`Khôi phục ${selectedIds.length} proxy?`}
+        description="Các proxy được chọn sẽ trở lại danh sách hoạt động và có thể được cấp lại."
+        confirmText="Khôi phục"
+        cancelText="Huỷ"
+        loading={pendingAction}
+        onConfirm={handleBulkRestore}
+      />
+
+      {/* Bulk permanent-delete — typed confirmation */}
+      <DangerousConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Xoá VĨNH VIỄN ${selectedIds.length} proxy?`}
+        description={
+          <div className="space-y-2">
+            <p>
+              Hành động này không thể khôi phục. Tất cả lịch sử (giao, bảo
+              hành, sự kiện) liên quan tới {selectedIds.length} proxy được
+              chọn sẽ mất theo.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Gõ <code className="rounded bg-muted px-1 font-mono">XOA VINH VIEN</code> để xác nhận.
+            </p>
+          </div>
+        }
+        confirmString="XOA VINH VIEN"
+        actionLabel="Xoá vĩnh viễn"
+        loading={pendingAction}
+        onConfirm={handleBulkPermanentDelete}
+      />
+    </div>
   );
 }

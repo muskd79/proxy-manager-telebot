@@ -48,7 +48,11 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
         request: "Request proxy",
         my: "My proxies",
         check: "Check proxy",
-        limit: "Quota & limits",
+        // Wave 26-D-post1/B vocab sweep — drop "Quota" wording (admin
+        // doc + Vietnamese label both use "request limit"/"giới hạn
+        // yêu cầu"). 14-char budget enforced by keyboard.test.ts still
+        // satisfied.
+        limit: "Request limit",
         return: "Return proxy",
         history: "History",
         help: "Help",
@@ -111,7 +115,7 @@ export function quantityKeyboard(
 ): InlineKeyboard {
   // Wave 23B-bot UX — Order riêng allows higher quantities since
   // admin will review anyway. Order nhanh stays at the original
-  // 1/2/5/10 throttle to protect auto-assignment quota.
+  // 1/2/5/10 throttle to protect the auto-assignment request limit.
   const cancel = lang === "vi" ? "Hủy" : "Cancel";
   if (mode === "custom") {
     return new InlineKeyboard()

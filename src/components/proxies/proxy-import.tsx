@@ -1160,16 +1160,20 @@ export function ProxyImport() {
                     <TableHead className="w-20" title="Cổng (1-65535, bắt buộc)">Cổng</TableHead>
                     <TableHead className="w-32" title="Tên đăng nhập của proxy (có thể trống nếu proxy public)">User</TableHead>
                     <TableHead className="w-24" title="Mật khẩu (đi kèm User)">Pass</TableHead>
-                    {/* Wave 26-A — "Loại detect" + "Tốc độ" only render
-                        AFTER the user clicks Auto-detect. Pre-fix two
-                        empty "—" columns took table width before any
-                        probe ran (user feedback: "tốc độ lúc thêm vào
-                        chưa quét được thì không cần có trong preview"). */}
+                    {/* Wave 26-A — only render "Tốc độ" AFTER probe
+                        runs. Pre-fix the empty "—" column took table
+                        width before any probe (user: "tốc độ lúc thêm
+                        vào chưa quét được thì không cần có trong
+                        preview").
+                        Wave 26-D-post1/C — DROP "Loại detect" column
+                        per user feedback "không cần cột này có thể
+                        cân nhắc xóa đi". Admin chooses protocol at
+                        top-level Phân loại; the per-row detected_type
+                        is still consulted internally (Wave 22I logic
+                        overrides batch type per-row), just hidden
+                        from the preview surface. */}
                     {probedCount > 0 && (
-                      <>
-                        <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
-                        <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
-                      </>
+                      <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
                     )}
                     <TableHead className="w-32" title="Trạng thái dòng: hợp lệ / lỗi format / alive / dead">Status</TableHead>
                   </TableRow>
@@ -1208,25 +1212,17 @@ export function ProxyImport() {
                             <span className="text-amber-600" title="Không có pass">—</span>
                           )}
                         </TableCell>
-                        {/* Wave 26-A — match the conditional header
-                            above. Cells only render when probe ran. */}
+                        {/* Wave 26-A → 26-D-post1/C — match conditional
+                            header above. Loại detect dropped per user
+                            feedback (xem comment header). Tốc độ kept. */}
                         {probedCount > 0 && (
-                          <>
-                            <TableCell className="font-mono text-xs">
-                              {proxy.detected_type ? (
-                                <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground" title="Chưa probe được">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {proxy.speed_ms != null ? (
-                                `${proxy.speed_ms}ms`
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          </>
+                          <TableCell className="font-mono text-xs">
+                            {proxy.speed_ms != null ? (
+                              `${proxy.speed_ms}ms`
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                         )}
                         <TableCell>
                           {!proxy.valid ? (
