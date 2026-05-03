@@ -46,12 +46,31 @@ export async function handleStatus(ctx: Context) {
     return `${Math.min(100, Math.round((safeUsed / limit) * 100))}%`;
   }
 
+  // Wave 25-pre3 (Pass 2.2) — quota state hint. Pre-fix the bar
+  // `[----------]` was ambiguous: limit=0 (admin disabled) vs
+  // used=limit (exhausted) both rendered as full empty. Now append
+  // the cause so the user knows whether to retry later or contact
+  // admin.
+  function quotaState(used: number, limit: number, lng: "vi" | "en"): string {
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return lng === "vi" ? " (không khả dụng)" : " (disabled)";
+    }
+    const safeUsed = Number.isFinite(used) && used > 0 ? used : 0;
+    if (safeUsed >= limit) {
+      return lng === "vi" ? " (đã hết quota)" : " (quota exhausted)";
+    }
+    return "";
+  }
+
   const hBar = progressBar(user.proxies_used_hourly, user.rate_limit_hourly);
   const dBar = progressBar(user.proxies_used_daily, user.rate_limit_daily);
   const tBar = progressBar(user.proxies_used_total, user.rate_limit_total);
   const hPct = pct(user.proxies_used_hourly, user.rate_limit_hourly);
   const dPct = pct(user.proxies_used_daily, user.rate_limit_daily);
   const tPct = pct(user.proxies_used_total, user.rate_limit_total);
+  const hState = quotaState(user.proxies_used_hourly, user.rate_limit_hourly, lang);
+  const dState = quotaState(user.proxies_used_daily, user.rate_limit_daily, lang);
+  const tState = quotaState(user.proxies_used_total, user.rate_limit_total, lang);
 
   const statusLines =
     lang === "vi"
@@ -63,9 +82,9 @@ export async function handleStatus(ctx: Context) {
           `Proxy hiện tại: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
           "*Giới hạn yêu cầu:*",
-          `Theo giờ: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (reset mỗi giờ)`,
-          `Theo ngày: ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (reset mỗi 24 giờ)`,
-          `Tổng cộng: ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (giới hạn trọn đời)`,
+          `Theo giờ: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly}${hState} (reset mỗi giờ)`,
+          `Theo ngày: ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily}${dState} (reset mỗi 24 giờ)`,
+          `Tổng cộng: ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total}${tState} (giới hạn trọn đời)`,
         ]
       : [
           "*Account Status*",
@@ -75,9 +94,9 @@ export async function handleStatus(ctx: Context) {
           `Current proxies: *${proxyCount ?? 0}* / ${user.max_proxies}`,
           "",
           "*Rate limits:*",
-          `Hourly: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly} (resets every hour)`,
-          `Daily:  ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily} (resets every 24 hours)`,
-          `Total:  ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total} (lifetime limit)`,
+          `Hourly: ${hPct} ${hBar} ${user.proxies_used_hourly}/${user.rate_limit_hourly}${hState} (resets every hour)`,
+          `Daily:  ${dPct} ${dBar} ${user.proxies_used_daily}/${user.rate_limit_daily}${dState} (resets every 24 hours)`,
+          `Total:  ${tPct} ${tBar} ${user.proxies_used_total}/${user.rate_limit_total}${tState} (lifetime limit)`,
         ];
 
   // Add reset time info

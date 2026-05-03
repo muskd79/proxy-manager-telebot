@@ -75,7 +75,24 @@ export async function handleQuantitySelection(
     });
 
     if (error || !data?.success || data.assigned === 0) {
-      const text = t("noProxyAvailable", lang);
+      // Wave 25-pre3 (Pass 2.6) — branch on pool size so the user
+      // knows whether to ping admin (kho rỗng) or just retry later
+      // (all currently assigned). One extra count() query, runs only
+      // on the failure path so cost is negligible.
+      const { count: poolCount } = await supabaseAdmin
+        .from("proxies")
+        .select("*", { count: "exact", head: true })
+        .eq("type", proxyType)
+        .eq("is_deleted", false);
+
+      const text = (poolCount ?? 0) === 0
+        ? (lang === "vi"
+            ? `[X] Loại ${proxyType.toUpperCase()} chưa có trong kho. Vui lòng liên hệ admin (/support) để bổ sung.`
+            : `[X] No ${proxyType.toUpperCase()} proxies in stock. Contact admin (/support) to add some.`)
+        : (lang === "vi"
+            ? `[X] Tất cả proxy ${proxyType.toUpperCase()} đang được sử dụng. Vui lòng thử lại sau ít phút.`
+            : `[X] All ${proxyType.toUpperCase()} proxies are currently in use. Please retry in a few minutes.`);
+
       await ctx.answerCallbackQuery();
       await ctx.reply(text);
       return;

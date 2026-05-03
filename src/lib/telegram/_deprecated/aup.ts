@@ -1,3 +1,18 @@
+/**
+ * @deprecated Wave 23C-fix (2026-04-29) — the AUP gate ("Bot has rules,
+ * tap to accept") was removed per user request "bỏ đoạn chấp nhận
+ * chính sách đi". This file is no longer imported from anywhere
+ * (see `src/lib/telegram/commands/index.ts`) and no callback path
+ * routes to it.
+ *
+ * Wave 25-pre3 (2026-05-03) — moved to `_deprecated/` to make the
+ * dead status visible. Ready for deletion once migration
+ * `050_drop_aup_accepted_at.sql` lands and `tele_users.aup_accepted_at`
+ * is gone. Tracked in `docs/decision-log.md#aup-cleanup`.
+ *
+ * DO NOT IMPORT FROM THIS FILE.
+ */
+
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";

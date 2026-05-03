@@ -5,6 +5,7 @@ import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { languageKeyboard } from "../keyboard";
 import { clearBotState, getBotState } from "../state";
+import { restartFlowKeyboard } from "../recovery-keyboard";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
 
@@ -77,10 +78,14 @@ export async function handleLanguageSelection(
   await ctx.editMessageText(text);
 
   if (wasMidFlow) {
+    // Wave 25-pre3 (Pass 2.B) — append a restart button so the user
+    // doesn't need to remember the slash command.
     const restartText = newLang === "vi"
-      ? "Phiên trước đã được hủy do đổi ngôn ngữ. Bấm /getproxy để bắt đầu lại."
-      : "Previous session cleared due to language change. Use /getproxy to start over.";
-    await ctx.reply(restartText);
+      ? "Phiên trước đã được huỷ do đổi ngôn ngữ. Bấm bên dưới để bắt đầu lại."
+      : "Previous session cleared due to language change. Tap below to start over.";
+    await ctx.reply(restartText, {
+      reply_markup: restartFlowKeyboard(newLang, "request"),
+    });
     await logChatMessage(
       user.id,
       null,

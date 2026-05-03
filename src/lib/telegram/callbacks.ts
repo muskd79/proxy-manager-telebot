@@ -38,6 +38,7 @@
  */
 
 import type { SupportedLanguage } from "@/types/telegram";
+import { captureError } from "@/lib/error-tracking";
 
 // ---------------------------------------------------------------------------
 // Domain types reused across the union
@@ -133,7 +134,15 @@ export function parseCallback(data: string): CallbackData | null {
     // `menu:return` but keyboards already rendered in user chat
     // history may still emit the old prefix. Map both to the new
     // canonical action so old buttons still work.
+    // Wave 25-pre3 (F.2) — emit breadcrumb so we can verify zero
+    // hits before removing the alias. Tracked in
+    // docs/decision-log.md#legacy-qty-callback (same expiry plan).
     if (action === "warranty") {
+      captureError(new Error("legacy_menu_warranty"), {
+        source: "callbacks.parseCallback",
+        level: "info",
+        extra: { data, alias: "menu:warranty → menu:return" },
+      });
       return { kind: "menu", action: "return" };
     }
     if (isMenuAction(action)) {
@@ -186,9 +195,18 @@ export function parseCallback(data: string): CallbackData | null {
       return null;
     }
     // Legacy qty:<type>:<n> — default to "quick".
+    // Wave 25-pre3 (Pass 7.B / F.2) — emit breadcrumb so we can verify
+    // zero hits before deleting this fallback. Tracked in
+    // docs/decision-log.md#legacy-qty-callback. Delete after 90 days
+    // of zero observed hits in production logs.
     if (parts.length === 3) {
       const n = parseInt(parts[2], 10);
       if (Number.isFinite(n) && n > 0) {
+        captureError(new Error("legacy_qty_callback"), {
+          source: "callbacks.parseCallback",
+          level: "info",
+          extra: { data, shape: "qty:<type>:<n>" },
+        });
         return { kind: "qty", mode: "quick", proxyType: parts[1], quantity: n };
       }
     }
