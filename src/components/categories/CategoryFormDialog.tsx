@@ -19,6 +19,7 @@ import { Loader2, Save } from "lucide-react";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
+  normalizeNetworkType,
   type NetworkType,
 } from "@/lib/proxy-labels";
 
@@ -102,7 +103,14 @@ export function CategoryFormDialog({
       setDefaultCountry(category.default_country ?? "");
       setDefaultProxyType(category.default_proxy_type ?? "");
       setDefaultIsp(category.default_isp ?? "");
-      setDefaultNetworkType(category.default_network_type ?? "");
+      // Wave 26-C — canonicalise legacy default_network_type values
+      // when populating the edit dialog so the Select widget shows
+      // the correct option (legacy "IPv4" → "datacenter_ipv4").
+      // Without this the Select would show "Chưa phân loại" since
+      // "IPv4" doesn't match any option's value attribute.
+      setDefaultNetworkType(
+        normalizeNetworkType(category.default_network_type) ?? "",
+      );
       setMinStock(category.min_stock_alert);
       setIsHidden(category.is_hidden);
     } else {
@@ -138,8 +146,11 @@ export function CategoryFormDialog({
         default_country: defaultCountry.trim() || null,
         default_proxy_type: defaultProxyType || null,
         default_isp: defaultIsp.trim() || null,
-        // Wave 22J — proxy classification default.
-        default_network_type: defaultNetworkType || null,
+        // Wave 22J → 26-C — proxy classification default. Normalise
+        // before submit so even if the form value gets out of sync
+        // with the canonical enum (e.g. via injected legacy data),
+        // the API stores a clean value.
+        default_network_type: normalizeNetworkType(defaultNetworkType),
         min_stock_alert: minStock,
       };
       if (isEdit) body.is_hidden = isHidden;

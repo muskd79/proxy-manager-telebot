@@ -52,8 +52,10 @@ import {
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
-import { parseProxyLine as parseProxyLineLib } from "@/lib/proxy-parse";
+import { parseProxyLine as parseProxyLineLib, dedupeByHostPort } from "@/lib/proxy-parse";
 import { buttonVariants } from "@/components/ui/button";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
+import { useSharedCache, useSharedQuery } from "@/lib/shared-cache";
 import Link from "next/link";
 
 /**
@@ -175,8 +177,52 @@ export function ProxyImport() {
   const [dropDead, setDropDead] = useState(true);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [countries, setCountries] = useState<string[]>([]);
-  const [categories, setCategories] = useState<ProxyCategoryOption[]>([]);
+  const cache = useSharedCache();
+
+  // Wave 26-C (gap 6.3) — countries + categories now share the
+  // dashboard-wide cache. Pre-fix mounting the wizard re-fetched
+  // both even though /proxies had loaded them seconds earlier.
+  // Cache key reused across components keeps everything in sync.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>(
+    "api:proxies:stats",
+    async () => {
+      const r = await fetch("/api/proxies/stats");
+      const d = await r.json();
+      return (d?.data ?? {}) as {
+        countries?: string[];
+        byCountry?: Record<string, number>;
+      };
+    },
+  );
+  const countries: string[] =
+    stats?.countries && Array.isArray(stats.countries)
+      ? stats.countries
+      : stats?.byCountry
+        ? Object.keys(stats.byCountry).sort()
+        : [];
+  const { data: categoriesFromCache = [] } = useSharedQuery<ProxyCategoryOption[]>(
+    "api:categories:full",
+    async () => {
+      const r = await fetch("/api/categories");
+      const d = await r.json();
+      if (!Array.isArray(d?.data)) return [];
+      return (d.data as ProxyCategoryOption[]).map((c) => ({
+        id: c.id,
+        name: c.name,
+        default_country: c.default_country,
+        default_proxy_type: c.default_proxy_type,
+        default_isp: c.default_isp,
+        default_network_type: c.default_network_type ?? null,
+        default_vendor_source: c.default_vendor_source ?? null,
+        default_purchase_price_usd: c.default_purchase_price_usd ?? null,
+        default_sale_price_usd: c.default_sale_price_usd ?? null,
+      }));
+    },
+  );
+  const categories = categoriesFromCache;
   // Wave 26-A — confirm dialog for bulk imports. Pre-fix a typo'd
   // "Import 1000" was irreversible (admin would have to bulk-delete
   // 1000 rows). Threshold 100 chosen so casual 1-30 imports stay
@@ -184,36 +230,10 @@ export function ProxyImport() {
   const BULK_CONFIRM_THRESHOLD = 100;
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/proxies/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.data?.countries) setCountries(d.data.countries);
-      })
-      .catch(() => {});
-
-    fetch("/api/categories")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d?.data)) {
-          setCategories(
-            (d.data as ProxyCategoryOption[]).map((c) => ({
-              id: c.id,
-              name: c.name,
-              default_country: c.default_country,
-              default_proxy_type: c.default_proxy_type,
-              default_isp: c.default_isp,
-              // Wave 22K — purchase metadata defaults from category.
-              default_network_type: c.default_network_type ?? null,
-              default_vendor_source: c.default_vendor_source ?? null,
-              default_purchase_price_usd: c.default_purchase_price_usd ?? null,
-              default_sale_price_usd: c.default_sale_price_usd ?? null,
-            })),
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // Wave 26-C — fetches moved into useSharedQuery above. The shared
+  // cache also dedupes if /proxies and the wizard mount in quick
+  // succession (e.g., admin lands on the page with `?import_batch_id=`
+  // open then opens the wizard for another import).
 
   // When admin picks a category, auto-fill the bulk fields with its
   // defaults (admin can still override per-form). Wave 22K extended:
@@ -225,7 +245,16 @@ export function ProxyImport() {
     if (cat.default_country) setCountry(cat.default_country);
     if (cat.default_proxy_type) setProxyType(cat.default_proxy_type);
     // Wave 22AB — default_isp prefill removed (column dropped from UI)
-    if (cat.default_network_type) setNetworkType(cat.default_network_type);
+    // Wave 26-C — canonicalise the category default before adopting
+    // it. Pre-fix the wizard wrote whatever the category had verbatim
+    // (`IPv4`, `Datacenter IPv4`, `Dân cư`), which then survived the
+    // server import. Now: legacy → canonical at adoption time, so
+    // the Select widget shows the real option label and the API
+    // receives a clean enum value.
+    if (cat.default_network_type) {
+      const canonical = normalizeNetworkType(cat.default_network_type);
+      if (canonical) setNetworkType(canonical);
+    }
     if (cat.default_vendor_source) setVendorSource(cat.default_vendor_source);
     if (cat.default_purchase_price_usd != null)
       setPurchasePrice(String(cat.default_purchase_price_usd));
@@ -246,19 +275,11 @@ export function ProxyImport() {
   // error that points to the original line number.
   function parseContent(content: string) {
     const lines = content.split(/\r?\n/).filter((l) => l.trim());
-    const parsed: ParsedProxy[] = lines.map((line, i) => parseProxyLineLib(line, i + 1));
-    const seenHostPort = new Map<string, number>(); // key → first line number
-    for (const p of parsed) {
-      if (!p.valid) continue;
-      const key = `${p.host}:${p.port}`;
-      if (seenHostPort.has(key)) {
-        p.valid = false;
-        p.error = `Trùng dòng ${seenHostPort.get(key)} (${key})`;
-      } else {
-        seenHostPort.set(key, p.line);
-      }
-    }
-    setParsedProxies(parsed);
+    const parsed = lines.map((line, i) => parseProxyLineLib(line, i + 1));
+    // Wave 26-C — dedupe is now a shared utility (see proxy-parse.ts);
+    // tests live in __tests__/proxy-parse.test.ts.
+    const deduped = dedupeByHostPort(parsed) as ParsedProxy[];
+    setParsedProxies(deduped);
     setResult(null);
     setProbeProgress(0);
     setProbeErrors([]);
@@ -505,12 +526,16 @@ export function ProxyImport() {
         raw: p.raw,
       }));
 
-      // Wave 26-A — normalize networkType client-side. Pre-fix `IPv4`
-      // / `ipv4` / `IPV4` would land as 3 distinct values in DB, which
-      // broke the network-type filter on the proxies list. The backend
-      // also normalises (defence-in-depth) but we want admins to see
-      // the canonical form before pressing Import.
-      const normalizedNetworkType = networkType.trim().toLowerCase() || undefined;
+      // Wave 26-A → 26-C — normalise networkType client-side. Pre-fix
+      // `IPv4` / `ipv4` / `IPV4` / `Datacenter IPv4` / `4G` would land
+      // as distinct values in DB, which broke the network-type filter
+      // on the proxies list. Wave 26-C upgraded the trim/lower path to
+      // call the shared `normalizeNetworkType` helper so the same
+      // alias map (Datacenter IPv4 → datacenter_ipv4, 4G → mobile,
+      // dân cư → residential) is applied everywhere — wizard, form,
+      // category-default-adoption, server. Empty / unknown → undefined
+      // (omitted from request) instead of an invalid string.
+      const normalizedNetworkType = normalizeNetworkType(networkType) ?? undefined;
 
       const res = await fetch("/api/proxies/import", {
         method: "POST",
@@ -559,10 +584,31 @@ export function ProxyImport() {
         if (r.failed > 0) parts.push(`${r.failed} lỗi`);
         const message = parts.join(" — ");
 
+        // Wave 26-C — toast action: "Xem lô vừa import" → /proxies?
+        // import_batch_id=<id>. Closes the gap between "import done"
+        // and "verify the batch end-to-end". Pre-fix admins had to
+        // hunt for newly-created rows in the global list.
+        const batchId = r.import_batch_id;
+        const toastOpts: Parameters<typeof toast.success>[1] = {
+          duration: 8000,
+          ...(batchId && r.imported > 0
+            ? {
+                action: {
+                  label: "Xem lô vừa import",
+                  onClick: () => {
+                    // Hard navigate so the /proxies page reads the
+                    // search param fresh from the URL — avoids any
+                    // stale SWR cache.
+                    window.location.href = `/proxies?import_batch_id=${batchId}`;
+                  },
+                },
+              }
+            : {}),
+        };
         if (r.failed > 0) {
-          toast.warning(message, { duration: 8000 });
+          toast.warning(message, toastOpts);
         } else {
-          toast.success(message, { duration: 8000 });
+          toast.success(message, toastOpts);
         }
 
         // Wave 26-A — reset form (keeps categoryId per the
@@ -697,22 +743,32 @@ export function ProxyImport() {
                 value={categoryId}
                 onValueChange={setCategoryId}
                 categories={categories}
-                onCategoryCreated={(c) =>
-                  setCategories((prev) => [
-                    ...prev,
-                    {
-                      id: c.id,
-                      name: c.name,
-                      default_country: c.default_country ?? null,
-                      default_proxy_type: (c.default_proxy_type as ProxyType | null) ?? null,
-                      default_isp: null,
-                      default_network_type: null,
-                      default_vendor_source: null,
-                      default_purchase_price_usd: null,
-                      default_sale_price_usd: null,
-                    },
-                  ])
-                }
+                onCategoryCreated={(c) => {
+                  // Wave 26-C — write through to the shared cache so
+                  // the new category propagates to /proxies + the
+                  // ProxyForm dialog without a re-fetch.
+                  const prev =
+                    cache.get<ProxyCategoryOption[]>("api:categories:full")?.data ??
+                    [];
+                  cache.set<ProxyCategoryOption[]>("api:categories:full", {
+                    data: [
+                      ...prev,
+                      {
+                        id: c.id,
+                        name: c.name,
+                        default_country: c.default_country ?? null,
+                        default_proxy_type:
+                          (c.default_proxy_type as ProxyType | null) ?? null,
+                        default_isp: null,
+                        default_network_type: null,
+                        default_vendor_source: null,
+                        default_purchase_price_usd: null,
+                        default_sale_price_usd: null,
+                      },
+                    ],
+                    fetchedAt: Date.now(),
+                  });
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Nếu chọn danh mục, các trường loại/quốc gia dưới sẽ tự fill từ default. Sửa nếu cần.
@@ -1238,16 +1294,26 @@ export function ProxyImport() {
                 )}
               </div>
             )}
-            {/* Wave 26-A — next-action CTAs. Pre-fix admin had to
-                navigate sidebar manually after import. Two buttons:
-                  - primary: jump to the proxies list (with success
-                    toast already fired earlier)
-                  - secondary: "Import thêm" — keeps the user on this
-                    page, the form was already cleared in handleImport. */}
+            {/* Wave 26-A → 26-C — next-action CTAs.
+                Pre-26-A admin had to navigate sidebar manually after
+                import. Pre-26-C the "Xem danh sách" button dropped
+                admins into the FULL list, mixing the new batch with
+                old inventory — finding the just-imported rows meant
+                eyeballing host:port. Now: primary CTA filters by
+                `import_batch_id` so admin sees ONLY the new rows. */}
             <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-              <Link href="/proxies" className={buttonVariants()}>
-                Xem danh sách proxy
-              </Link>
+              {result.import_batch_id && result.imported > 0 ? (
+                <Link
+                  href={`/proxies?import_batch_id=${result.import_batch_id}`}
+                  className={buttonVariants()}
+                >
+                  Xem lô vừa import ({result.imported})
+                </Link>
+              ) : (
+                <Link href="/proxies" className={buttonVariants()}>
+                  Xem danh sách proxy
+                </Link>
+              )}
               <Button variant="outline" onClick={() => setResult(null)}>
                 Import thêm
               </Button>

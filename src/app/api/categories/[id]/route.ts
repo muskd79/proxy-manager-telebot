@@ -4,6 +4,7 @@ import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { UpdateCategorySchema } from "@/lib/validations";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 /**
  * GET /api/categories/[id]
@@ -68,9 +69,22 @@ export async function PATCH(
       );
     }
 
+    // Wave 26-C — normalise default_network_type so the category
+    // default propagated to new proxies via proxy-form.tsx /
+    // proxy-import.tsx adoption stays canonical. Pre-fix admins
+    // editing a category to "IPv4" persisted that string verbatim,
+    // which then leaked back into proxies.network_type, breaking
+    // the filter dropdown match.
+    const updatePayload: Record<string, unknown> = { ...parsed.data };
+    if (updatePayload.default_network_type !== undefined) {
+      updatePayload.default_network_type = normalizeNetworkType(
+        updatePayload.default_network_type as string | null,
+      );
+    }
+
     const { data, error } = await supabase
       .from("proxy_categories")
-      .update(parsed.data)
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();

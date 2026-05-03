@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
+import { useSharedQuery } from "@/lib/shared-cache";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
 import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
@@ -63,9 +64,46 @@ export default function ProxiesPage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [countries, setCountries] = useState<string[]>([]);
-  // Wave 22Z — categories list for the new Danh mục filter dropdown.
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  // Wave 26-C (gap 6.3) — countries + categories now flow from the
+  // shared cache instead of page-local state. Pre-fix the page, the
+  // Sửa form, and the Import wizard each fetched the same two
+  // endpoints on mount — three identical calls per session. Now the
+  // first reader populates the cache; the rest are zero-network.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>("api:proxies:stats", async () => {
+    const r = await fetch("/api/proxies/stats");
+    if (!r.ok) return {};
+    const d = await r.json();
+    return (d?.data ?? {}) as {
+      countries?: string[];
+      byCountry?: Record<string, number>;
+    };
+  });
+  const countries: string[] = stats?.byCountry
+    ? Object.keys(stats.byCountry).sort()
+    : stats?.countries ?? [];
+
+  const { data: categoriesFromCache } = useSharedQuery<
+    Array<{
+      id: string;
+      name: string;
+      default_country?: string | null;
+      default_proxy_type?: string | null;
+      default_isp?: string | null;
+      default_network_type?: string | null;
+    }>
+  >("api:categories:full", async () => {
+    const r = await fetch("/api/categories");
+    if (!r.ok) return [];
+    const result = await r.json();
+    return Array.isArray(result?.data) ? result.data : [];
+  });
+  const categories: { id: string; name: string }[] = (categoriesFromCache ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
@@ -83,9 +121,14 @@ export default function ProxiesPage() {
   // Wave 26-B (gap 2.5) — soft banner when realtime drops. Pre-fix
   // CHANNEL_ERROR was console.error only — admin had no visual cue
   // that the auto-refresh on DB changes had stopped.
+  // Wave 26-C — fixed false-positive on cleanup CLOSED + admin-driven
+  // reconnect via realtimeKey bump (see useEffect below).
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "ok" | "error">(
     "connecting",
   );
+  // Bumping this state forces the realtime useEffect to tear down and
+  // re-subscribe — the path the "Tải lại" button takes.
+  const [realtimeKey, setRealtimeKey] = useState(0);
 
   // Phase 3 (PM UX) — read ?status= / ?type= / ?category_id= from
   // URL on first mount so dashboard KPI drill-down lands on a
@@ -100,6 +143,16 @@ export default function ProxiesPage() {
     status: (searchParams.get("status") as ProxyFiltersType["status"]) || undefined,
     type: (searchParams.get("type") as ProxyFiltersType["type"]) || undefined,
     categoryId: searchParams.get("category_id") || undefined,
+    // Wave 26-C — pre-load the import-batch filter so the post-import
+    // CTA "/proxies?import_batch_id=<uuid>" lands on a filtered view
+    // without an extra client tick. UUID-shape regex guards against
+    // junk URL params (the API also validates, but bouncing here
+    // keeps the banner from rendering for malformed IDs).
+    importBatchId:
+      (() => {
+        const v = searchParams.get("import_batch_id");
+        return v && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined;
+      })(),
   }));
 
   const fetchProxies = useCallback(async () => {
@@ -114,6 +167,9 @@ export default function ProxiesPage() {
       if (filters.expiryStatus) params.set("expiryStatus", filters.expiryStatus);
       // Wave 22Z — category filter wired through to ?category_id=
       if (filters.categoryId) params.set("category_id", filters.categoryId);
+      // Wave 26-C — import batch filter (UUID).
+      if (filters.importBatchId)
+        params.set("import_batch_id", filters.importBatchId);
       // Wave 22C: tags param removed — categories filter via ?category_id=X.
       // Wave 22Y — isp filter param removed (column dropped from UI)
       params.set("page", String(filters.page || 1));
@@ -135,47 +191,13 @@ export default function ProxiesPage() {
     }
   }, [filters]);
 
-  const fetchCountries = useCallback(async () => {
-    try {
-      const res = await fetch("/api/proxies/stats");
-      if (res.ok) {
-        const result = await res.json();
-        const byCountry = result.data?.byCountry || {};
-        setCountries(Object.keys(byCountry).sort());
-      }
-    } catch (err) {
-      console.error("Failed to fetch proxy countries:", err);
-    }
-  }, []);
-
-  // Wave 22Z — fetch categories once on mount for the filter dropdown.
-  // Excludes hidden categories (default behaviour of /api/categories).
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch("/api/categories");
-      if (res.ok) {
-        const result = await res.json();
-        const list = Array.isArray(result?.data) ? result.data : [];
-        setCategories(
-          list.map((c: { id: string; name: string }) => ({
-            id: c.id,
-            name: c.name,
-          })),
-        );
-      }
-    } catch (err) {
-      console.error("Failed to fetch categories:", err);
-    }
-  }, []);
+  // Wave 26-C — fetchCountries + fetchCategories removed. The data
+  // now flows from useSharedQuery (above) which handles fetch +
+  // dedupe + cache for the dashboard-wide audience.
 
   useEffect(() => {
     fetchProxies();
   }, [fetchProxies]);
-
-  useEffect(() => {
-    fetchCountries();
-    fetchCategories();
-  }, [fetchCountries, fetchCategories]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -220,6 +242,29 @@ export default function ProxiesPage() {
   // Realtime sync: re-fetch when proxies table changes (debounced to reduce load)
   const proxiesDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
+    // Wave 26-C — fix realtime banner false positive (user report
+    // 2026-05-03: banner showed even on first load with no actual
+    // failure). Two root causes:
+    //
+    // 1. fetchProxies is a useCallback whose identity changes on every
+    //    `filters` mutation. The effect's [fetchProxies] dep meant
+    //    every filter tweak tore down + re-subscribed the channel.
+    //    The teardown's `channel.unsubscribe()` invokes the subscribe
+    //    callback ONE more time with status="CLOSED" — pre-fix we
+    //    treated that as an error and flipped the banner on. Now
+    //    only CHANNEL_ERROR or TIMED_OUT count as real errors;
+    //    CLOSED (intentional teardown) does NOT.
+    //
+    // 2. The status callback ran AFTER the effect cleanup function
+    //    started executing — racing with the next effect's setup.
+    //    An `isCancelled` flag now gates state updates so a stale
+    //    callback can't flip the banner on a freshly-mounted instance.
+    //
+    // Also: drop fetchProxies from the dep array. The channel only
+    // needs to fire fetchProxies on a postgres_changes event; we
+    // grab the LATEST fetchProxies via a ref so the channel stays
+    // subscribed across filter changes (no more teardown thrash).
+    let isCancelled = false;
     const supabase = createClient();
     const channel = supabase
       .channel("proxies-changes")
@@ -228,28 +273,39 @@ export default function ProxiesPage() {
         // Debounce: only re-fetch after 2s of no changes
         clearTimeout(proxiesDebounceRef.current);
         proxiesDebounceRef.current = setTimeout(() => {
-          fetchProxies();
+          fetchProxiesRef.current?.();
         }, 2000);
       })
       .subscribe((status) => {
-        // Wave 26-B (gap 2.5) — surface the channel state to UI.
-        // CHANNEL_ERROR / TIMED_OUT / CLOSED all degrade live-sync;
-        // SUBSCRIBED is the happy path. The banner gives admins a
-        // way to know "the auto-refresh stopped — click reload" so
-        // they don't trust a stale list.
+        if (isCancelled) return; // stale callback after cleanup — drop
         if (status === "SUBSCRIBED") {
           setRealtimeStatus("ok");
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error("Realtime subscription error on proxies channel:", status);
           setRealtimeStatus("error");
         }
+        // CLOSED intentionally NOT treated as error — it's the normal
+        // status emitted during cleanup. We can't always tell apart
+        // server-side disconnects from voluntary teardown via the
+        // status alone; CHANNEL_ERROR / TIMED_OUT are the only
+        // statuses that unambiguously mean "real problem".
       });
 
     return () => {
+      isCancelled = true;
       clearTimeout(proxiesDebounceRef.current);
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtimeKey]);
+
+  // Wave 26-C — keep the realtime callback pointing at the latest
+  // fetchProxies (which closes over the latest filters). Without
+  // this ref the channel would fire a stale fetch with stale filters.
+  const fetchProxiesRef = useRef<typeof fetchProxies>(fetchProxies);
+  useEffect(() => {
+    fetchProxiesRef.current = fetchProxies;
   }, [fetchProxies]);
 
   function handleSort(column: string) {
@@ -586,11 +642,13 @@ export default function ProxiesPage() {
             size="sm"
             variant="outline"
             onClick={() => {
+              // Wave 26-C — explicit reconnect: bump realtimeKey to
+              // tear down the dead channel and create a fresh one.
+              // Also kick off a manual fetch so the table immediately
+              // reflects whatever changed during the outage.
               setRealtimeStatus("connecting");
+              setRealtimeKey((k) => k + 1);
               fetchProxies();
-              // Re-subscribe by changing fetchProxies identity.
-              // The useEffect with [fetchProxies] dep will tear down +
-              // resubscribe on the next render.
             }}
             className="h-7 gap-1.5 text-xs"
           >
@@ -625,6 +683,43 @@ export default function ProxiesPage() {
       </div>
 
       {/* Wave 22C: tag manager removed — see /categories for groupings */}
+
+      {/* Wave 26-C — import-batch filter banner. Renders only when the
+          URL carries a valid `import_batch_id`. Pre-fix admins arrived
+          on /proxies via the post-import CTA but had no visible cue
+          they were on a filtered view; the row count just looked
+          smaller than expected. Now: explicit chip with row count +
+          one-click clear button. */}
+      {filters.importBatchId && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 dark:border-blue-800 dark:bg-blue-950/40"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-blue-900 dark:text-blue-100">
+              Đang lọc theo lô import
+            </span>
+            <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-xs text-blue-900 dark:bg-blue-900/60 dark:text-blue-100">
+              {filters.importBatchId.slice(0, 8)}…
+            </code>
+            <span className="text-muted-foreground">
+              ({total} proxy{total === 0 ? " — không khớp" : ""})
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, importBatchId: undefined, page: 1 }));
+              // Strip the URL param so reload / share doesn't bring it back.
+              router.replace("/proxies");
+            }}
+          >
+            Xoá lọc
+          </Button>
+        </div>
+      )}
 
       <ProxyFilters
         filters={filters}

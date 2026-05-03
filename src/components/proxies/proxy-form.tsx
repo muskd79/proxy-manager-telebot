@@ -27,9 +27,11 @@ import { toast } from "sonner";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
+  normalizeNetworkType,
   type NetworkType,
 } from "@/lib/proxy-labels";
 import { CategoryPicker, type CategoryOptionLite } from "./category-picker";
+import { useSharedCache, useSharedQuery } from "@/lib/shared-cache";
 
 const proxyTypeValues = ["http", "https", "socks5"] as const;
 
@@ -122,8 +124,56 @@ export function ProxyForm({
   const [formData, setFormData] = useState(() => buildInitialFormData(proxy));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [countries, setCountries] = useState<string[]>([]);
-  const [categories, setCategories] = useState<CategoryFullDefaults[]>([]);
+  const cache = useSharedCache();
+
+  // Wave 26-C (gap 6.3) — countries + categories now come from the
+  // shared cache. Pre-fix every Sửa dialog opening re-fetched both
+  // lists even though they hadn't changed since page mount. With
+  // `useSharedQuery` the first read populates the cache, every
+  // subsequent dialog mount within the TTL window is zero network.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>(
+    open ? "api:proxies:stats" : null,
+    async () => {
+      const r = await fetch("/api/proxies/stats");
+      const d = await r.json();
+      return (d?.data ?? {}) as {
+        countries?: string[];
+        byCountry?: Record<string, number>;
+      };
+    },
+  );
+  const countries: string[] =
+    stats?.countries && Array.isArray(stats.countries)
+      ? stats.countries
+      : stats?.byCountry
+        ? Object.keys(stats.byCountry).sort()
+        : [];
+  const { data: categories = [] } = useSharedQuery<CategoryFullDefaults[]>(
+    open ? "api:categories:full" : null,
+    async () => {
+      const r = await fetch("/api/categories");
+      const d = await r.json();
+      if (!Array.isArray(d?.data)) return [];
+      return (
+        d.data as Array<{
+          id: string;
+          name: string;
+          default_country?: string | null;
+          default_proxy_type?: string | null;
+          default_network_type?: string | null;
+        }>
+      ).map((c) => ({
+        id: c.id,
+        name: c.name,
+        default_country: c.default_country ?? null,
+        default_proxy_type: c.default_proxy_type ?? null,
+        default_network_type: c.default_network_type ?? null,
+      }));
+    },
+  );
 
   // Wave 26-B (gap 1.1) — reset form when the `proxy` prop changes
   // OR when the dialog reopens. Pre-fix: stale data from previous
@@ -138,37 +188,9 @@ export function ProxyForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proxy?.id, open]);
 
-  useEffect(() => {
-    fetch("/api/proxies/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.data?.countries) setCountries(d.data.countries);
-      })
-      .catch(() => {});
-
-    fetch("/api/categories")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d?.data)) {
-          setCategories(
-            (d.data as Array<{
-              id: string;
-              name: string;
-              default_country?: string | null;
-              default_proxy_type?: string | null;
-              default_network_type?: string | null;
-            }>).map((c) => ({
-              id: c.id,
-              name: c.name,
-              default_country: c.default_country ?? null,
-              default_proxy_type: c.default_proxy_type ?? null,
-              default_network_type: c.default_network_type ?? null,
-            })),
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // Wave 26-C — countries + categories were fetched here pre-26-C
+  // and now flow through useSharedQuery above. The category-defaults
+  // useEffect below still runs unchanged (consumes `categories`).
 
   // Wave 26-B (gap 1.7) — auto-fill category defaults. Pre-fix the
   // single-proxy form ignored category defaults (only the import
@@ -191,11 +213,12 @@ export function ProxyForm({
       (validProxyTypes as readonly string[]).includes(cat.default_proxy_type)
         ? (cat.default_proxy_type as (typeof validProxyTypes)[number])
         : null;
-    const defaultNetworkType =
-      cat.default_network_type &&
-      (NETWORK_TYPE_VALUES as readonly string[]).includes(cat.default_network_type)
-        ? (cat.default_network_type as NetworkType)
-        : null;
+    // Wave 26-C — normalise the category's default_network_type so
+    // legacy values (`IPv4`, `Dân cư`, `4G`) are adopted instead of
+    // being silently dropped. Pre-fix, only canonical enum values
+    // were accepted, so a category created before Wave 26-A would
+    // have its default fail to propagate to new proxies.
+    const defaultNetworkType = normalizeNetworkType(cat.default_network_type);
 
     setFormData((prev) => ({
       ...prev,
@@ -242,7 +265,12 @@ export function ProxyForm({
         host: formData.host,
         port: parseInt(formData.port),
         type: formData.type,
-        network_type: formData.network_type || null,
+        // Wave 26-C — normalise on submit too. The Select widget
+        // already constrains values to canonical enum, but a stale
+        // form re-mount or external script could inject a legacy
+        // alias; canonicalise once more so the API contract stays
+        // strict regardless of the form's input source.
+        network_type: normalizeNetworkType(formData.network_type),
         username: formData.username || null,
         password: formData.password || null,
         country: formData.country || null,
@@ -497,7 +525,30 @@ export function ProxyForm({
               value={formData.category_id}
               onValueChange={(id) => handleChange("category_id", id)}
               categories={categories}
-              onCategoryCreated={(c) => setCategories((prev) => [...prev, c])}
+              onCategoryCreated={(c) => {
+                // Wave 26-C — cache write-through. Pre-fix the local
+                // setCategories state diverged from the cache held by
+                // OTHER components (Import wizard, /proxies page),
+                // so the new category showed in this dialog only
+                // until the next API read. Now: append to the
+                // cache, every consumer's useSharedQuery picks it up.
+                const prev =
+                  cache.get<CategoryFullDefaults[]>("api:categories:full")?.data ??
+                  [];
+                cache.set<CategoryFullDefaults[]>("api:categories:full", {
+                  data: [
+                    ...prev,
+                    {
+                      id: c.id,
+                      name: c.name,
+                      default_country: c.default_country ?? null,
+                      default_proxy_type: c.default_proxy_type ?? null,
+                      default_network_type: null,
+                    },
+                  ],
+                  fetchedAt: Date.now(),
+                });
+              }}
             />
             <p className="text-xs text-muted-foreground">
               Nhóm proxy theo danh mục để dễ giao + thống kê. Tuỳ chọn.

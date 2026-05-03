@@ -8,6 +8,7 @@ import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { assertSameOrigin } from "@/lib/csrf";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 interface ImportProxyRow {
   host: string;
@@ -56,10 +57,23 @@ export async function POST(request: NextRequest) {
       sale_price_usd,
     } = parsed.data;
 
+    // Wave 26-C — normalise the bulk-applied network_type ONCE (not
+    // per-row, since it's a single shared value). Pre-fix the wizard
+    // already lowercased client-side, but we keep server-side
+    // canonicalisation as defence-in-depth so direct API callers /
+    // future bulk paths can't write `IPv4` straight into DB.
+    const canonicalNetworkType = normalizeNetworkType(network_type);
+
     const importId = crypto.randomUUID();
 
+    // Wave 26-C — surface the batch UUID to the client (mirrors what
+    // already lives in result.importId, but with the canonical name
+    // matching the new proxies.import_batch_id column). The wizard
+    // uses this to render a "Xem lô vừa import" link that filters
+    // /proxies?import_batch_id=<id>.
     const result: ImportProxyResult & { importId: string } = {
       importId,
+      import_batch_id: importId,
       total: proxies.length,
       imported: 0,
       skipped: 0,
@@ -105,12 +119,17 @@ export async function POST(request: NextRequest) {
         // Wave 22K — bulk-applied per-proxy purchase metadata.
         // Reuses Wave 21A columns: purchase_date / vendor_label /
         // cost_usd. sale_price_usd is new in Wave 22K.
-        network_type: network_type || null,
+        network_type: canonicalNetworkType,
         purchase_date: purchase_date || new Date().toISOString().slice(0, 10),
         expires_at: expires_at || null,
         vendor_label: vendor_source || null,
         cost_usd: purchase_price_usd ?? null,
         sale_price_usd: sale_price_usd ?? null,
+        // Wave 26-C — stamp every row with the same batch UUID so the
+        // post-import "Xem lô vừa import" link can SELECT them back.
+        // Pre-fix the importId only lived in activity_logs.details,
+        // useful for forensics but not for the UI's filter.
+        import_batch_id: importId,
         status: "available",
         is_deleted: false,
         created_by: admin.id,

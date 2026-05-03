@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { RoleProvider } from "@/lib/role-context";
 import { I18nProvider } from "@/lib/i18n";
+import { SharedCacheProvider } from "@/lib/shared-cache";
 import type { Role } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -31,6 +32,7 @@ export default async function DashboardLayout({
   return (
     <RoleProvider role={(admin?.role as Role) ?? "viewer"}>
       <I18nProvider>
+        <SharedCacheProvider>
         {/* Wave 22N — WCAG 2.1 AA: skip-to-content link.
             Hidden until keyboard focus, then jumps screen-reader / keyboard
             users past the sidebar + header straight to <main>. */}
@@ -75,6 +77,7 @@ export default async function DashboardLayout({
             </main>
           </div>
         </div>
+        </SharedCacheProvider>
       </I18nProvider>
     </RoleProvider>
   );

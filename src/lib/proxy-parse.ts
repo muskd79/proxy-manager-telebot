@@ -94,3 +94,35 @@ export function parseProxyText(content: string): ParsedProxyLine[] {
     .filter((l) => l.trim())
     .map((line, i) => parseProxyLine(line, i + 1));
 }
+
+/**
+ * Wave 26-A → 26-C — pure dedupe helper. Walks a parsed batch and
+ * flags duplicate `host:port` rows AFTER the first occurrence as
+ * invalid with a message pointing at the original line number.
+ *
+ * Pre-fix the dedupe lived inside ProxyImport's parseContent
+ * closure — couldn't unit-test, no regression coverage. Now it's
+ * a stable utility shared between the wizard and any future
+ * server-side import path that needs the same check.
+ *
+ * Returns a NEW array; input is not mutated. Order preserved so
+ * the caller can keep their (line-number-keyed) UI rendering
+ * unchanged.
+ */
+export function dedupeByHostPort<T extends ParsedProxyLine>(rows: T[]): T[] {
+  const seen = new Map<string, number>(); // host:port → first line number
+  return rows.map((p) => {
+    if (!p.valid) return p;
+    const key = `${p.host}:${p.port}`;
+    const firstLine = seen.get(key);
+    if (firstLine !== undefined) {
+      return {
+        ...p,
+        valid: false,
+        error: `Trùng dòng ${firstLine} (${key})`,
+      };
+    }
+    seen.set(key, p.line);
+    return p;
+  });
+}

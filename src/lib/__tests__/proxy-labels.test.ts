@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   networkTypeLabel,
+  normalizeNetworkType,
   proxyStatusBadges,
   deriveExpiryStatus,
   EXPIRY_LABEL,
   NETWORK_TYPE_LABEL,
+  NETWORK_TYPE_VALUES,
   STATUS_LABEL,
 } from "@/lib/proxy-labels";
 
@@ -42,6 +44,97 @@ describe("networkTypeLabel — Wave 22AB", () => {
     for (const k of keys) {
       expect(typeof NETWORK_TYPE_LABEL[k as keyof typeof NETWORK_TYPE_LABEL]).toBe("string");
     }
+  });
+});
+
+// Wave 26-C — user reported "cột loại mạng đang không đồng bộ".
+// Root cause: legacy rows wrote IPv4 / Datacenter IPv4 / dân cư /
+// 4G into proxies.network_type before Wave 26-A added client-side
+// normalisation. The /proxies filter sent canonical values (e.g.
+// `datacenter_ipv4`) and `.eq()` failed to match — admins saw zero
+// rows under "Datacenter IPv4" filter while the table clearly showed
+// some. The fix: normalise on EVERY write path AND on label rendering
+// so legacy rows still display + filter consistently.
+describe("normalizeNetworkType — Wave 26-C sync hardening", () => {
+  it("returns null for null / undefined / empty / whitespace", () => {
+    expect(normalizeNetworkType(null)).toBeNull();
+    expect(normalizeNetworkType(undefined)).toBeNull();
+    expect(normalizeNetworkType("")).toBeNull();
+    expect(normalizeNetworkType("   ")).toBeNull();
+    expect(normalizeNetworkType("\t\n")).toBeNull();
+  });
+
+  it("returns the same canonical value for already-canonical input", () => {
+    for (const v of NETWORK_TYPE_VALUES) {
+      expect(normalizeNetworkType(v)).toBe(v);
+    }
+  });
+
+  it("is case-insensitive for canonical values", () => {
+    expect(normalizeNetworkType("ISP")).toBe("isp");
+    expect(normalizeNetworkType("Isp")).toBe("isp");
+    expect(normalizeNetworkType("DATACENTER_IPV4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("Static_Residential")).toBe("static_residential");
+  });
+
+  it("collapses spaces / dashes to underscores (legacy import flavour)", () => {
+    expect(normalizeNetworkType("Datacenter IPv4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("datacenter ipv4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("datacenter-ipv4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("Static Residential")).toBe("static_residential");
+    expect(normalizeNetworkType("static-residential")).toBe("static_residential");
+  });
+
+  it("recognises common human-friendly aliases", () => {
+    expect(normalizeNetworkType("IPv4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("ipv4")).toBe("datacenter_ipv4");
+    expect(normalizeNetworkType("IPv6")).toBe("datacenter_ipv6");
+    expect(normalizeNetworkType("4G")).toBe("mobile");
+    expect(normalizeNetworkType("5G")).toBe("mobile");
+    expect(normalizeNetworkType("4g/5g")).toBe("mobile");
+    expect(normalizeNetworkType("LTE")).toBe("mobile");
+    expect(normalizeNetworkType("Dân cư")).toBe("residential");
+    expect(normalizeNetworkType("dan cu")).toBe("residential");
+    expect(normalizeNetworkType("resi")).toBe("residential");
+  });
+
+  it("strips surrounding whitespace + collapses internal multi-space", () => {
+    expect(normalizeNetworkType("  ISP  ")).toBe("isp");
+    expect(normalizeNetworkType("Datacenter   IPv4")).toBe("datacenter_ipv4");
+  });
+
+  it("returns null for genuinely unknown input (signals data error)", () => {
+    expect(normalizeNetworkType("alien-network")).toBeNull();
+    expect(normalizeNetworkType("xxx")).toBeNull();
+    expect(normalizeNetworkType("123")).toBeNull();
+  });
+
+  it("idempotent — applying twice yields the same canonical value", () => {
+    const inputs = ["IPv4", "Datacenter IPv4", "dân cư", "4g", "static residential"];
+    for (const i of inputs) {
+      const once = normalizeNetworkType(i);
+      const twice = normalizeNetworkType(once);
+      expect(once).toBe(twice);
+      expect(once).not.toBeNull();
+    }
+  });
+});
+
+describe("networkTypeLabel — legacy value resilience (Wave 26-C)", () => {
+  it("renders legacy 'IPv4' as 'Datacenter IPv4'", () => {
+    expect(networkTypeLabel("IPv4")).toBe("Datacenter IPv4");
+  });
+
+  it("renders legacy 'dân cư' as 'Dân cư'", () => {
+    expect(networkTypeLabel("dân cư")).toBe("Dân cư");
+  });
+
+  it("renders legacy '4G' as 'Mobile (4G/5G)'", () => {
+    expect(networkTypeLabel("4G")).toBe("Mobile (4G/5G)");
+  });
+
+  it("falls through to raw value for unrecognised input (lets admin spot bad data)", () => {
+    expect(networkTypeLabel("alien-network")).toBe("alien-network");
   });
 });
 

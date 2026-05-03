@@ -49,9 +49,96 @@ export const NETWORK_TYPE_BADGE: Record<
   static_residential: "default",
 };
 
-export function networkTypeLabel(t: NetworkType | null | undefined): string {
+/**
+ * Wave 26-C — alias map for legacy / human-friendly network_type values
+ * that should be normalised to the canonical enum. Pre-fix, the import
+ * wizard wrote `IPv4`, `Datacenter IPv4`, `dân cư`, `4G`, etc.
+ * directly into proxies.network_type because the schema only enforced
+ * length, not enum membership. The /proxies filter dropdown (which
+ * sends canonical values like `datacenter_ipv4`) then failed to match
+ * those rows — admins reported the list "không đồng bộ" with the
+ * filter result count.
+ *
+ * Keys MUST be lower-case. We canonicalise by lower-casing the input
+ * BEFORE looking up here.
+ */
+const NETWORK_TYPE_ALIASES: Record<string, NetworkType> = {
+  // Canonical (idempotent — the lower-cased canonical maps to itself)
+  isp: "isp",
+  datacenter_ipv4: "datacenter_ipv4",
+  datacenter_ipv6: "datacenter_ipv6",
+  residential: "residential",
+  mobile: "mobile",
+  static_residential: "static_residential",
+  // Legacy / human-friendly variants seen in production data
+  "datacenter ipv4": "datacenter_ipv4",
+  "datacenter-ipv4": "datacenter_ipv4",
+  ipv4: "datacenter_ipv4",
+  dc_ipv4: "datacenter_ipv4",
+  dc4: "datacenter_ipv4",
+  "datacenter ipv6": "datacenter_ipv6",
+  "datacenter-ipv6": "datacenter_ipv6",
+  ipv6: "datacenter_ipv6",
+  dc_ipv6: "datacenter_ipv6",
+  dc6: "datacenter_ipv6",
+  "dân cư": "residential",
+  "dan cu": "residential",
+  resi: "residential",
+  res: "residential",
+  "4g": "mobile",
+  "5g": "mobile",
+  "4g/5g": "mobile",
+  lte: "mobile",
+  "static residential": "static_residential",
+  "static-residential": "static_residential",
+  "resi tĩnh": "static_residential",
+  static_resi: "static_residential",
+};
+
+/**
+ * Wave 26-C — normalise any user-supplied / legacy network_type value
+ * to the canonical enum. Returns `null` for empty / unrecognised input.
+ *
+ * Idempotent: passing a canonical value returns it unchanged. Pure —
+ * no side effects, no DB calls.
+ *
+ * Used by:
+ *   - All four /api/proxies write paths (POST, PATCH, import, GET filter)
+ *   - The category default_network_type write paths
+ *   - The proxy form / import / category form on submit
+ *   - networkTypeLabel() so even legacy DB rows render correctly
+ */
+export function normalizeNetworkType(
+  raw: string | null | undefined,
+): NetworkType | null {
+  if (raw == null) return null;
+  const cleaned = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!cleaned) return null;
+  // Direct hit (canonical or known alias)
+  const direct = NETWORK_TYPE_ALIASES[cleaned];
+  if (direct) return direct;
+  // Try with spaces collapsed to underscores (e.g. "static residential")
+  const underscored = cleaned.replace(/[\s-]/g, "_");
+  const viaUnderscore = NETWORK_TYPE_ALIASES[underscored];
+  if (viaUnderscore) return viaUnderscore;
+  // Final fallback: the cleaned string itself if it's a known canonical
+  if ((NETWORK_TYPE_VALUES as readonly string[]).includes(underscored)) {
+    return underscored as NetworkType;
+  }
+  return null;
+}
+
+export function networkTypeLabel(
+  t: NetworkType | string | null | undefined,
+): string {
   if (!t) return "Chưa phân loại";
-  return NETWORK_TYPE_LABEL[t] ?? t;
+  // Normalise first so legacy rows (e.g. "IPv4", "Datacenter IPv4")
+  // still render as "Datacenter IPv4" instead of leaking the raw value.
+  const canonical = normalizeNetworkType(t);
+  if (canonical) return NETWORK_TYPE_LABEL[canonical];
+  // Unrecognised — fall through to the raw string so admins can spot
+  // the bad data and clean it up via bulk-edit.
+  return t;
 }
 
 // ============================================================

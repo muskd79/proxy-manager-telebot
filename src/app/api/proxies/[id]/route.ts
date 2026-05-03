@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/logger";
 import { UpdateProxySchema } from "@/lib/validations";
 import { proxyMachine } from "@/lib/state-machine/proxy";
 import { assertSameOrigin } from "@/lib/csrf";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 export async function GET(
   request: NextRequest,
@@ -163,7 +164,10 @@ export async function PUT(
     // network_type fields. API name → DB column mapping mirrors
     // import/route.ts: vendor_source → vendor_label,
     // purchase_price_usd → cost_usd. The other names are 1-to-1.
-    if (network_type !== undefined) updateData.network_type = network_type || null;
+    // Wave 26-C — normalise on PATCH too. If admin types `IPv4` in the
+    // edit form, we still write canonical `datacenter_ipv4` to DB.
+    if (network_type !== undefined)
+      updateData.network_type = normalizeNetworkType(network_type);
     if (category_id !== undefined) updateData.category_id = category_id || null;
     if (purchase_date !== undefined) updateData.purchase_date = purchase_date || null;
     if (purchase_price_usd !== undefined) updateData.cost_usd = purchase_price_usd ?? null;

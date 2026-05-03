@@ -247,6 +247,14 @@ export interface Proxy {
   distribute_count: number;
   /** Last distribution time (fair-rotation tie-breaker). */
   last_distributed_at: string | null;
+  /**
+   * Wave 26-C — opaque UUID shared by every row from a single
+   * /api/proxies/import call. Lets admins jump straight from the
+   * post-import success toast to a filtered /proxies view of the
+   * batch. NULL for proxies created via single-add or pre-Wave-26-C
+   * imports. See migration 056.
+   */
+  import_batch_id?: string | null;
 }
 
 // Wave 22S (Phase 8) — PurchaseLot interface removed.

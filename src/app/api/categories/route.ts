@@ -5,6 +5,7 @@ import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { CreateCategorySchema } from "@/lib/validations";
 import type { ProxyCategory } from "@/types/database";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 /**
  * GET /api/categories
@@ -95,6 +96,19 @@ export async function POST(request: NextRequest) {
         default_country: parsed.data.default_country ?? null,
         default_proxy_type: parsed.data.default_proxy_type ?? null,
         default_isp: parsed.data.default_isp ?? null,
+        // Wave 26-C — pre-fix the schema accepted default_network_type +
+        // default_vendor_source + default_purchase_price_usd +
+        // default_sale_price_usd but the route silently dropped them on
+        // CREATE (only the PATCH route persisted them via the
+        // `.update(parsed.data)` spread). New categories therefore had
+        // no effective defaults until an admin opened-and-saved them.
+        // Now they're persisted on insert too — and network_type is
+        // canonicalised so category-default propagation matches the
+        // proxy enum.
+        default_network_type: normalizeNetworkType(parsed.data.default_network_type),
+        default_vendor_source: parsed.data.default_vendor_source ?? null,
+        default_purchase_price_usd: parsed.data.default_purchase_price_usd ?? null,
+        default_sale_price_usd: parsed.data.default_sale_price_usd ?? null,
         min_stock_alert: parsed.data.min_stock_alert ?? 0,
         created_by: admin.id,
       })
