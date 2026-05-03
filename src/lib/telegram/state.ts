@@ -39,7 +39,18 @@ export type BotState =
       quantity: number;
       mode: OrderModeStored;
     }
-  | { step: "awaiting_check_list" };
+  | { step: "awaiting_check_list" }
+  /**
+   * Wave 26-D-2B — warranty reason "other" text input.
+   *
+   * After user picks proxy + reason_code = "other" from the inline
+   * keyboard, bot prompts for a free-text description. Until they
+   * reply (or send /cancel), every text message routes to the
+   * warranty submit handler.
+   *
+   * Mirror of the awaiting_custom_qty pattern (custom-order flow).
+   */
+  | { step: "awaiting_warranty_reason_text"; proxyId: string };
 
 const STATE_TTL_MS = 30 * 60 * 1000; // 30 min
 
@@ -49,6 +60,7 @@ const VALID_STEPS: ReadonlySet<BotStep> = new Set([
   "awaiting_custom_qty",
   "awaiting_confirm",
   "awaiting_check_list",
+  "awaiting_warranty_reason_text",
 ]);
 
 /**
@@ -70,6 +82,8 @@ function reconstructState(
       : null;
   const mode =
     ctxRaw.mode === "quick" || ctxRaw.mode === "custom" ? ctxRaw.mode : null;
+  // Wave 26-D-2B — warranty proxy_id field is UUID-shaped string.
+  const proxyId = typeof ctxRaw.proxyId === "string" ? ctxRaw.proxyId : null;
 
   switch (step as BotStep) {
     case "idle":
@@ -85,6 +99,9 @@ function reconstructState(
       return { step: "awaiting_confirm", proxyType, quantity, mode };
     case "awaiting_check_list":
       return { step: "awaiting_check_list" };
+    case "awaiting_warranty_reason_text":
+      if (!proxyId || !/^[0-9a-f-]{36}$/i.test(proxyId)) return null;
+      return { step: "awaiting_warranty_reason_text", proxyId };
   }
 }
 
@@ -108,6 +125,8 @@ function serializeContext(state: BotState): Record<string, unknown> {
       };
     case "awaiting_check_list":
       return { proxyType: null, quantity: null, mode: null };
+    case "awaiting_warranty_reason_text":
+      return { proxyId: state.proxyId, proxyType: null, quantity: null, mode: null };
   }
 }
 

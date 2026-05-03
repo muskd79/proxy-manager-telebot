@@ -42,6 +42,8 @@ import { UpdateWarrantyClaimSchema } from "@/lib/validations/warranty";
 import { pickReplacementProxy } from "@/lib/warranty/allocator";
 import { loadWarrantySettings } from "@/lib/warranty/settings";
 import { logProxyEvent } from "@/lib/warranty/events";
+import { sendTelegramMessage } from "@/lib/telegram/send";
+import { safeCredentialString } from "@/lib/telegram/format";
 import type { ApiResponse } from "@/types/api";
 import type {
   Proxy,
@@ -298,6 +300,16 @@ async function handleApprove(args: {
     }),
   ]);
 
+  // 6. Notify user via bot Telegram (F1=c). Best-effort — failed
+  // notification doesn't roll back the approval. Fetch telegram_id +
+  // language from tele_users for the DM.
+  void notifyUserApproved(userId, original, replacement).catch((err) => {
+    captureError(err, {
+      source: "api.warranty.approve.notify_user",
+      extra: { claim_id: claimId, user_id: userId },
+    });
+  });
+
   return NextResponse.json({
     success: true,
     data: {
@@ -374,8 +386,112 @@ async function handleReject(args: {
     },
   });
 
+  // 4. Notify user (best-effort, F1=c).
+  void notifyUserRejected(updatedClaim.user_id, proxyId, rejection_reason).catch(
+    (err) => {
+      captureError(err, {
+        source: "api.warranty.reject.notify_user",
+        extra: { claim_id: claimId, user_id: updatedClaim.user_id },
+      });
+    },
+  );
+
   return NextResponse.json({
     success: true,
     data: { claim: updatedClaim as WarrantyClaim },
   } satisfies ApiResponse<RejectResult>);
+}
+
+// ─── Notification helpers ─────────────────────────────────────────────
+async function notifyUserApproved(
+  userId: string,
+  originalProxy: Proxy,
+  replacement: Proxy,
+): Promise<void> {
+  const { data: user } = await supabaseAdmin
+    .from("tele_users")
+    .select("telegram_id, language")
+    .eq("id", userId)
+    .single();
+  if (!user?.telegram_id) return;
+
+  const lang = user.language === "en" ? "en" : "vi";
+  const credential = `\`${safeCredentialString(replacement.host, replacement.port, replacement.username, replacement.password)}\``;
+
+  const text =
+    lang === "vi"
+      ? [
+          "*Bảo hành proxy đã được duyệt*",
+          "",
+          `Proxy gốc: \`${originalProxy.host}:${originalProxy.port}\` đã được thay thế.`,
+          "",
+          `*Proxy mới của bạn:*`,
+          credential,
+          `(${replacement.type.toUpperCase()})`,
+          "",
+          "Hạn dùng giữ nguyên như proxy gốc. Chúc bạn dùng tốt!",
+        ].join("\n")
+      : [
+          "*Warranty approved*",
+          "",
+          `Original: \`${originalProxy.host}:${originalProxy.port}\` has been replaced.`,
+          "",
+          `*Your new proxy:*`,
+          credential,
+          `(${replacement.type.toUpperCase()})`,
+          "",
+          "Expiry date is preserved from the original. Enjoy!",
+        ].join("\n");
+
+  await sendTelegramMessage(user.telegram_id, text);
+}
+
+async function notifyUserRejected(
+  userId: string,
+  proxyId: string,
+  rejectionReason: string,
+): Promise<void> {
+  const [userRes, proxyRes] = await Promise.all([
+    supabaseAdmin
+      .from("tele_users")
+      .select("telegram_id, language")
+      .eq("id", userId)
+      .single(),
+    supabaseAdmin
+      .from("proxies")
+      .select("host, port")
+      .eq("id", proxyId)
+      .single(),
+  ]);
+  if (!userRes.data?.telegram_id) return;
+
+  const lang = userRes.data.language === "en" ? "en" : "vi";
+  const proxyLabel = proxyRes.data
+    ? `\`${proxyRes.data.host}:${proxyRes.data.port}\``
+    : "proxy";
+
+  const text =
+    lang === "vi"
+      ? [
+          "*Yêu cầu bảo hành bị từ chối*",
+          "",
+          `Proxy: ${proxyLabel}`,
+          "",
+          `*Lý do từ chối:*`,
+          rejectionReason,
+          "",
+          "Bạn vẫn có thể tiếp tục dùng proxy này.",
+        ].join("\n")
+      : [
+          "*Warranty rejected*",
+          "",
+          `Proxy: ${proxyLabel}`,
+          "",
+          `*Reason:*`,
+          rejectionReason,
+          "",
+          "You can continue using this proxy.",
+        ].join("\n");
+
+  await sendTelegramMessage(userRes.data.telegram_id, text);
 }

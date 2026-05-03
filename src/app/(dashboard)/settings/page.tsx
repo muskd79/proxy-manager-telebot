@@ -33,6 +33,12 @@ interface SettingsForm {
   global_max_proxies: number;
   global_max_total_requests: number;
   admin_telegram_ids: string;
+  // Wave 26-D-2B — warranty thresholds.
+  warranty_eligibility_unlimited: boolean;
+  warranty_max_pending: number;
+  warranty_max_per_30d: number;
+  warranty_cooldown_minutes: number;
+  warranty_reliability_decrement: number;
 }
 
 export default function SettingsPage() {
@@ -50,6 +56,12 @@ export default function SettingsPage() {
     global_max_proxies: 5,
     global_max_total_requests: 100,
     admin_telegram_ids: "",
+    // Wave 26-D defaults — must match mig 057 seed values.
+    warranty_eligibility_unlimited: false,
+    warranty_max_pending: 2,
+    warranty_max_per_30d: 5,
+    warranty_cooldown_minutes: 60,
+    warranty_reliability_decrement: 25,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,6 +123,23 @@ export default function SettingsPage() {
                   ? (loaded.admin_telegram_ids as number[]).join(", ")
                   : String(loaded.admin_telegram_ids)
                 : prev.admin_telegram_ids,
+            // Wave 26-D-2B — load warranty settings.
+            warranty_eligibility_unlimited:
+              typeof loaded.warranty_eligibility_unlimited === "boolean"
+                ? (loaded.warranty_eligibility_unlimited as boolean)
+                : prev.warranty_eligibility_unlimited,
+            warranty_max_pending:
+              (loaded.warranty_max_pending as number) ??
+              prev.warranty_max_pending,
+            warranty_max_per_30d:
+              (loaded.warranty_max_per_30d as number) ??
+              prev.warranty_max_per_30d,
+            warranty_cooldown_minutes:
+              (loaded.warranty_cooldown_minutes as number) ??
+              prev.warranty_cooldown_minutes,
+            warranty_reliability_decrement:
+              (loaded.warranty_reliability_decrement as number) ??
+              prev.warranty_reliability_decrement,
           }));
         }
       }
@@ -360,6 +389,141 @@ export default function SettingsPage() {
                   }))
                 }
               />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Wave 26-D-2B — Warranty thresholds */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Bảo hành proxy</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Kiểm soát khi nào user được báo lỗi proxy + ngưỡng anti-abuse
+            (max claim đang chờ, max claim trong 30 ngày, cooldown).
+          </p>
+
+          {/* Toggle: eligibility unlimited */}
+          <label
+            htmlFor="warranty-unlimited"
+            className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-muted/30"
+          >
+            <Checkbox
+              id="warranty-unlimited"
+              checked={settings.warranty_eligibility_unlimited}
+              onCheckedChange={(v) =>
+                setSettings((s) => ({
+                  ...s,
+                  warranty_eligibility_unlimited: v === true,
+                }))
+              }
+            />
+            <div className="flex-1">
+              <p className="text-sm font-medium">
+                Cho phép báo lỗi mọi lúc (vô thời hạn)
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Mặc định <span className="font-medium">tắt</span> — user chỉ
+                được báo lỗi trong <span className="font-medium">24 giờ</span>{" "}
+                sau khi nhận proxy. Bật để cho user báo lỗi bất kỳ lúc nào
+                proxy còn hạn dùng.
+              </p>
+            </div>
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="warranty-max-pending">
+                Max claim đang chờ duyệt cùng lúc
+              </Label>
+              <Input
+                id="warranty-max-pending"
+                type="number"
+                min={1}
+                max={20}
+                value={settings.warranty_max_pending}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    warranty_max_pending: parseInt(e.target.value) || 2,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                User không submit thêm khi đã có ≥ N claim đang chờ.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="warranty-max-30d">
+                Max claim trong 30 ngày
+              </Label>
+              <Input
+                id="warranty-max-30d"
+                type="number"
+                min={1}
+                max={100}
+                value={settings.warranty_max_per_30d}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    warranty_max_per_30d: parseInt(e.target.value) || 5,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Anti-abuse cap. Đếm tất cả status (pending + approved + rejected).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="warranty-cooldown">
+                Cooldown giữa 2 claim (phút)
+              </Label>
+              <Input
+                id="warranty-cooldown"
+                type="number"
+                min={0}
+                max={1440}
+                value={settings.warranty_cooldown_minutes}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    warranty_cooldown_minutes:
+                      parseInt(e.target.value) >= 0
+                        ? parseInt(e.target.value)
+                        : 60,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Đặt 0 để tắt cooldown.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="warranty-reliability">
+                Trừ điểm reliability mỗi lần duyệt
+              </Label>
+              <Input
+                id="warranty-reliability"
+                type="number"
+                min={0}
+                max={100}
+                value={settings.warranty_reliability_decrement}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    warranty_reliability_decrement:
+                      parseInt(e.target.value) >= 0
+                        ? parseInt(e.target.value)
+                        : 25,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Proxy reliability_score (0-100) trừ N mỗi warranty được duyệt.
+                Wave 26-E sẽ auto-ban khi điểm về 0.
+              </p>
             </div>
           </div>
         </CardContent>

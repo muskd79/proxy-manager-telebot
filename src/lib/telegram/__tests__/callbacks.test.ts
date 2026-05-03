@@ -272,6 +272,45 @@ describe("parseCallback — every wire shape currently produced", () => {
   });
 
   // -------------------------------------------------------------------
+  // Wave 26-D-2B — warranty kinds
+  // -------------------------------------------------------------------
+  describe("warranty:*", () => {
+    it("warranty:cancel", () => {
+      expect(parseCallback("warranty:cancel")).toEqual({ kind: "warrantyCancel" });
+    });
+    it("warranty:claim:<uuid>", () => {
+      const uuid = "11111111-1111-1111-1111-111111111111";
+      expect(parseCallback(`warranty:claim:${uuid}`)).toEqual({
+        kind: "warrantyClaim",
+        proxyId: uuid,
+      });
+    });
+    it("warranty:claim:<not-uuid> rejects", () => {
+      expect(parseCallback("warranty:claim:not-a-uuid")).toBeNull();
+    });
+    it("warranty:reason:<uuid>:<code>", () => {
+      const uuid = "22222222-2222-2222-2222-222222222222";
+      expect(parseCallback(`warranty:reason:${uuid}:no_connect`)).toEqual({
+        kind: "warrantyReason",
+        proxyId: uuid,
+        reasonCode: "no_connect",
+      });
+      expect(parseCallback(`warranty:reason:${uuid}:other`)).toEqual({
+        kind: "warrantyReason",
+        proxyId: uuid,
+        reasonCode: "other",
+      });
+    });
+    it("warranty:reason rejects unknown reason_code", () => {
+      const uuid = "22222222-2222-2222-2222-222222222222";
+      expect(parseCallback(`warranty:reason:${uuid}:weird_code`)).toBeNull();
+    });
+    it("warranty:reason rejects bad uuid", () => {
+      expect(parseCallback("warranty:reason:not-a-uuid:slow")).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
   // Unknown / empty
   // -------------------------------------------------------------------
   it("returns null for empty / garbage", () => {
@@ -316,6 +355,42 @@ describe("serializeCallback ↔ parseCallback round-trip", () => {
     { kind: "admin", action: "block_user", targetId: "u-1" },
     { kind: "admin", action: "bulk_approve", targetId: "req-1" },
     { kind: "admin", action: "bulk_reject", targetId: "req-1" },
+    // Wave 26-D-2B — warranty
+    {
+      kind: "warrantyClaim",
+      proxyId: "11111111-1111-1111-1111-111111111111",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "no_connect",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "slow",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "ip_blocked",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "wrong_country",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "auth_fail",
+    },
+    {
+      kind: "warrantyReason",
+      proxyId: "22222222-2222-2222-2222-222222222222",
+      reasonCode: "other",
+    },
+    { kind: "warrantyCancel" },
   ];
 
   for (const cb of fixtures) {
