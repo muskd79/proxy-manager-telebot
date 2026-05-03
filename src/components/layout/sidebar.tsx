@@ -15,6 +15,7 @@ import {
   Globe,
   Users,
   FileText,
+  ShieldAlert,
   Bot,
   ScrollText,
   Shield,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { usePendingRequests } from "@/hooks/use-pending-requests";
+import { usePendingWarranty } from "@/hooks/use-pending-warranty";
 
 interface Admin {
   id: string;
@@ -64,6 +66,8 @@ function NavContent({
   const { t } = useI18n();
   // Wave 22O — realtime pending count + browser notification.
   const { count: pendingCount } = usePendingRequests();
+  // Wave 26-D-2 — warranty queue badge alongside requests.
+  const { count: warrantyCount } = usePendingWarranty();
 
   // Wave 22U — IA redesign per user feedback (verbatim):
   //   "QUẢN LÝ
@@ -121,6 +125,13 @@ function NavContent({
       href: "/requests",
       icon: FileText,
       badge: pendingCount ?? undefined,
+    },
+    // Wave 26-D-2 — warranty queue, sibling to /requests.
+    {
+      title: "Bảo hành",
+      href: "/warranty",
+      icon: ShieldAlert,
+      badge: warrantyCount ?? undefined,
     },
     {
       // Wave 22V — ad-hoc proxy probe tool (sibling to /proxies, not
