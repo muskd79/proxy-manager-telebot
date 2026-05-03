@@ -37,6 +37,7 @@ import {
 import { getBotState, clearBotState } from "./state";
 import type { BotStep, BotState } from "./state";
 import type { Context } from "grammy";
+import { parseCallback } from "./callbacks";
 import {
   handleQuantitySelection,
   handleAdminBulkApproveCallback,
@@ -88,214 +89,198 @@ bot.api
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
 
-  // Wave 23B-bot — main inline menu dispatcher. Each button calls
-  // the same command handler that the slash command would, after
-  // first answering the callback so Telegram clears the spinner.
-  if (data.startsWith("menu:")) {
-    const action = data.slice(5);
-    await ctx.answerCallbackQuery();
-    switch (action) {
-      case "request":
-        await handleGetProxy(ctx);
-        return;
-      case "my":
-        await handleMyProxies(ctx);
-        return;
-      case "check":
-        await handleCheckProxy(ctx);
-        return;
-      case "limit":
-        await handleStatus(ctx);
-        return;
-      case "return":
-        // Wave 25-pre2 (P0 1.1) — renamed from `case "warranty"`.
-        // Pre-25 the label said "Bảo hành proxy" / "Warranty claim"
-        // but ran the revoke flow — confusing two distinct mental
-        // models. New label says "Trả proxy" / "Return proxy" so
-        // behaviour matches name. Real warranty schema is tracked
-        // in docs/decision-log.md#warranty-schema (Wave 26).
-        await handleRevoke(ctx);
-        return;
-      case "history":
-        await handleHistory(ctx);
-        return;
-      case "help":
-        await handleHelp(ctx);
-        return;
-      case "language":
-        await handleLanguage(ctx);
-        return;
+  // Wave 25-pre3 (Pass 5.2) — parse the wire string into a typed
+  // discriminated union, then switch on `kind`. Pre-fix this was a
+  // 200-line if-ladder of `data.startsWith(...)` checks. Adding a
+  // Wave 26 vendor / payment / kyc callback now means: add one
+  // member to `CallbackData` in callbacks.ts, then TypeScript
+  // exhaustiveness forces a new `case` here.
+  //
+  // Backward compat: `parseCallback` accepts `menu:warranty` (legacy
+  // alias for `menu:return`) and the 2-arg `qty:<type>:<n>` shape so
+  // already-rendered keyboards in user chat history keep working.
+  const parsed = parseCallback(data);
+
+  if (!parsed) {
+    await ctx.answerCallbackQuery("Unknown action");
+    return;
+  }
+
+  switch (parsed.kind) {
+    // -----------------------------------------------------------------
+    // Main menu — call the same handler the slash-command would.
+    // -----------------------------------------------------------------
+    case "menu": {
+      await ctx.answerCallbackQuery();
+      switch (parsed.action) {
+        case "request":
+          await handleGetProxy(ctx);
+          return;
+        case "my":
+          await handleMyProxies(ctx);
+          return;
+        case "check":
+          await handleCheckProxy(ctx);
+          return;
+        case "limit":
+          await handleStatus(ctx);
+          return;
+        case "return":
+          // Wave 25-pre2 (P0 1.1) — label "Trả proxy" routes to revoke
+          // flow until Wave 26 ships real warranty schema.
+          await handleRevoke(ctx);
+          return;
+        case "history":
+          await handleHistory(ctx);
+          return;
+        case "help":
+          await handleHelp(ctx);
+          return;
+        case "language":
+          await handleLanguage(ctx);
+          return;
+      }
+      return;
     }
-    return;
-  }
 
-  // Wave 23C-fix — AUP callbacks removed per user request 2026-04-29
-  // ("bỏ đoạn chấp nhận chính sách đi"). The aup.ts file remains in
-  // the tree but no callback path can reach it; legacy users with a
-  // stored aup_accepted_at column simply ignore it now.
+    // -----------------------------------------------------------------
+    // Proxy type selection
+    // -----------------------------------------------------------------
+    case "type":
+      await handleProxyTypeSelection(ctx, parsed.proxyType);
+      return;
 
-  if (data.startsWith("proxy_type:")) {
-    const proxyType = data.replace("proxy_type:", "");
-    await handleProxyTypeSelection(ctx, proxyType);
-    return;
-  }
+    case "typeCancel":
+      // Existing behaviour: handleProxyTypeSelection treats "cancel"
+      // as a special string that triggers the cancel reply path.
+      await handleProxyTypeSelection(ctx, "cancel");
+      return;
 
-  // Wave 23B-bot UX — order-type chooser. Order nhanh (auto) vs
-  // Order riêng (admin-approval). After selection, show the
-  // matching quantity keyboard.
-  if (data.startsWith("order_quick:")) {
-    const proxyType = data.replace("order_quick:", "");
-    await handleOrderModeSelection(ctx, proxyType, "quick");
-    return;
-  }
-  if (data.startsWith("order_custom:")) {
-    const proxyType = data.replace("order_custom:", "");
-    await handleOrderModeSelection(ctx, proxyType, "custom");
-    return;
-  }
-  if (data === "order_type:cancel") {
-    await ctx.answerCallbackQuery();
-    await ctx.reply("Đã hủy.");
-    return;
-  }
+    // -----------------------------------------------------------------
+    // Order mode chooser (Order nhanh / Order riêng)
+    // -----------------------------------------------------------------
+    case "order":
+      await handleOrderModeSelection(ctx, parsed.proxyType, parsed.mode);
+      return;
 
-  // Wave 24-1 — confirm step after qty input. Yes = place the order,
-  // No = clear state + reply cancelled.
-  if (data === "confirm:yes" || data === "confirm:no") {
-    await handleConfirmCallback(ctx, data === "confirm:yes");
-    return;
-  }
+    case "orderCancel":
+      await ctx.answerCallbackQuery();
+      await ctx.reply("Đã hủy.");
+      return;
 
-  // Wave 24-checkproxy — Hủy from the awaiting_check_list prompt.
-  // Clears state + acknowledges so the user knows the bot is no
-  // longer waiting for their paste.
-  if (data === "check:cancel") {
-    await ctx.answerCallbackQuery();
-    if (ctx.from) {
-      const { data: u } = await supabaseAdmin
+    // -----------------------------------------------------------------
+    // Quantity selection / cancel
+    // -----------------------------------------------------------------
+    case "qty":
+      await handleQuantitySelection(
+        ctx,
+        parsed.proxyType,
+        parsed.quantity,
+        parsed.mode,
+      );
+      return;
+
+    case "qtyCancel": {
+      await ctx.answerCallbackQuery();
+      if (ctx.from) {
+        const { data: u } = await supabaseAdmin
+          .from("tele_users")
+          .select("id")
+          .eq("telegram_id", ctx.from.id)
+          .single();
+        if (u) await clearBotState(u.id);
+      }
+      await ctx.reply("Đã hủy.");
+      return;
+    }
+
+    // -----------------------------------------------------------------
+    // Confirm step (after qty input)
+    // -----------------------------------------------------------------
+    case "confirm":
+      await handleConfirmCallback(ctx, parsed.result === "yes");
+      return;
+
+    // -----------------------------------------------------------------
+    // /checkproxy paste-list cancel
+    // -----------------------------------------------------------------
+    case "checkCancel": {
+      await ctx.answerCallbackQuery();
+      if (ctx.from) {
+        const { data: u } = await supabaseAdmin
+          .from("tele_users")
+          .select("id")
+          .eq("telegram_id", ctx.from.id)
+          .single();
+        if (u) await clearBotState(u.id);
+      }
+      await ctx.reply("Đã hủy.");
+      return;
+    }
+
+    // -----------------------------------------------------------------
+    // Language change
+    // -----------------------------------------------------------------
+    case "lang":
+      await handleLanguageSelection(ctx, parsed.lang as SupportedLanguage);
+      return;
+
+    // -----------------------------------------------------------------
+    // /cancel confirm dialog
+    // -----------------------------------------------------------------
+    case "cancelConfirm":
+      await handleCancelConfirm(ctx, parsed.result === "yes");
+      return;
+
+    // -----------------------------------------------------------------
+    // /revoke confirm-all + selection + cancel
+    // -----------------------------------------------------------------
+    case "revokeConfirmAll":
+      await handleRevokeConfirm(ctx, parsed.count);
+      return;
+
+    case "revokeCancel": {
+      await ctx.answerCallbackQuery();
+      const { data: user } = await supabaseAdmin
         .from("tele_users")
-        .select("id")
-        .eq("telegram_id", ctx.from.id)
+        .select("language")
+        .eq("telegram_id", ctx.from?.id ?? 0)
         .single();
-      if (u) await clearBotState(u.id);
+      const lang = user?.language === "vi" ? "vi" : "en";
+      await ctx.editMessageText(lang === "vi" ? "Đã hủy." : "Cancelled.");
+      return;
     }
-    await ctx.reply("Đã hủy.");
-    return;
-  }
 
-  if (data.startsWith("lang:")) {
-    const lang = data.replace("lang:", "") as SupportedLanguage;
-    await handleLanguageSelection(ctx, lang);
-    return;
-  }
+    case "revoke":
+      await handleRevokeSelection(ctx, parsed.target);
+      return;
 
-  if (data.startsWith("cancel_confirm:")) {
-    const confirmed = data.replace("cancel_confirm:", "") === "yes";
-    await handleCancelConfirm(ctx, confirmed);
-    return;
+    // -----------------------------------------------------------------
+    // Admin actions on requests + users
+    // -----------------------------------------------------------------
+    case "admin":
+      switch (parsed.action) {
+        case "approve":
+          await handleAdminApproveCallback(ctx, parsed.targetId);
+          return;
+        case "reject":
+          await handleAdminRejectCallback(ctx, parsed.targetId);
+          return;
+        case "approve_user":
+          await handleAdminApproveUser(ctx, parsed.targetId);
+          return;
+        case "block_user":
+          await handleAdminBlockUser(ctx, parsed.targetId);
+          return;
+        case "bulk_approve":
+          await handleAdminBulkApproveCallback(ctx, parsed.targetId);
+          return;
+        case "bulk_reject":
+          await handleAdminBulkRejectCallback(ctx, parsed.targetId);
+          return;
+      }
+      return;
   }
-
-  if (data.startsWith("revoke_confirm:all:")) {
-    const count = data.split(":")[2];
-    await handleRevokeConfirm(ctx, count);
-    return;
-  }
-
-  if (data === "revoke:cancel") {
-    await ctx.answerCallbackQuery();
-    const { data: user } = await supabaseAdmin
-      .from("tele_users")
-      .select("language")
-      .eq("telegram_id", ctx.from.id)
-      .single();
-    const lang = (user?.language === "vi") ? "vi" : "en";
-    await ctx.editMessageText(lang === "vi" ? "Đã hủy." : "Cancelled.");
-    return;
-  }
-
-  if (data.startsWith("revoke:")) {
-    const proxyId = data.replace("revoke:", "");
-    await handleRevokeSelection(ctx, proxyId);
-    return;
-  }
-
-  if (data.startsWith("admin_approve:")) {
-    const requestId = data.replace("admin_approve:", "");
-    await handleAdminApproveCallback(ctx, requestId);
-    return;
-  }
-
-  if (data.startsWith("admin_reject:")) {
-    const requestId = data.replace("admin_reject:", "");
-    await handleAdminRejectCallback(ctx, requestId);
-    return;
-  }
-
-  if (data.startsWith("admin_approve_user:")) {
-    const userId = data.replace("admin_approve_user:", "");
-    await handleAdminApproveUser(ctx, userId);
-    return;
-  }
-
-  if (data.startsWith("admin_block_user:")) {
-    const userId = data.replace("admin_block_user:", "");
-    await handleAdminBlockUser(ctx, userId);
-    return;
-  }
-
-  // Wave 23B-bot UX — qty:cancel from the text-input prompt clears
-  // the conversation state and replies. The qty:<mode>:<type>:<n>
-  // shape is no longer produced by the bot but kept as a legacy
-  // fallback for in-flight clicks from older clients.
-  if (data === "qty:cancel" || data === "qty:quick:cancel" || data === "qty:custom:cancel") {
-    await ctx.answerCallbackQuery();
-    if (ctx.from) {
-      const { data: u } = await supabaseAdmin
-        .from("tele_users")
-        .select("id")
-        .eq("telegram_id", ctx.from.id)
-        .single();
-      if (u) await clearBotState(u.id);
-    }
-    // Wave 25-pre2 (P0 5.4) — diacritic spelling unified to "hủy"
-    // (matches the rest of the codebase; was "huỷ" only here).
-    await ctx.reply("Đã hủy.");
-    return;
-  }
-  if (data.startsWith("qty:")) {
-    const parts = data.split(":");
-    let mode: "quick" | "custom";
-    let proxyType: string;
-    let quantity: number;
-    if (parts[1] === "quick" || parts[1] === "custom") {
-      mode = parts[1];
-      proxyType = parts[2];
-      quantity = parseInt(parts[3], 10);
-    } else {
-      mode = "quick";
-      proxyType = parts[1];
-      quantity = parseInt(parts[2], 10);
-    }
-    if (proxyType && !isNaN(quantity) && quantity > 0) {
-      await handleQuantitySelection(ctx, proxyType, quantity, mode);
-    }
-    return;
-  }
-
-  if (data.startsWith("admin_bulk_approve:")) {
-    const requestId = data.replace("admin_bulk_approve:", "");
-    await handleAdminBulkApproveCallback(ctx, requestId);
-    return;
-  }
-
-  if (data.startsWith("admin_bulk_reject:")) {
-    const requestId = data.replace("admin_bulk_reject:", "");
-    await handleAdminBulkRejectCallback(ctx, requestId);
-    return;
-  }
-
-  // Unknown callback
-  await ctx.answerCallbackQuery("Unknown action");
 });
 
 // ---------------------------------------------------------------------------
