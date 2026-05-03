@@ -237,12 +237,31 @@ export function ProxyImport() {
   // so vitest can exercise it without mounting React. The component
   // still owns the parsedProxies state + UI; the helper is a pure
   // function shared with future server-side imports.
+  //
+  // Wave 26-A — also dedupe by host:port within the batch. Pre-fix two
+  // identical lines both passed validation; the backend `upsert
+  // ON CONFLICT(host,port) ignoreDuplicates: true` only inserted one
+  // and the user saw a mysterious "skipped 1" they couldn't trace.
+  // Now the second occurrence is flagged invalid up-front with an
+  // error that points to the original line number.
   function parseContent(content: string) {
     const lines = content.split(/\r?\n/).filter((l) => l.trim());
     const parsed: ParsedProxy[] = lines.map((line, i) => parseProxyLineLib(line, i + 1));
+    const seenHostPort = new Map<string, number>(); // key → first line number
+    for (const p of parsed) {
+      if (!p.valid) continue;
+      const key = `${p.host}:${p.port}`;
+      if (seenHostPort.has(key)) {
+        p.valid = false;
+        p.error = `Trùng dòng ${seenHostPort.get(key)} (${key})`;
+      } else {
+        seenHostPort.set(key, p.line);
+      }
+    }
     setParsedProxies(parsed);
     setResult(null);
     setProbeProgress(0);
+    setProbeErrors([]);
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -486,6 +505,13 @@ export function ProxyImport() {
         raw: p.raw,
       }));
 
+      // Wave 26-A — normalize networkType client-side. Pre-fix `IPv4`
+      // / `ipv4` / `IPV4` would land as 3 distinct values in DB, which
+      // broke the network-type filter on the proxies list. The backend
+      // also normalises (defence-in-depth) but we want admins to see
+      // the canonical form before pressing Import.
+      const normalizedNetworkType = networkType.trim().toLowerCase() || undefined;
+
       const res = await fetch("/api/proxies/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -497,7 +523,7 @@ export function ProxyImport() {
           isp: isp || undefined,
           category_id: categoryId || null,
           // Wave 22K — bulk-applied per-proxy metadata.
-          network_type: networkType || undefined,
+          network_type: normalizedNetworkType,
           vendor_source: vendorSource || undefined,
           purchase_date: purchaseDate || undefined,
           expires_at: expiresAt || undefined,
@@ -600,6 +626,11 @@ export function ProxyImport() {
               rows={8}
               className="font-mono text-xs"
             />
+            {/* Wave 26-A — line/char counter + clear button. Pre-fix
+                user could overshoot the 10k-line limit silently
+                (server rejects with 400 only after they hit Import).
+                Now: counter goes red at >10k, plus a quick-clear
+                button when content present. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">
                 Mỗi dòng 1 proxy theo dạng{" "}
@@ -607,11 +638,33 @@ export function ProxyImport() {
                 <code className="rounded bg-muted px-1 text-[11px]">host:port:user:pass</code>.
                 Tối đa 10.000 dòng / lần.
               </p>
-              {parsedProxies.length > 0 && (
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  Đã đọc <span className="font-semibold text-foreground">{parsedProxies.length}</span> dòng
-                </span>
-              )}
+              <div className="flex items-center gap-3 whitespace-nowrap">
+                {(() => {
+                  const lineCount = pasteText
+                    ? pasteText.split(/\r?\n/).filter((l) => l.trim()).length
+                    : 0;
+                  const overLimit = lineCount > 10_000;
+                  if (lineCount === 0) return null;
+                  return (
+                    <span
+                      className={`text-xs ${overLimit ? "font-medium text-red-500" : "text-muted-foreground"}`}
+                    >
+                      {overLimit && "[!] "}
+                      <span className={`font-semibold ${!overLimit ? "text-foreground" : ""}`}>{lineCount.toLocaleString()}</span> dòng
+                      {overLimit && " (vượt 10.000)"}
+                    </span>
+                  );
+                })()}
+                {pasteText && (
+                  <button
+                    type="button"
+                    onClick={() => setPasteText("")}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Xoá nội dung
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -744,7 +797,32 @@ export function ProxyImport() {
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
+              {/* Wave 26-A — quick-fill suggestion. Most proxy
+                  packages run 30 days from purchase. Pre-fix admins
+                  manually clicked the date picker every time. The
+                  hint only appears when expiresAt is empty AND
+                  purchaseDate is set. */}
+              {!expiresAt && purchaseDate && (() => {
+                const d = new Date(purchaseDate);
+                if (Number.isNaN(d.getTime())) return null;
+                d.setDate(d.getDate() + 30);
+                const suggestion = d.toISOString().slice(0, 10);
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => setExpiresAt(suggestion)}
+                      className="text-primary hover:underline"
+                    >
+                      Đề xuất 30 ngày sau: {suggestion}
+                    </button>{" "}
+                    · để trống = không giới hạn
+                  </p>
+                );
+              })()}
+              {expiresAt && (
+                <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
+              )}
             </div>
           </div>
 
