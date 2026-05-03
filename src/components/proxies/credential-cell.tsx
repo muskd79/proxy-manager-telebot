@@ -52,9 +52,14 @@ export function CredentialCell({ value, kind }: CredentialCellProps) {
 
   return (
     <div className="flex items-center gap-1">
+      {/* Wave 26-B (gap 4.2) — clamp credential width so a 50-char
+          password/username doesn't break the table layout. The full
+          value is preserved in `title=` (tooltip) for username, and
+          the eye toggle reveals the password in-place (still within
+          the clamp). select-all still works. */}
       <code
         className={cn(
-          "font-mono text-xs select-all",
+          "block max-w-[14ch] truncate font-mono text-xs select-all",
           isPassword && !revealed && "tracking-wider",
         )}
         title={isPassword && !revealed ? "Nhấn 👁 để hiện" : value}

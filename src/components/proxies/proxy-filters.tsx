@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -89,27 +91,55 @@ export function ProxyFilters({
       sortBy: filters.sortBy,
       sortOrder: filters.sortOrder,
     });
+    setSearchInput("");
   }
 
-  const hasActiveFilters =
-    filters.search ||
-    filters.type ||
-    filters.networkType ||
-    filters.status ||
-    // Wave 22AB — expiryStatus filter removed (folded into status)
-    filters.country ||
-    // Wave 22Y — isp filter removed (column dropped from UI)
-    filters.categoryId;
+  // Wave 26-B (gap 3.3) — debounce the search input. Pre-fix every
+  // keystroke fired updateFilter → fetchProxies; typing a 10-char
+  // search burnt 10 API calls. Now: local input state for instant UI,
+  // 300ms debounced commit to filters.search.
+  const [searchInput, setSearchInput] = useState(filters.search || "");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    // Sync local input when external filters reset (e.g. clearFilters
+    // from elsewhere, or URL navigation).
+    setSearchInput(filters.search || "");
+  }, [filters.search]);
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const trimmed = searchInput.trim();
+      if (trimmed === (filters.search ?? "")) return;
+      onFiltersChange({ ...filters, search: trimmed || undefined, page: 1 });
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Wave 26-B (gap 3.2) — count active filters for the visible badge.
+  // Pre-fix: filtering changed results but the bar visually identical
+  // to default; admins lost track of how many filters they had set.
+  const activeFilters = [
+    filters.search,
+    filters.type,
+    filters.networkType,
+    filters.status,
+    filters.country,
+    filters.categoryId,
+  ].filter((v) => v !== undefined && v !== null && v !== "").length;
+  const hasActiveFilters = activeFilters > 0;
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          {/* Wave 26-B (gap 3.3) — local searchInput; debounced commit
+              to filters.search 300ms after last keystroke. */}
           <Input
             placeholder="Tìm theo host..."
-            value={filters.search || ""}
-            onChange={(e) => updateFilter("search", e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-8"
           />
         </div>
@@ -254,10 +284,16 @@ export function ProxyFilters({
         {/* Wave 22Y — ISP filter input removed (column dropped from UI) */}
 
         {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters}>
-            <X className="size-4 mr-1" />
-            Xoá lọc
-          </Button>
+          <>
+            {/* Wave 26-B (gap 3.2) — active-filter count badge */}
+            <Badge variant="secondary" className="gap-1 whitespace-nowrap">
+              {activeFilters} filter đang dùng
+            </Badge>
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="size-4 mr-1" />
+              Xoá tất cả
+            </Button>
+          </>
         )}
       </div>
     </div>

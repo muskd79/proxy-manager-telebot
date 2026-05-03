@@ -294,13 +294,41 @@ export default function ProxiesPage() {
     const proxy = singleDeleteTarget;
     if (!proxy) return;
     const label = `${proxy.host}:${proxy.port}`;
+    const proxyId = proxy.id;
     setSingleDeleteTarget(null);
 
-    const res = await fetch(`/api/proxies/${proxy.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/proxies/${proxyId}`, { method: "DELETE" });
     if (res.ok) {
-      toast.success(`Đã chuyển ${label} vào Thùng rác`);
+      // Wave 26-B (gap 6.6) — toast with Undo action. Soft-delete via
+      // /api/proxies/[id] PATCH { is_deleted: false } restores from
+      // Trash. 8s window covers a typical "wait, that was the wrong
+      // row" moment.
+      toast.success(`Đã chuyển ${label} vào Thùng rác`, {
+        duration: 8000,
+        action: {
+          label: "Hoàn tác",
+          onClick: async () => {
+            // Wave 26-B (gap 6.6) — PUT with is_deleted=false. The
+            // /api/proxies/[id] PUT route accepts a partial body and
+            // restores soft-deleted rows when is_deleted goes false-
+            // ward (also clears deleted_at server-side).
+            const undoRes = await fetch(`/api/proxies/${proxyId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ is_deleted: false }),
+            });
+            if (undoRes.ok) {
+              toast.success(`Đã khôi phục ${label}`);
+              fetchProxies();
+            } else {
+              const body = await undoRes.json().catch(() => ({}));
+              toast.error(`Không khôi phục được: ${body?.error || undoRes.statusText}`);
+            }
+          },
+        },
+      });
       fetchProxies();
-      setSelectedIds((prev) => prev.filter((x) => x !== proxy.id));
+      setSelectedIds((prev) => prev.filter((x) => x !== proxyId));
     } else {
       const body = await res.json().catch(() => ({}));
       toast.error(`Xoá thất bại: ${body?.error || res.statusText}`);
