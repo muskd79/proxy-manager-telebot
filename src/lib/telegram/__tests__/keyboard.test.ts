@@ -41,11 +41,13 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
       const kb = mainMenuKeyboard("en");
       const labels = kb.inline_keyboard.flat().map((b) => b.text);
       // Wave 25-pre2 (P0 1.1) — "Warranty claim" → "Return proxy".
+      // Wave 26-D-post1/B vocab sweep — "Quota & limits" → "Request limit"
+      // (matches Vietnamese "Limit yêu cầu" + admin doc "giới hạn yêu cầu").
       expect(labels).toEqual([
         "Request proxy",
         "My proxies",
         "Check proxy",
-        "Quota & limits",
+        "Request limit",
         "Return proxy",
         "History",
         "Help",

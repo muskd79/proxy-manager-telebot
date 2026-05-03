@@ -251,7 +251,10 @@ export async function handleAdminBulkApproveCallback(ctx: Context, requestId: st
 
       if (maxAllowed <= 0) {
         await ctx.answerCallbackQuery("User has reached their rate limit");
-        await ctx.editMessageText(`[Rate Limit] User has no remaining quota. Cannot approve.`);
+        // Wave 26-D-post1/B vocab sweep — "quota" → "request limit"
+        // (matches Vietnamese "giới hạn yêu cầu" and the bot main-menu
+        // "Limit yêu cầu" label).
+        await ctx.editMessageText(`[Rate Limit] User has no remaining request limit. Cannot approve.`);
         return;
       }
 
