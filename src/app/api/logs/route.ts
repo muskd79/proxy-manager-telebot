@@ -19,6 +19,13 @@ export async function GET(request: NextRequest) {
       actorId: searchParams.get("actorId") || undefined,
       action: searchParams.get("action") || undefined,
       resourceType: searchParams.get("resourceType") || undefined,
+      // Wave 26-D-pre1 — accept BOTH "resourceId" (camelCase) and
+      // "resource_id" (snake_case) so the proxy detail timeline can
+      // use either spelling. Pre-fix only resourceType was filtered;
+      // resourceId fell through, so the timeline had to over-fetch
+      // every proxy.* row and JS-filter client-side.
+      resourceId:
+        searchParams.get("resourceId") || searchParams.get("resource_id") || undefined,
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,
       page: Math.max(1, parseInt(searchParams.get("page") || "1") || 1),
@@ -47,6 +54,11 @@ export async function GET(request: NextRequest) {
     }
     if (filters.resourceType) {
       query = query.eq("resource_type", filters.resourceType);
+    }
+    // Wave 26-D-pre1 — filter by single resource id (uses idx_logs_resource).
+    // UUID-shape regex guards against malformed input bleeding into eq().
+    if (filters.resourceId && /^[0-9a-f-]{36}$/i.test(filters.resourceId)) {
+      query = query.eq("resource_id", filters.resourceId);
     }
     if (filters.dateFrom) {
       query = query.gte("created_at", `${filters.dateFrom}T00:00:00`);
