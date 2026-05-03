@@ -22,6 +22,16 @@ export enum ProxyType {
 export enum ProxyStatus {
   Available = "available",
   Assigned = "assigned",
+  /**
+   * Wave 26-D — user reported proxy broken via bot. Auto-transition
+   * from `Assigned` when warranty claim is created. Admin handles via
+   * /warranty page → either approves (→ Maintenance + replacement
+   * allocated, or → Banned if checkbox ticked) or rejects (→ Assigned
+   * revert).
+   *
+   * Proxies in this status are NOT eligible for /getproxy distribution.
+   */
+  ReportedBroken = "reported_broken",
   Expired = "expired",
   Banned = "banned",
   Maintenance = "maintenance",
@@ -187,7 +197,7 @@ export interface Proxy {
   country: string | null;
   city: string | null;
   isp: string | null;
-  status: "available" | "assigned" | "expired" | "banned" | "maintenance";
+  status: "available" | "assigned" | "reported_broken" | "expired" | "banned" | "maintenance";
   speed_ms: number | null;
   last_checked_at: string | null;
   assigned_to: string | null;
@@ -255,6 +265,90 @@ export interface Proxy {
    * imports. See migration 056.
    */
   import_batch_id?: string | null;
+  /**
+   * Wave 26-D — proxy trust score (0-100). Decrement
+   * `warranty_reliability_decrement` (default 25) each time admin
+   * approves a warranty claim against this proxy. Wave 26-E will add
+   * auto-ban when reliability_score reaches 0. NULL only on rows
+   * inserted before mig 057; runtime defaults to 100.
+   */
+  reliability_score?: number | null;
+}
+
+// ---- Wave 26-D — warranty schema types (mirror migration 057) ----
+
+export type WarrantyClaimStatus = "pending" | "approved" | "rejected";
+
+export type WarrantyReasonCode =
+  | "no_connect"
+  | "slow"
+  | "ip_blocked"
+  | "wrong_country"
+  | "auth_fail"
+  | "other";
+
+export interface WarrantyClaim {
+  id: string;
+  proxy_id: string;
+  user_id: string;
+  reason_code: WarrantyReasonCode;
+  reason_text: string | null;
+  status: WarrantyClaimStatus;
+  replacement_proxy_id: string | null;
+  also_mark_banned: boolean;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export type ProxyEventType =
+  | "created"
+  | "imported"
+  | "edited"
+  | "category_changed"
+  | "status_changed"
+  | "assigned"
+  | "unassigned"
+  | "reported_broken"
+  | "warranty_approved"
+  | "warranty_rejected"
+  | "warranty_replacement_for"
+  | "health_check_passed"
+  | "health_check_failed"
+  | "expired"
+  | "soft_deleted"
+  | "restored"
+  | "admin_note";
+
+export interface ProxyEvent {
+  id: string;
+  proxy_id: string;
+  event_type: ProxyEventType;
+  actor_type: "admin" | "tele_user" | "system" | "bot" | null;
+  actor_id: string | null;
+  related_user_id: string | null;
+  related_proxy_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ProxyHealthLog {
+  id: string;
+  proxy_id: string;
+  ok: boolean;
+  speed_ms: number | null;
+  error_msg: string | null;
+  checked_at: string;
+}
+
+export interface SavedView {
+  id: string;
+  admin_id: string;
+  page: "requests" | "warranty" | "proxies";
+  name: string;
+  filter_json: Record<string, unknown>;
+  created_at: string;
 }
 
 // Wave 22S (Phase 8) — PurchaseLot interface removed.
