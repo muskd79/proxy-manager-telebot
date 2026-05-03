@@ -55,6 +55,7 @@ import { CategoryPicker } from "./category-picker";
 import { parseProxyLine as parseProxyLineLib, dedupeByHostPort } from "@/lib/proxy-parse";
 import { buttonVariants } from "@/components/ui/button";
 import { normalizeNetworkType } from "@/lib/proxy-labels";
+import { useSharedCache, useSharedQuery } from "@/lib/shared-cache";
 import Link from "next/link";
 
 /**
@@ -176,8 +177,52 @@ export function ProxyImport() {
   const [dropDead, setDropDead] = useState(true);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [countries, setCountries] = useState<string[]>([]);
-  const [categories, setCategories] = useState<ProxyCategoryOption[]>([]);
+  const cache = useSharedCache();
+
+  // Wave 26-C (gap 6.3) — countries + categories now share the
+  // dashboard-wide cache. Pre-fix mounting the wizard re-fetched
+  // both even though /proxies had loaded them seconds earlier.
+  // Cache key reused across components keeps everything in sync.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>(
+    "api:proxies:stats",
+    async () => {
+      const r = await fetch("/api/proxies/stats");
+      const d = await r.json();
+      return (d?.data ?? {}) as {
+        countries?: string[];
+        byCountry?: Record<string, number>;
+      };
+    },
+  );
+  const countries: string[] =
+    stats?.countries && Array.isArray(stats.countries)
+      ? stats.countries
+      : stats?.byCountry
+        ? Object.keys(stats.byCountry).sort()
+        : [];
+  const { data: categoriesFromCache = [] } = useSharedQuery<ProxyCategoryOption[]>(
+    "api:categories:full",
+    async () => {
+      const r = await fetch("/api/categories");
+      const d = await r.json();
+      if (!Array.isArray(d?.data)) return [];
+      return (d.data as ProxyCategoryOption[]).map((c) => ({
+        id: c.id,
+        name: c.name,
+        default_country: c.default_country,
+        default_proxy_type: c.default_proxy_type,
+        default_isp: c.default_isp,
+        default_network_type: c.default_network_type ?? null,
+        default_vendor_source: c.default_vendor_source ?? null,
+        default_purchase_price_usd: c.default_purchase_price_usd ?? null,
+        default_sale_price_usd: c.default_sale_price_usd ?? null,
+      }));
+    },
+  );
+  const categories = categoriesFromCache;
   // Wave 26-A — confirm dialog for bulk imports. Pre-fix a typo'd
   // "Import 1000" was irreversible (admin would have to bulk-delete
   // 1000 rows). Threshold 100 chosen so casual 1-30 imports stay
@@ -185,36 +230,10 @@ export function ProxyImport() {
   const BULK_CONFIRM_THRESHOLD = 100;
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/proxies/stats")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.data?.countries) setCountries(d.data.countries);
-      })
-      .catch(() => {});
-
-    fetch("/api/categories")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d?.data)) {
-          setCategories(
-            (d.data as ProxyCategoryOption[]).map((c) => ({
-              id: c.id,
-              name: c.name,
-              default_country: c.default_country,
-              default_proxy_type: c.default_proxy_type,
-              default_isp: c.default_isp,
-              // Wave 22K — purchase metadata defaults from category.
-              default_network_type: c.default_network_type ?? null,
-              default_vendor_source: c.default_vendor_source ?? null,
-              default_purchase_price_usd: c.default_purchase_price_usd ?? null,
-              default_sale_price_usd: c.default_sale_price_usd ?? null,
-            })),
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // Wave 26-C — fetches moved into useSharedQuery above. The shared
+  // cache also dedupes if /proxies and the wizard mount in quick
+  // succession (e.g., admin lands on the page with `?import_batch_id=`
+  // open then opens the wizard for another import).
 
   // When admin picks a category, auto-fill the bulk fields with its
   // defaults (admin can still override per-form). Wave 22K extended:
@@ -724,22 +743,32 @@ export function ProxyImport() {
                 value={categoryId}
                 onValueChange={setCategoryId}
                 categories={categories}
-                onCategoryCreated={(c) =>
-                  setCategories((prev) => [
-                    ...prev,
-                    {
-                      id: c.id,
-                      name: c.name,
-                      default_country: c.default_country ?? null,
-                      default_proxy_type: (c.default_proxy_type as ProxyType | null) ?? null,
-                      default_isp: null,
-                      default_network_type: null,
-                      default_vendor_source: null,
-                      default_purchase_price_usd: null,
-                      default_sale_price_usd: null,
-                    },
-                  ])
-                }
+                onCategoryCreated={(c) => {
+                  // Wave 26-C — write through to the shared cache so
+                  // the new category propagates to /proxies + the
+                  // ProxyForm dialog without a re-fetch.
+                  const prev =
+                    cache.get<ProxyCategoryOption[]>("api:categories:full")?.data ??
+                    [];
+                  cache.set<ProxyCategoryOption[]>("api:categories:full", {
+                    data: [
+                      ...prev,
+                      {
+                        id: c.id,
+                        name: c.name,
+                        default_country: c.default_country ?? null,
+                        default_proxy_type:
+                          (c.default_proxy_type as ProxyType | null) ?? null,
+                        default_isp: null,
+                        default_network_type: null,
+                        default_vendor_source: null,
+                        default_purchase_price_usd: null,
+                        default_sale_price_usd: null,
+                      },
+                    ],
+                    fetchedAt: Date.now(),
+                  });
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 Nếu chọn danh mục, các trường loại/quốc gia dưới sẽ tự fill từ default. Sửa nếu cần.

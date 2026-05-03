@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRole } from "@/lib/role-context";
 import { ProxyFilters } from "@/components/proxies/proxy-filters";
+import { useSharedQuery } from "@/lib/shared-cache";
 import { ProxyTable } from "@/components/proxies/proxy-table";
 import { ProxyForm } from "@/components/proxies/proxy-form";
 import { ProxyBulkEdit } from "@/components/proxies/proxy-bulk-edit";
@@ -63,9 +64,46 @@ export default function ProxiesPage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [countries, setCountries] = useState<string[]>([]);
-  // Wave 22Z — categories list for the new Danh mục filter dropdown.
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  // Wave 26-C (gap 6.3) — countries + categories now flow from the
+  // shared cache instead of page-local state. Pre-fix the page, the
+  // Sửa form, and the Import wizard each fetched the same two
+  // endpoints on mount — three identical calls per session. Now the
+  // first reader populates the cache; the rest are zero-network.
+  const { data: stats } = useSharedQuery<{
+    countries?: string[];
+    byCountry?: Record<string, number>;
+  }>("api:proxies:stats", async () => {
+    const r = await fetch("/api/proxies/stats");
+    if (!r.ok) return {};
+    const d = await r.json();
+    return (d?.data ?? {}) as {
+      countries?: string[];
+      byCountry?: Record<string, number>;
+    };
+  });
+  const countries: string[] = stats?.byCountry
+    ? Object.keys(stats.byCountry).sort()
+    : stats?.countries ?? [];
+
+  const { data: categoriesFromCache } = useSharedQuery<
+    Array<{
+      id: string;
+      name: string;
+      default_country?: string | null;
+      default_proxy_type?: string | null;
+      default_isp?: string | null;
+      default_network_type?: string | null;
+    }>
+  >("api:categories:full", async () => {
+    const r = await fetch("/api/categories");
+    if (!r.ok) return [];
+    const result = await r.json();
+    return Array.isArray(result?.data) ? result.data : [];
+  });
+  const categories: { id: string; name: string }[] = (categoriesFromCache ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editProxy, setEditProxy] = useState<Proxy | null>(null);
@@ -153,47 +191,13 @@ export default function ProxiesPage() {
     }
   }, [filters]);
 
-  const fetchCountries = useCallback(async () => {
-    try {
-      const res = await fetch("/api/proxies/stats");
-      if (res.ok) {
-        const result = await res.json();
-        const byCountry = result.data?.byCountry || {};
-        setCountries(Object.keys(byCountry).sort());
-      }
-    } catch (err) {
-      console.error("Failed to fetch proxy countries:", err);
-    }
-  }, []);
-
-  // Wave 22Z — fetch categories once on mount for the filter dropdown.
-  // Excludes hidden categories (default behaviour of /api/categories).
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch("/api/categories");
-      if (res.ok) {
-        const result = await res.json();
-        const list = Array.isArray(result?.data) ? result.data : [];
-        setCategories(
-          list.map((c: { id: string; name: string }) => ({
-            id: c.id,
-            name: c.name,
-          })),
-        );
-      }
-    } catch (err) {
-      console.error("Failed to fetch categories:", err);
-    }
-  }, []);
+  // Wave 26-C — fetchCountries + fetchCategories removed. The data
+  // now flows from useSharedQuery (above) which handles fetch +
+  // dedupe + cache for the dashboard-wide audience.
 
   useEffect(() => {
     fetchProxies();
   }, [fetchProxies]);
-
-  useEffect(() => {
-    fetchCountries();
-    fetchCategories();
-  }, [fetchCountries, fetchCategories]);
 
   // Keyboard shortcuts
   useEffect(() => {
