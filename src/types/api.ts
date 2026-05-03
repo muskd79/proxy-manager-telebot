@@ -93,10 +93,21 @@ export interface UserFilters {
 
 export interface RequestFilters {
   search?: string;
-  status?: RequestStatus;
+  /**
+   * Comma-separated for multi-select (server splits on `,` and uses
+   * .in("status", arr) when length > 1).
+   */
+  status?: RequestStatus | string;
   teleUserId?: string;
   proxyType?: ProxyType;
   country?: string;
+  /**
+   * Wave 26-D-post1 — filter by how the request was approved/handled:
+   *   - "auto": only auto-approved requests (system fast path)
+   *   - "manual": only admin-approved/rejected requests
+   * Maps to `proxy_requests.approval_mode` column.
+   */
+  approvalMode?: "auto" | "manual";
   isDeleted?: boolean;
   dateFrom?: string;
   dateTo?: string;

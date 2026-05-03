@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { RequestFilters, PaginatedResponse, ApiResponse } from "@/types/api";
-import type { ProxyRequest, RequestStatus, ProxyType } from "@/types/database";
+import type { ProxyRequest, ProxyType } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove } from "@/lib/auth";
 import { CreateRequestSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
@@ -16,12 +16,20 @@ export async function GET(request: NextRequest) {
     if (authError) return authError;
 
     const searchParams = request.nextUrl.searchParams;
+    const rawApprovalMode = searchParams.get("approvalMode");
     const filters: RequestFilters = {
       search: searchParams.get("search") || undefined,
-      status: (searchParams.get("status") as RequestStatus) || undefined,
+      status: searchParams.get("status") || undefined,
       teleUserId: searchParams.get("teleUserId") || undefined,
       proxyType: (searchParams.get("proxyType") as ProxyType) || undefined,
       country: searchParams.get("country") || undefined,
+      // Wave 26-D-post1 — accept approvalMode filter. Strict to the
+      // 2 valid enum values; anything else is silently ignored so a
+      // typo'd URL doesn't bleed into .eq().
+      approvalMode:
+        rawApprovalMode === "auto" || rawApprovalMode === "manual"
+          ? rawApprovalMode
+          : undefined,
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,
       isDeleted: searchParams.get("isDeleted") === "true",
@@ -70,6 +78,11 @@ export async function GET(request: NextRequest) {
 
     if (filters.country) {
       query = query.eq("country", filters.country);
+    }
+
+    // Wave 26-D-post1 — approval_mode filter
+    if (filters.approvalMode) {
+      query = query.eq("approval_mode", filters.approvalMode);
     }
 
     if (filters.dateFrom) {
