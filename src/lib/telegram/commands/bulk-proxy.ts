@@ -1,3 +1,8 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: every Markdown
+// interpolation here is an integer count or a proxy type enum
+// (uppercase). Proxy host:port strings are wrapped in backticks
+// (code span) when present. No user/admin-controlled free-form
+// string is interpolated outside a code span.
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
@@ -12,8 +17,7 @@ import type { OrderMode } from "../keyboard";
 import { InlineKeyboard } from "grammy";
 import { CB } from "../callbacks";
 import { getFirstProxyFooter } from "../milestones";
-
-const BULK_AUTO_THRESHOLD = 5; // Above this, force manual approval
+import { loadGlobalCaps, ORDER_MODE_DEFAULTS } from "../rate-limit";
 
 /**
  * Wave 23B-bot UX — `mode` = "quick" | "custom" derived from the
@@ -59,9 +63,14 @@ export async function handleQuantitySelection(
 
   // Wave 23B-bot UX — Custom order ALWAYS goes to admin queue.
   // Quick order honors the threshold + user approval mode (legacy).
+  // Wave 25-pre4 (Pass 7.2) — read threshold from settings (with
+  // hardcoded fallback for pre-migration deploys).
+  const caps = await loadGlobalCaps();
+  const bulkAutoThreshold =
+    caps.bulk_auto_threshold ?? ORDER_MODE_DEFAULTS.bulk_auto_threshold;
   const forceManual =
     mode === "custom" ||
-    quantity > BULK_AUTO_THRESHOLD ||
+    quantity > bulkAutoThreshold ||
     user.approval_mode === ApprovalMode.Manual;
 
   if (!forceManual) {

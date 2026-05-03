@@ -1,3 +1,7 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: every Markdown
+// interpolation in this file is a Markdown-safe value (proxy type
+// enum from `proxyTypeKeyboard` set, available count integer, max
+// per-order integer). No user/admin-controlled string is interpolated.
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";

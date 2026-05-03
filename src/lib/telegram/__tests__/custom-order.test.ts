@@ -32,6 +32,22 @@ vi.mock("../commands/bulk-proxy", () => ({
   handleQuantitySelection: (...args: unknown[]) => mockHandleQuantitySelection(...args),
 }));
 
+// Wave 25-pre4 (Pass 7.2) — handleQtyTextInput now calls loadGlobalCaps
+// to read quick_order_max / custom_order_max from settings. Mock it
+// to return the historical defaults so existing assertions still hold.
+vi.mock("../rate-limit", () => ({
+  loadGlobalCaps: vi.fn().mockResolvedValue({
+    quick_order_max: 10,
+    custom_order_max: 100,
+    bulk_auto_threshold: 5,
+  }),
+  ORDER_MODE_DEFAULTS: {
+    quick_order_max: 10,
+    custom_order_max: 100,
+    bulk_auto_threshold: 5,
+  },
+}));
+
 import { handleQtyTextInput, handleConfirmCallback } from "../commands/custom-order";
 import * as stateModule from "../state";
 

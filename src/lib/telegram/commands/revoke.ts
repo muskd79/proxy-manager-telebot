@@ -1,3 +1,7 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: host:port is wrapped
+// in backticks (code span — Telegram parses literally inside it).
+// proxy type is uppercase enum. count is integer. No user-controlled
+// free-form string interpolated outside a code span.
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";

@@ -38,7 +38,27 @@ export interface RateLimitCheckUser {
 export interface GlobalCaps {
   global_max_proxies?: number;
   global_max_total_requests?: number;
+  /**
+   * Wave 25-pre4 (Pass 7.2) — order-mode tunables, sourced from
+   * the settings table by `loadGlobalCaps`. Optional because older
+   * deploys (pre Wave 25-pre4 migration 054) don't have the rows;
+   * callers fall back to historical hardcoded defaults when missing.
+   */
+  quick_order_max?: number;
+  custom_order_max?: number;
+  bulk_auto_threshold?: number;
 }
+
+/**
+ * Wave 25-pre4 (Pass 7.2) — historical hardcoded defaults for the
+ * order-mode tunables. Used as fallback when the settings row is
+ * missing (e.g. pre-migration deploy or local dev seed).
+ */
+export const ORDER_MODE_DEFAULTS = {
+  quick_order_max: 10,
+  custom_order_max: 100,
+  bulk_auto_threshold: 5,
+} as const;
 
 export interface RateLimitDecision {
   allowed: boolean;
@@ -93,12 +113,24 @@ export function checkRateLimit(
 
 /**
  * Load global cap settings from the database.
+ *
+ * Wave 25-pre4 (Pass 7.2) — also pulls the order-mode tunables
+ * (quick_order_max, custom_order_max, bulk_auto_threshold) so admins
+ * can tune them via /settings without a deploy.
  */
+const SETTINGS_KEYS = [
+  "global_max_proxies",
+  "global_max_total_requests",
+  "quick_order_max",
+  "custom_order_max",
+  "bulk_auto_threshold",
+] as const;
+
 export async function loadGlobalCaps(): Promise<GlobalCaps> {
   const { data: settings } = await supabaseAdmin
     .from("settings")
     .select("key, value")
-    .in("key", ["global_max_proxies", "global_max_total_requests"]);
+    .in("key", SETTINGS_KEYS as unknown as string[]);
 
   const caps: Record<string, number> = {};
   if (settings) {

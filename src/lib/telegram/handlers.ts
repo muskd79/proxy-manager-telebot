@@ -1,3 +1,9 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: only the
+// context-aware media-unsupported reply uses parse_mode: "Markdown",
+// and its strings are hardcoded literals (no interpolation). Other
+// ctx.reply calls in this file are plain-text. Future additions
+// that interpolate user-supplied strings into Markdown payloads
+// must import escapeMarkdown from "./format" and remove this opt-out.
 import { bot } from "./bot";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ChatDirection, MessageType } from "@/types/database";

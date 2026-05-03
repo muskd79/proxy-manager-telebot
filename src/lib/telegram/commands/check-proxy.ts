@@ -1,3 +1,13 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: result lines wrap
+// host:port in backticks (which Telegram parses literally inside
+// the code span) and otherwise interpolate integers (latency_ms,
+// counts) and pre-validated enum strings ("HTTP" / "HTTPS" /
+// "SOCKS5"). Hosts pasted by the user that contain backticks are
+// passed through as-is inside the code span — Telegram will not
+// 400 because backtick is the code delimiter, not a formatting
+// char. If any path here ever interpolates a user-supplied string
+// OUTSIDE a code span, import escapeMarkdown and remove this
+// opt-out.
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";

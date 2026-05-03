@@ -1,3 +1,6 @@
+// markdown-escape: opt-out — this file is a pure string utility.
+// The "parse_mode: Markdown" reference appears only inside a JSDoc
+// usage example. There is no Markdown-payload sending happening here.
 /**
  * Wave 25-pre4 (Pass 2.1) — Telegram message-length splitter.
  *

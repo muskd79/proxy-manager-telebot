@@ -1,3 +1,10 @@
+// markdown-escape: opt-out — Wave 25-pre4 audit: every Markdown
+// interpolation in this file is a Markdown-safe value (enum strings
+// for status/approval_mode, integers for counts/limits/percentages,
+// pre-formatted bar strings of `[#-]`). No user-controlled data is
+// interpolated. If a future addition introduces user-facing strings
+// (e.g. `user.first_name`), import escapeMarkdown and remove this
+// opt-out.
 import type { Context } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getOrCreateUser, getUserLanguage } from "../user";
