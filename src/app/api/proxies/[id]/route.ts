@@ -83,6 +83,18 @@ export async function PUT(
       notes,
       expires_at,
       assigned_to,
+      // Wave 26-B (gap 1.3) — surface the purchase metadata fields.
+      // The schema already validated them; pre-fix the route silently
+      // dropped them on edit, so admins editing a proxy via Sửa
+      // couldn't change vendor/price/category/network_type. Now the
+      // route maps the API field names to their DB column names
+      // (mirror of import/route.ts).
+      network_type,
+      category_id,
+      purchase_date,
+      purchase_price_usd,
+      sale_price_usd,
+      vendor_source,
     } = parsed.data;
 
     const updateData: ProxyUpdate = {};
@@ -147,6 +159,16 @@ export async function PUT(
         updateData.assigned_at = new Date().toISOString();
       }
     }
+    // Wave 26-B (gap 1.3) — apply the purchase metadata + category +
+    // network_type fields. API name → DB column mapping mirrors
+    // import/route.ts: vendor_source → vendor_label,
+    // purchase_price_usd → cost_usd. The other names are 1-to-1.
+    if (network_type !== undefined) updateData.network_type = network_type || null;
+    if (category_id !== undefined) updateData.category_id = category_id || null;
+    if (purchase_date !== undefined) updateData.purchase_date = purchase_date || null;
+    if (purchase_price_usd !== undefined) updateData.cost_usd = purchase_price_usd ?? null;
+    if (sale_price_usd !== undefined) updateData.sale_price_usd = sale_price_usd ?? null;
+    if (vendor_source !== undefined) updateData.vendor_label = vendor_source || null;
 
     let updateQuery = supabase
       .from("proxies")

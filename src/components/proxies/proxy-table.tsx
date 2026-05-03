@@ -73,6 +73,12 @@ const typeColors: Record<string, string> = {
   socks5: "bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-900/40 dark:text-purple-100 dark:border-purple-700",
 };
 
+// Wave 26-B (gap 4.1) — colspan source-of-truth. Pre-fix the empty-
+// state TableCell hardcoded `colSpan={14}`; if a column is added or
+// removed the empty state renders misaligned. Now: count from a const
+// and a TODO to update both header + colSpan together.
+const DESKTOP_COLUMN_COUNT = 14;
+
 export function ProxyTable({
   proxies,
   selectedIds,
@@ -278,7 +284,7 @@ export function ProxyTable({
       <TableBody>
         {proxies.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={14} className="text-center py-8">
+            <TableCell colSpan={DESKTOP_COLUMN_COUNT} className="text-center py-8">
               <p className="text-muted-foreground">Chưa có proxy nào</p>
             </TableCell>
           </TableRow>

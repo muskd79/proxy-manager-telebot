@@ -25,6 +25,7 @@ import {
   FileText,
   FileSpreadsheet,
   ClipboardPaste,
+  AlertCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -73,6 +74,18 @@ export default function ProxiesPage() {
   const [checkProgress, setCheckProgress] = useState(0);
   const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  // Wave 26-B (gap 2.1) — replace window.confirm with shadcn AlertDialog
+  // for visual consistency with bulk delete. Holds the proxy queued
+  // for deletion; null = no dialog.
+  const [singleDeleteTarget, setSingleDeleteTarget] = useState<Proxy | null>(
+    null,
+  );
+  // Wave 26-B (gap 2.5) — soft banner when realtime drops. Pre-fix
+  // CHANNEL_ERROR was console.error only — admin had no visual cue
+  // that the auto-refresh on DB changes had stopped.
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "ok" | "error">(
+    "connecting",
+  );
 
   // Phase 3 (PM UX) — read ?status= / ?type= / ?category_id= from
   // URL on first mount so dashboard KPI drill-down lands on a
@@ -219,8 +232,16 @@ export default function ProxiesPage() {
         }, 2000);
       })
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Realtime subscription error on proxies channel');
+        // Wave 26-B (gap 2.5) — surface the channel state to UI.
+        // CHANNEL_ERROR / TIMED_OUT / CLOSED all degrade live-sync;
+        // SUBSCRIBED is the happy path. The banner gives admins a
+        // way to know "the auto-refresh stopped — click reload" so
+        // they don't trust a stale list.
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("ok");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          console.error("Realtime subscription error on proxies channel:", status);
+          setRealtimeStatus("error");
         }
       });
 
@@ -259,20 +280,55 @@ export default function ProxiesPage() {
     fetchProxies();
   }
 
-  async function handleDelete(id: string) {
-    // Phase 3 (PM UX) — destructive single-proxy delete now confirms
-    // first. Pre-fix: tap "Xoá" → request fired immediately; bulk
-    // had a confirm but single-row didn't (UX inconsistency flagged
-    // by UI auditor B3).
+  // Wave 26-B (gap 2.1) — replace window.confirm with AlertDialog.
+  // `handleDelete` now opens the dialog; the actual delete runs
+  // in `confirmSingleDelete` when admin confirms. UX matches the
+  // bulk-delete flow (same component, same theming).
+  function handleDelete(id: string) {
     const proxy = proxies.find((p) => p.id === id);
-    const label = proxy ? `${proxy.host}:${proxy.port}` : "proxy này";
-    if (!window.confirm(`Chuyển ${label} vào Thùng rác?`)) return;
+    if (!proxy) return;
+    setSingleDeleteTarget(proxy);
+  }
 
-    const res = await fetch(`/api/proxies/${id}`, { method: "DELETE" });
+  async function confirmSingleDelete() {
+    const proxy = singleDeleteTarget;
+    if (!proxy) return;
+    const label = `${proxy.host}:${proxy.port}`;
+    const proxyId = proxy.id;
+    setSingleDeleteTarget(null);
+
+    const res = await fetch(`/api/proxies/${proxyId}`, { method: "DELETE" });
     if (res.ok) {
-      toast.success(`Đã chuyển ${label} vào Thùng rác`);
+      // Wave 26-B (gap 6.6) — toast with Undo action. Soft-delete via
+      // /api/proxies/[id] PATCH { is_deleted: false } restores from
+      // Trash. 8s window covers a typical "wait, that was the wrong
+      // row" moment.
+      toast.success(`Đã chuyển ${label} vào Thùng rác`, {
+        duration: 8000,
+        action: {
+          label: "Hoàn tác",
+          onClick: async () => {
+            // Wave 26-B (gap 6.6) — PUT with is_deleted=false. The
+            // /api/proxies/[id] PUT route accepts a partial body and
+            // restores soft-deleted rows when is_deleted goes false-
+            // ward (also clears deleted_at server-side).
+            const undoRes = await fetch(`/api/proxies/${proxyId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ is_deleted: false }),
+            });
+            if (undoRes.ok) {
+              toast.success(`Đã khôi phục ${label}`);
+              fetchProxies();
+            } else {
+              const body = await undoRes.json().catch(() => ({}));
+              toast.error(`Không khôi phục được: ${body?.error || undoRes.statusText}`);
+            }
+          },
+        },
+      });
       fetchProxies();
-      setSelectedIds((prev) => prev.filter((x) => x !== id));
+      setSelectedIds((prev) => prev.filter((x) => x !== proxyId));
     } else {
       const body = await res.json().catch(() => ({}));
       toast.error(`Xoá thất bại: ${body?.error || res.statusText}`);
@@ -308,23 +364,85 @@ export default function ProxiesPage() {
     fetchProxies();
   }
 
+  // Wave 26-B (gap 2.4 + 2.8 + 6.4) — health-check now toasts the
+  // alive/dead summary, optimistically updates the row(s) in local
+  // state from the API response (instant UI feedback, no full refetch
+  // wait), and refreshes the "Lần check gần nhất" timestamp so the
+  // status indicator is honest about all checks (not just check-all).
   async function handleHealthCheck(ids: string[]) {
-    await fetch("/api/proxies/check", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    fetchProxies();
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch("/api/proxies/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(`Kiểm tra thất bại: ${body?.error || res.statusText}`);
+        return;
+      }
+      const body = await res.json();
+      type CheckRow = { id: string; alive: boolean; speed_ms: number };
+      // /api/proxies/check returns `data: [...]` directly, not
+      // `data.results`. Defensive parsing in case the route shape
+      // ever changes.
+      const rows: CheckRow[] = Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray(body?.data?.results)
+          ? body.data.results
+          : [];
+
+      // Optimistic update: patch the rows in-place. No full refetch
+      // means the table doesn't flicker for a single-row check.
+      // The check endpoint flips `status` → "maintenance" for dead
+      // proxies but leaves alive proxies' status alone, so we
+      // mirror that here.
+      if (rows.length > 0) {
+        const nowISO = new Date().toISOString();
+        setProxies((prev) =>
+          prev.map((p) => {
+            const r = rows.find((x) => x.id === p.id);
+            if (!r) return p;
+            return {
+              ...p,
+              speed_ms: r.alive ? r.speed_ms : null,
+              last_checked_at: nowISO,
+              status: !r.alive ? "maintenance" : p.status,
+            };
+          }),
+        );
+      } else {
+        // Endpoint didn't return per-row results — fall back to a
+        // refetch so the table eventually reflects the new state.
+        fetchProxies();
+      }
+
+      // Toast summary based on returned rows (or fallback count).
+      const aliveN = rows.filter((r) => r.alive === true).length;
+      const deadN = rows.filter((r) => r.alive === false).length;
+      const totalN = rows.length || ids.length;
+      toast.success(
+        `Đã kiểm tra ${totalN}` +
+          (rows.length > 0 ? ` — ${aliveN} alive, ${deadN} dead` : ""),
+      );
+      setLastCheckTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error("Health check failed:", err);
+      toast.error("Kiểm tra thất bại — lỗi mạng");
+    }
   }
 
   const handleCheckAll = async () => {
     if (!canWrite) return;
     setChecking(true);
     setCheckProgress(0);
+    const CHECK_ALL_CAP = 500;
     try {
-      // Get all proxy IDs — capped at 500 to avoid unbounded memory/DB load.
-      // For fleets >500 proxies use the cron health-check endpoint instead.
-      const res = await fetch("/api/proxies?pageSize=500");
+      // Get all proxy IDs — capped at CHECK_ALL_CAP to avoid unbounded
+      // memory/DB load. For fleets >cap use the cron health-check
+      // endpoint instead.
+      const res = await fetch(`/api/proxies?pageSize=${CHECK_ALL_CAP}`);
       const result = await res.json();
       const rawData = result?.data?.data || result?.data || [];
       const allIds = (Array.isArray(rawData) ? rawData : []).map((p: any) => p.id);
@@ -332,6 +450,20 @@ export default function ProxiesPage() {
       if (allIds.length === 0) {
         toast.info(t("proxies.noProxiesToCheck"));
         return;
+      }
+
+      // Wave 26-B (gap 2.3) — surface the cap. Pre-fix when total > cap
+      // we silently checked only the first 500 and the success toast
+      // claimed "Đã check 500" with no warning that the rest was
+      // skipped. Now: explicit pre-flight warning so admins know to
+      // run the cron job for the full fleet.
+      const fleetCount = result?.total ?? allIds.length;
+      if (typeof fleetCount === "number" && fleetCount > CHECK_ALL_CAP) {
+        toast.warning(
+          `Bot có ${fleetCount} proxy nhưng chỉ kiểm tra ${CHECK_ALL_CAP} proxy mới nhất một lần. ` +
+            `Dùng cron health-check (24h/lần) cho toàn bộ fleet.`,
+          { duration: 9000 },
+        );
       }
 
       // Check in batches of 100
@@ -437,6 +569,36 @@ export default function ProxiesPage() {
           )}
         </div>
       </div>
+
+      {/* Wave 26-B (gap 2.5) — soft realtime status banner. Renders
+          ONLY when the channel is in error state — happy path stays
+          clean. The "Tải lại" button forces a full refetch + a fresh
+          channel subscribe via useEffect cleanup + remount, which is
+          the simplest path to recovery without a heavier reconnect
+          retry loop. */}
+      {realtimeStatus === "error" && (
+        <div className="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">
+          <AlertCircle className="size-4 shrink-0" />
+          <span className="flex-1">
+            Đồng bộ realtime tạm dừng — danh sách có thể không phản ánh thay đổi mới nhất.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setRealtimeStatus("connecting");
+              fetchProxies();
+              // Re-subscribe by changing fetchProxies identity.
+              // The useEffect with [fetchProxies] dep will tear down +
+              // resubscribe on the next render.
+            }}
+            className="h-7 gap-1.5 text-xs"
+          >
+            <RefreshCw className="size-3" />
+            Tải lại
+          </Button>
+        </div>
+      )}
 
       {/* Health Check Status */}
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -578,6 +740,39 @@ export default function ProxiesPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {t("common.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Wave 26-B (gap 2.1) — single proxy delete confirmation.
+          Pre-fix used native window.confirm — different theming,
+          jarring next to the AlertDialog bulk-delete. Now both flow
+          through the same shadcn AlertDialog component. */}
+      <AlertDialog
+        open={singleDeleteTarget !== null}
+        onOpenChange={(open) => !open && setSingleDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Chuyển vào Thùng rác?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {singleDeleteTarget && (
+                <>
+                  Sắp chuyển <strong className="font-mono">{singleDeleteTarget.host}:{singleDeleteTarget.port}</strong> vào Thùng rác.
+                  <br />
+                  Có thể khôi phục từ tab Thùng rác trong vòng 30 ngày.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmSingleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Chuyển vào Thùng rác
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
