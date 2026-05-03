@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Proxy } from "@/types/database";
-import { z } from "zod";
 import { toast } from "sonner";
 import {
   NETWORK_TYPE_VALUES,
@@ -32,76 +31,17 @@ import {
 } from "@/lib/proxy-labels";
 import { CategoryPicker, type CategoryOptionLite } from "./category-picker";
 import { useSharedCache, useSharedQuery } from "@/lib/shared-cache";
-
-const proxyTypeValues = ["http", "https", "socks5"] as const;
-
-const proxySchema = z.object({
-  host: z.string().min(1, "Bắt buộc nhập host"),
-  port: z.coerce.number().int().min(1).max(65535, "Port phải nằm trong khoảng 1-65535"),
-  type: z.enum(proxyTypeValues),
-  // Wave 22J — phân loại proxy (không liên quan tới giao thức `type`).
-  network_type: z.enum(NETWORK_TYPE_VALUES).optional().or(z.literal("")),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  country: z.string().optional(),
-  city: z.string().optional(),
-  // Wave 22Y — ISP field removed from UI (kept in DB for legacy imports).
-  // Wave 23B — Danh mục phải chọn được khi thêm 1 proxy lẻ
-  // (trước đây chỉ làm được qua bulk-assign — UX feedback từ user).
-  category_id: z.string().optional().or(z.literal("")),
-  notes: z.string().optional(),
-  expires_at: z.string().optional(),
-  // Wave 26-B (gap 1.3) — purchase metadata exposed for single-proxy
-  // edit. Pre-fix: import wizard set these but Sửa form couldn't edit
-  // them, forcing admins through bulk-edit even for 1-row tweaks.
-  // String inputs: prices stay strings until submit, then converted.
-  purchase_date: z.string().optional(),
-  vendor_source: z.string().optional(),
-  purchase_price_usd: z.string().optional(),
-  sale_price_usd: z.string().optional(),
-});
+// Wave 26-D-pre2/G — schema + initial-data extracted to subdir for
+// maintainability. The component file dropped from 718 → ~580 lines
+// after this split.
+import { proxySchema, type ProxyFormData } from "./proxy-form/schema";
+import { buildInitialFormData } from "./proxy-form/build-initial";
 
 interface ProxyFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   proxy?: Proxy | null;
   onSave: (data: Record<string, unknown>) => Promise<void>;
-}
-
-/**
- * Wave 26-B (gap 1.1) — single source of truth for form initial state.
- * Pre-fix the inline initializer ran ONCE on mount, so admins editing
- * proxy A → closing → editing proxy B saw A's data prefilled. Now both
- * the initial useState() AND the prop-change useEffect call this.
- */
-function buildInitialFormData(proxy: Proxy | null | undefined) {
-  return {
-    host: proxy?.host || "",
-    port: proxy?.port?.toString() || "",
-    type: proxy?.type || "http",
-    network_type: (proxy?.network_type ?? "") as NetworkType | "",
-    username: proxy?.username || "",
-    password: proxy?.password || "",
-    country: proxy?.country || "",
-    city: proxy?.city || "",
-    category_id: proxy?.category_id || "",
-    notes: proxy?.notes || "",
-    expires_at: proxy?.expires_at
-      ? new Date(proxy.expires_at).toISOString().split("T")[0]
-      : "",
-    // Wave 26-B (gap 1.3) — purchase metadata pre-fill for edit mode.
-    // The Proxy interface uses `vendor_label` + `cost_usd` (DB column
-    // names); the form / API use `vendor_source` + `purchase_price_usd`
-    // as the request-body names (same convention as ProxyImport).
-    purchase_date: proxy?.purchase_date
-      ? proxy.purchase_date.slice(0, 10)
-      : "",
-    vendor_source: proxy?.vendor_label ?? "",
-    purchase_price_usd:
-      proxy?.cost_usd != null ? String(proxy.cost_usd) : "",
-    sale_price_usd:
-      proxy?.sale_price_usd != null ? String(proxy.sale_price_usd) : "",
-  };
 }
 
 /**
