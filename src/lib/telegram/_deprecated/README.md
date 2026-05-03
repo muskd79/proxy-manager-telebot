@@ -15,9 +15,8 @@ might still match old strings) and for git-blame lineage.
 
 **Current contents:**
 
-| File | Deprecated since | Deletion plan |
-|---|---|---|
-| `aup.ts` | Wave 23C-fix (2026-04-29) | Delete after migration `050_drop_aup_accepted_at.sql` lands and `tele_users.aup_accepted_at` column is dropped. Tracked in `docs/decision-log.md#aup-cleanup`. |
+_Empty._ Files arrive here on their way out; this README explains
+the convention. See "Deleted" table below for the audit trail.
 
 **To delete a file** (when its row above is closed):
 
@@ -29,4 +28,6 @@ might still match old strings) and for git-blame lineage.
 
 **Deleted:**
 
-_None yet._
+| File | Quarantined | Deleted | Closure note |
+|---|---|---|---|
+| `aup.ts` | Wave 25-pre3 | Wave 25-pre4 | DB columns `tele_users.aup_accepted_at` + `aup_version` dropped by migration 052. Closes `docs/decision-log.md#aup-cleanup`. |
