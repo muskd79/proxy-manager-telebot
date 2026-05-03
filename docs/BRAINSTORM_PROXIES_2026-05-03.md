@@ -15,6 +15,23 @@ recommendation and a rough cost estimate, but the user picks the order.
 
 ---
 
+## Glossary (terms used below)
+
+- **Quota** — hạn mức proxy mỗi user Telegram được lấy. Mỗi user có
+  một số "slot" cố định (vd 5 proxy/tháng, do admin set ở /settings).
+  Lấy proxy = trừ 1 slot; trả proxy = hoàn 1 slot. Hết quota → bot
+  từ chối /getproxy. Liên quan tới warranty (Section 4): khi proxy
+  hỏng và admin cấp proxy mới, tôi đề xuất KHÔNG trừ thêm 1 slot
+  (proxy hỏng không phải lỗi user) — chỉ track riêng qua
+  `warranty_claims.replacement_proxy_id` để báo cáo doanh thu khỏi
+  nhầm "1 lần bán = 2 proxy đã giao".
+- **Sub-tab** — tab con bên trong 1 page (vd `<Tabs>` trong page
+  `/requests` hiện đang có "Chờ xử lý" + "Gần đây 7 ngày"). Sau
+  feedback của user 2026-05-03, doc khuyến cáo HẠN CHẾ sub-tab —
+  dùng filter dropdown thay thế (Section 5 REVISED).
+
+---
+
 ## 0. What Wave 26-C just shipped (already addressed)
 
 - **Cột loại mạng "không đồng bộ"** — fixed in Wave 26-C/3 (commit
@@ -231,12 +248,27 @@ CREATE INDEX warranty_claims_pending_idx
 7. **Banned cascade:** approved warranty → original proxy gets
    `status='banned'` (not just `expired`) so it can't be re-distributed.
 
-### UI sketch
+### UI sketch (REVISED 2026-05-03 per user feedback)
 
-`/warranty` new page:
-- Sub-tabs: **Chờ duyệt** / **Đã duyệt (7 ngày)** / **Đã từ chối (7 ngày)**
-- Each card shows the claim with a Re-check + Approve/Reject row
-- Sidebar badge: count of `pending` claims (red dot when > 0)
+User pushed back on the original "5-7 sub-tabs" sketch — đúng, mỗi
+"loại sub-tab" tôi list ra trước đây đều là cùng một loại đối tượng
+(claim hoặc request), chỉ khác trạng thái. Filter dropdown gọn hơn
+nhiều so với việc đẻ tab con.
+
+**Final UI: 1 page `/warranty`, 1 bảng duy nhất, dropdown filter.**
+
+Bảng cột:
+| User | Proxy | Lý do | Trạng thái | Tạo lúc | Hành động |
+
+Filter row trên cùng:
+- **Trạng thái:** [Tất cả] / Chờ duyệt / Đã duyệt / Từ chối / Hết hạn
+- **Khoảng thời gian:** [7 ngày] / 30 ngày / Tất cả
+- **Tìm kiếm:** user / proxy host:port
+
+Sidebar badge: count of `pending` claims (red dot when > 0).
+
+Default filter khi mở page: `Trạng thái = Chờ duyệt + 7 ngày` —
+admin thấy queue cần xử lý ngay, switch dropdown khi cần audit cũ.
 
 ### Estimate
 
@@ -249,25 +281,60 @@ CREATE INDEX warranty_claims_pending_idx
 
 ---
 
-## 5. Tab "Yêu cầu proxy" — sub-tabs expansion
+## 5. Tab "Yêu cầu proxy" + tab "Bảo hành" — REVISED 2026-05-03
 
-### Current
-- "Chờ xử lý" (`status=pending`)
-- "Gần đây (7 ngày)" — auto-approved + rejected in last 7 days
+### User feedback (verbatim)
 
-### Suggested additional sub-tabs
+> "Sao mục lắm sub-tab vậy bro, mọi sub-tab đều cùng 1 loại là Yêu cầu
+> proxy hoặc Bảo hành mà, thì về cơ bản chỉ có 2 sub-tab là Yêu cầu và
+> Bảo hành, trong từng sub-tab thì có cột riêng là đã duyệt, từ chối,…
+> chứ sao lại chia lắm tab vậy khó quản hơn không."
 
-| Sub-tab | Filter | Why |
-|---------|--------|-----|
-| **Sắp hết hạn (gần)** | `status='approved' AND assigned_proxy.expires_at within 24h` | Pre-empt churn — admin can DM user before expiry |
-| **Đã hết hạn nhưng chưa thu hồi** | `status='approved' AND assigned_proxy.expires_at < now()` | Cleanup queue (currently invisible) |
-| **Bảo hành** (after Section 4) | `warranty_claims.status='pending'` | Replaces the "Chờ xử lý" overload — different ops queue |
-| **Bị từ chối + lý do** | `status='rejected'` ALL TIME with reason filter | Audit/dispute resolution |
-| **Theo nguồn (vendor)** | group by assigned_proxy.vendor_label | Vendor performance view |
+User đúng. Tôi đã over-engineer. Logic chuẩn:
+- **2 top-level pages**: `/requests` (Yêu cầu) + `/warranty` (Bảo hành).
+- **Trong mỗi page, 1 bảng duy nhất** với filter dropdown thay vì sub-tabs.
+- Default filter mở ra hợp lý (e.g. "Chờ xử lý + 7 ngày") để admin
+  thấy queue cần xử lý ngay; switch dropdown khi cần audit cũ.
 
-**Recommendation:** ship "Sắp hết hạn" + "Đã hết hạn chưa thu hồi"
-together as a small commit (1 endpoint extension, 2 sub-tabs). They
-solve real ops pain. Defer the rest until warranty lands.
+### Page `/requests` — proposed final layout
+
+Bảng cột:
+| User | Proxy | Loại | Trạng thái | Tạo lúc | Xử lý lúc | Hành động |
+
+Filter row:
+- **Trạng thái:** [Chờ xử lý] / Đã duyệt (auto + manual) / Từ chối / Hết hạn / Sắp hết hạn (≤24h) / Tất cả
+- **Khoảng thời gian:** [7 ngày] / 30 ngày / Tất cả
+- **Loại proxy:** [Tất cả] / HTTP / HTTPS / SOCKS5
+- **Theo nguồn (vendor):** [Tất cả] / dropdown vendor_label
+- **Tìm kiếm:** user_id / proxy host:port
+
+Default filter: `Chờ xử lý + 7 ngày`.
+
+**KHÔNG** đẻ thêm sub-tabs. Mọi "use case" tôi list trước đây giải
+quyết bằng switch dropdown:
+- "Sắp hết hạn 24h" → Trạng thái = "Sắp hết hạn"
+- "Đã hết hạn chưa thu hồi" → Trạng thái = "Hết hạn"
+- "Bị từ chối" → Trạng thái = "Từ chối" + Khoảng thời gian = Tất cả
+- "Theo nguồn" → dropdown Theo nguồn
+
+### Page `/warranty` — proposed final layout
+
+Mirror `/requests`. Single table + filter dropdown (xem Section 4 UI sketch).
+
+### Migration path từ trang `/requests` hiện tại
+
+Page hiện tại dùng `<Tabs>` với 2 trigger ("Chờ xử lý" / "Gần đây 7 ngày").
+Refactor sang single-table + filter:
+- Bỏ `<Tabs>`, giữ filter row hiện có (search) + thêm 4 dropdown.
+- Server filter hoá: `/api/requests?status=…&within=…&type=…&vendor=…&q=…`.
+- "Sắp hết hạn" + "Hết hạn" tính từ `assigned_proxy.expires_at` (cần JOIN proxy table — schema đã sẵn).
+
+### Estimate
+
+- Refactor `/requests` page (bỏ Tabs, thêm filter): half-day.
+- Backend extend `/api/requests` với 2 filter mới (`status='expiring_soon'`, `status='expired_unrevoked'`): 2h.
+- Tests: 1h.
+**Total: ~1 day.** Có thể ship cùng Wave 26-D hoặc tách Wave 26-E nhỏ.
 
 ---
 
@@ -315,8 +382,8 @@ If user gives green light, suggest this sequence (each is one wave):
    *Foundation for Wave 26-D and beyond.*
 3. **Wave 26-D** — Warranty mechanism (Section 4).
    *The big-ticket feature.*
-4. **Wave 26-E** — Yêu cầu sub-tabs (Section 5) + warranty surfacing
-   in sidebar.
+4. **Wave 26-E** — `/requests` refactor (Tabs → single-table + filter
+   dropdown, Section 5 REVISED) + warranty surfacing in sidebar.
 5. **Wave 26-F** — Categories detail page + bulk actions (Section 3.3-3.4).
 
 Total ~7-8 days of work end-to-end.
