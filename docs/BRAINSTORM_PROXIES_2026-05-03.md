@@ -801,3 +801,76 @@ Wave 26-D scope:
 
 Total: ~4-5 ngày eng (uplift từ 3 ngày ban đầu vì cộng `reliability_score` + email + clone-as-new + storyteller layout).
 
+
+---
+
+## FINAL DECISIONS (vòng 4 — agent quyết toàn bộ thay user, 2026-05-03)
+
+User defer hết 7 câu cuối, ủy quyền agent quyết. Tổng hợp từ 2 vòng
+brainstorm trước (ui-ux-designer + brainstormer + architect):
+
+| Câu | Final | Implementation note |
+|-----|-------|---------------------|
+| **A7** | (b) Auto-maintenance + checkbox + reliability_score | State: `assigned → maintenance` (warranty approve). Checkbox `also_mark_banned` mặc định OFF. Migration thêm `proxies.reliability_score INT DEFAULT 100`, decrement -25 mỗi warranty approve |
+| **B3** | (c) Strip 20 ô + tab Sức khỏe + timeline integration | Component `HealthStrip` 20 dots. Tab "Sức khỏe" chứa table chi tiết. Failed probe ghi vào `proxy_events` event_type `health_check_failed` |
+| **D1** | (b) Storyteller layout | Rebuild proxy-detail.tsx: header (host:port + status + strip + chips warranty/category/batch + quick actions) + 2-column body (timeline left, metadata rail right). Mobile: rail collapse thành accordion trên cùng |
+| **D3** | (b) State-contextual primary + overflow | Mapping table theo status (xem Section 5 D3 trên). ConfirmDialog với reason input cho mọi destructive. Reason ghi vào `proxy_events.details.reason` |
+| **E3** | (a) Phase 1 — SWR + poll 60s | useSharedQuery (đã có trong Wave 26-C) + poll endpoint count. Sidebar badge "Yêu cầu (N · cũ nhất X phút)". KHÔNG build Supabase channel cho /requests + /warranty trong Wave 26-D |
+| **H2** | (3) Sequential reuse — schema 1-to-1 giữ nguyên | KHÔNG refactor `proxies.assigned_to`. Wave 26-D ship trên schema hiện tại. Nếu user later muốn shared pool → Wave 28+ riêng. Nếu seat-sharing → push back ToS hoặc Wave 26-E |
+| **H5** | (d) Restore về maintenance + Clone as new proxy | State machine sẵn có. Nút "Clone as new proxy" pre-fill import form, link `previous_proxy_id` trong proxy_events |
+
+### Final Wave 26-D scope (commit-by-commit)
+
+**Wave 26-D-pre1** (1 ngày) — Storyteller proxy detail
+- Rebuild `src/components/proxies/proxy-detail.tsx` thành storyteller layout
+- Component split: `detail/Header.tsx`, `detail/Timeline.tsx`, `detail/MetadataRail.tsx`, `detail/HealthStrip.tsx`, `detail/QuickActionsBar.tsx`
+- Mock data nếu `proxy_events` chưa có (Wave 26-D ship sau): tạm fetch từ `/api/requests` như hiện tại
+- Vietnamese labels khắp nơi (sweep "Created", "Edit", etc → "Đã tạo", "Sửa")
+- Click-to-reveal password (D2=b: default reveal trên detail)
+
+**Wave 26-D-pre2** (0.5 ngày) — Component split foundation
+- Split `proxy-import.tsx` (~1300 dòng) → `import/StepUpload.tsx`, `import/StepReview.tsx`, `import/StepResult.tsx`
+- Split `proxy-form.tsx` (~700 dòng) → `form/schema.ts`, `form/build-initial.ts`, `form/Fields.tsx`, dialog component giữ nguyên
+- Sweep "quota" → "giới hạn yêu cầu" trong codebase (13 chỗ — bot Telegram strings)
+
+**Wave 26-D** (3 ngày) — Warranty mechanism
+- Migration `057_wave26d_warranty.sql`:
+  - ALTER TYPE proxy_status ADD VALUE 'reported_broken'
+  - CREATE TABLE warranty_claims (id, proxy_id, user_id, reason_code enum, reason_text, status, replacement_proxy_id, resolved_by, resolved_at, rejection_reason, created_at) + index pending
+  - CREATE TABLE proxy_events (id, proxy_id, event_type enum 16, actor_type, actor_id, related_user_id, related_proxy_id, details JSONB, created_at) + 3 indexes
+  - CREATE TABLE proxy_health_logs (id, proxy_id, ok, speed_ms, error_msg, checked_at) + trigger keep last 20 per proxy
+  - CREATE TABLE saved_views (id, admin_id, page, name, filter_json, created_at)
+  - ALTER TABLE proxies ADD reliability_score INT DEFAULT 100
+  - INSERT 5 settings keys: warranty_eligibility_unlimited, warranty_max_pending (2), warranty_max_per_30d (5), warranty_cooldown_minutes (60), warranty_reliability_decrement (25)
+- State machine `src/lib/state-machine/proxy.ts`: thêm 4 transitions
+  - `assigned → reported_broken` (user trigger qua bot)
+  - `reported_broken → assigned` (admin reject = revert)
+  - `assigned → maintenance` (admin approve warranty, default flow)
+  - `assigned → banned` (admin approve warranty với checkbox tick)
+- Bot:
+  - Callback shape: `warranty:claim:<proxy_id>`
+  - Reason picker keyboard với 5 enum + "Khác"
+  - Khi user chọn "Khác" → bot prompt nhập text (state machine state mới `WaitingWarrantyReasonText`)
+  - Anti-abuse validate trước khi submit (3 condition: pending, 30d cap, cooldown)
+  - Notify user khi admin duyệt/từ chối (F1=c: bot + email if user.email)
+- Web admin:
+  - `/warranty` page: single-table + powerful filter (10 dropdown + search)
+  - Default filter: `Trạng thái=Đang đợi + Khoảng thời gian=7 ngày`
+  - Bulk action: "Duyệt hàng loạt" (chọn N claim → 1 click duyệt + allocator chạy sequential)
+  - Settings page: 5 keys mới với UI input (toggle, number)
+  - Sidebar badge: "Yêu cầu (3 · cũ nhất 12 phút)" + "Bảo hành (1 · cũ nhất 5 giờ)"
+- Allocator extension `src/lib/proxy-allocator.ts`:
+  - 3-tier function `pickReplacementProxy(originalProxyId)`
+  - Tier 1: same category + same network_type + status='available'
+  - Tier 2: same category + status='available'
+  - Tier 3: any status='available'
+  - Notify admin nếu cả 3 tier hết hàng
+- Tests: state machine transitions (5 case), allocator tiers (3 case), anti-abuse counters (3 case), warranty claim lifecycle E2E (1 case)
+
+**Wave 26-D-post1** (0.5 ngày) — `/requests` refactor (Section 5)
+- Bỏ `<Tabs>`, single-table + powerful filter (8 dropdown + search)
+- URL state encoded vào query string
+- Default filter: `Đang đợi + 7 ngày`
+
+Tổng: ~5 ngày eng cho toàn series Wave 26-D.
+
