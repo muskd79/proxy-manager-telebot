@@ -565,10 +565,31 @@ export function ProxyImport() {
         if (r.failed > 0) parts.push(`${r.failed} lỗi`);
         const message = parts.join(" — ");
 
+        // Wave 26-C — toast action: "Xem lô vừa import" → /proxies?
+        // import_batch_id=<id>. Closes the gap between "import done"
+        // and "verify the batch end-to-end". Pre-fix admins had to
+        // hunt for newly-created rows in the global list.
+        const batchId = r.import_batch_id;
+        const toastOpts: Parameters<typeof toast.success>[1] = {
+          duration: 8000,
+          ...(batchId && r.imported > 0
+            ? {
+                action: {
+                  label: "Xem lô vừa import",
+                  onClick: () => {
+                    // Hard navigate so the /proxies page reads the
+                    // search param fresh from the URL — avoids any
+                    // stale SWR cache.
+                    window.location.href = `/proxies?import_batch_id=${batchId}`;
+                  },
+                },
+              }
+            : {}),
+        };
         if (r.failed > 0) {
-          toast.warning(message, { duration: 8000 });
+          toast.warning(message, toastOpts);
         } else {
-          toast.success(message, { duration: 8000 });
+          toast.success(message, toastOpts);
         }
 
         // Wave 26-A — reset form (keeps categoryId per the
@@ -1244,16 +1265,26 @@ export function ProxyImport() {
                 )}
               </div>
             )}
-            {/* Wave 26-A — next-action CTAs. Pre-fix admin had to
-                navigate sidebar manually after import. Two buttons:
-                  - primary: jump to the proxies list (with success
-                    toast already fired earlier)
-                  - secondary: "Import thêm" — keeps the user on this
-                    page, the form was already cleared in handleImport. */}
+            {/* Wave 26-A → 26-C — next-action CTAs.
+                Pre-26-A admin had to navigate sidebar manually after
+                import. Pre-26-C the "Xem danh sách" button dropped
+                admins into the FULL list, mixing the new batch with
+                old inventory — finding the just-imported rows meant
+                eyeballing host:port. Now: primary CTA filters by
+                `import_batch_id` so admin sees ONLY the new rows. */}
             <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-              <Link href="/proxies" className={buttonVariants()}>
-                Xem danh sách proxy
-              </Link>
+              {result.import_batch_id && result.imported > 0 ? (
+                <Link
+                  href={`/proxies?import_batch_id=${result.import_batch_id}`}
+                  className={buttonVariants()}
+                >
+                  Xem lô vừa import ({result.imported})
+                </Link>
+              ) : (
+                <Link href="/proxies" className={buttonVariants()}>
+                  Xem danh sách proxy
+                </Link>
+              )}
               <Button variant="outline" onClick={() => setResult(null)}>
                 Import thêm
               </Button>

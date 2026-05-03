@@ -103,6 +103,16 @@ export async function GET(request: NextRequest) {
       query = query.eq("network_type", networkType);
     }
 
+    // Wave 26-C — filter by import batch (UUID stamped on every row
+    // from one /api/proxies/import call). UUID-shaped only — anything
+    // else is silently ignored to avoid leaking malformed query
+    // strings into the WHERE clause as `eq` errors.
+    const rawBatchId =
+      searchParams.get("import_batch_id") || searchParams.get("importBatchId");
+    if (rawBatchId && /^[0-9a-f-]{36}$/i.test(rawBatchId)) {
+      query = query.eq("import_batch_id", rawBatchId);
+    }
+
     // Wave 22J → 22L (CRITICAL FIX C3) — Hạn dùng filter (derived).
     //
     // Pre-22L bug: `valid` mapped to `> NOW()+7d` — proxy còn 6 ngày

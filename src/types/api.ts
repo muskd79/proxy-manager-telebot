@@ -67,6 +67,13 @@ export interface ProxyFilters {
   isp?: string;
   /** Wave 22G — show proxies hidden by category cascade. */
   includeHidden?: boolean;
+  /**
+   * Wave 26-C — filter to a single import batch UUID. Set when admin
+   * clicks "Xem lô vừa import" on the post-import success toast or
+   * loads /proxies?import_batch_id=… directly. Maps server-side to
+   * `proxies.import_batch_id = …`.
+   */
+  importBatchId?: string;
   isDeleted?: boolean;
   page?: number;
   pageSize?: number;
@@ -148,4 +155,11 @@ export interface ImportProxyResult {
     raw: string;
     reason: string;
   }>;
+  /**
+   * Wave 26-C — UUID stamped on every imported row's `import_batch_id`
+   * column. The import wizard surfaces a "Xem lô vừa import" link
+   * pointing at /proxies?import_batch_id=<id> so admins can verify
+   * the batch end-to-end without eyeballing 200 host:port pairs.
+   */
+  import_batch_id?: string;
 }

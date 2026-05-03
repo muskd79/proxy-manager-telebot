@@ -105,6 +105,16 @@ export default function ProxiesPage() {
     status: (searchParams.get("status") as ProxyFiltersType["status"]) || undefined,
     type: (searchParams.get("type") as ProxyFiltersType["type"]) || undefined,
     categoryId: searchParams.get("category_id") || undefined,
+    // Wave 26-C — pre-load the import-batch filter so the post-import
+    // CTA "/proxies?import_batch_id=<uuid>" lands on a filtered view
+    // without an extra client tick. UUID-shape regex guards against
+    // junk URL params (the API also validates, but bouncing here
+    // keeps the banner from rendering for malformed IDs).
+    importBatchId:
+      (() => {
+        const v = searchParams.get("import_batch_id");
+        return v && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined;
+      })(),
   }));
 
   const fetchProxies = useCallback(async () => {
@@ -119,6 +129,9 @@ export default function ProxiesPage() {
       if (filters.expiryStatus) params.set("expiryStatus", filters.expiryStatus);
       // Wave 22Z — category filter wired through to ?category_id=
       if (filters.categoryId) params.set("category_id", filters.categoryId);
+      // Wave 26-C — import batch filter (UUID).
+      if (filters.importBatchId)
+        params.set("import_batch_id", filters.importBatchId);
       // Wave 22C: tags param removed — categories filter via ?category_id=X.
       // Wave 22Y — isp filter param removed (column dropped from UI)
       params.set("page", String(filters.page || 1));
@@ -666,6 +679,43 @@ export default function ProxiesPage() {
       </div>
 
       {/* Wave 22C: tag manager removed — see /categories for groupings */}
+
+      {/* Wave 26-C — import-batch filter banner. Renders only when the
+          URL carries a valid `import_batch_id`. Pre-fix admins arrived
+          on /proxies via the post-import CTA but had no visible cue
+          they were on a filtered view; the row count just looked
+          smaller than expected. Now: explicit chip with row count +
+          one-click clear button. */}
+      {filters.importBatchId && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 dark:border-blue-800 dark:bg-blue-950/40"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-blue-900 dark:text-blue-100">
+              Đang lọc theo lô import
+            </span>
+            <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-xs text-blue-900 dark:bg-blue-900/60 dark:text-blue-100">
+              {filters.importBatchId.slice(0, 8)}…
+            </code>
+            <span className="text-muted-foreground">
+              ({total} proxy{total === 0 ? " — không khớp" : ""})
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, importBatchId: undefined, page: 1 }));
+              // Strip the URL param so reload / share doesn't bring it back.
+              router.replace("/proxies");
+            }}
+          >
+            Xoá lọc
+          </Button>
+        </div>
+      )}
 
       <ProxyFilters
         filters={filters}

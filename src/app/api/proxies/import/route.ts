@@ -66,8 +66,14 @@ export async function POST(request: NextRequest) {
 
     const importId = crypto.randomUUID();
 
+    // Wave 26-C — surface the batch UUID to the client (mirrors what
+    // already lives in result.importId, but with the canonical name
+    // matching the new proxies.import_batch_id column). The wizard
+    // uses this to render a "Xem lô vừa import" link that filters
+    // /proxies?import_batch_id=<id>.
     const result: ImportProxyResult & { importId: string } = {
       importId,
+      import_batch_id: importId,
       total: proxies.length,
       imported: 0,
       skipped: 0,
@@ -119,6 +125,11 @@ export async function POST(request: NextRequest) {
         vendor_label: vendor_source || null,
         cost_usd: purchase_price_usd ?? null,
         sale_price_usd: sale_price_usd ?? null,
+        // Wave 26-C — stamp every row with the same batch UUID so the
+        // post-import "Xem lô vừa import" link can SELECT them back.
+        // Pre-fix the importId only lived in activity_logs.details,
+        // useful for forensics but not for the UI's filter.
+        import_batch_id: importId,
         status: "available",
         is_deleted: false,
         created_by: admin.id,
