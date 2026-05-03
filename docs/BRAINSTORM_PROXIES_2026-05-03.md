@@ -683,3 +683,56 @@ Trong khi admin xử lý claim (có thể mất 24-72h), user có cần được
 ---
 
 **Phương án ưu tiên ship:** chốt A1 + A2 + A3 + B2 + C1 + D2 + E1 + F1 + G2 trước. 9 câu này quyết định 80% schema và UX. Còn lại có thể chốt sau khi prototype xong.
+
+---
+
+## Đáp án vòng 2 (2026-05-03) + brainstorm 2 agent (ui-ux + outside-voice)
+
+### Đáp án bro chốt
+
+| Câu | Bro chốt | Decision/schema |
+|-----|----------|------------------|
+| **A3** | (e) Kết hợp (a)+(b)+(c) — pending limit + N-per-X-days cap + cooldown | Settings rows: `warranty_max_pending` (default 2), `warranty_max_per_30d` (default 5), `warranty_cooldown_minutes` (default 60). Bot validate 3 điều kiện trước khi cho user submit claim |
+| **A4** | (d) Không auto-reject | Không thêm cron; claim treo cho đến khi admin xử lý. Sidebar badge "Yêu cầu (3 · cũ nhất 12 phút)" sẽ tạo time-pressure cho admin |
+| **A5** | (f) Auto cùng category+loại mạng → fallback cùng category → fallback bất kỳ | Allocator 3 tier. Nếu cả 3 tier hết hàng → notify admin + auto-pause claim queue |
+| **A6** | (a) Copy HSD còn lại của proxy gốc | Schema: `warranty_replacements.expires_at = original_proxy.expires_at` |
+| **A7** | **CHƯA RÕ** — bro hỏi "set banned là sao", đề nghị thêm tuỳ chọn multi-user proxy | Cần bro chọn (a) auto-banned hay (b) auto-maintenance. **CỘNG** task: design multi-user proxy (Wave 26-E hay merge vào 26-D — bro chốt) |
+| **B1** | Bro hỏi cron là gì | Đã giải thích trong reply: 5 cron đang chạy, health-check mỗi giờ. Đề xuất giữ nguyên + thêm nút "Kiểm tra ngay" thủ công |
+| **B3** | "Cần chuyên nghiệp, đầy đủ, cẩn thận, đồng bộ" — defer | Sau brainstorm: kết hợp inline strip 20 ô + tab "Sức khỏe" trong History + ghi failed probes vào proxy_events timeline |
+| **C2** | (a) Có ghi reason. **Cộng:** lúc user báo bảo hành cũng cần ghi reason | `proxy_events.unassigned` lưu enum reason; warranty claim reason cũng ghi vào `proxy_events.reported_broken.details.reason` |
+| **D1** | Defer | **Storyteller layout** thắng (brainstormer): timeline = primary view, metadata ở right rail, warranty cross-link là chip first-class |
+| **D2** | (b) Default hiện luôn ở proxy detail | Chỉ proxy list view dùng click-to-reveal. Admin đã vào tới detail = trust level cao |
+| **D3** | Defer | **State-contextual primary + overflow** (brainstormer). Action set theo current status. Mọi destructive action bắt buộc reason. |
+| **E1** | CẢ 3 (a+b+c) | Implement HYBRID: sticky bar trên cùng (a) + carousel chip cho active filters (b) + accordion "Hiện thêm" cho dropdown phụ (c). Filter UX cao cấp như Shopee |
+| **E2** | (a) Saved views | Bảng mới `saved_views (id, admin_id, page, name, filter_json, created_at)`. UI: dropdown "View đã lưu" + nút "Lưu bộ lọc này" |
+| **E3** | Defer | **Phase 1: SWR + poll 60s** (brainstormer). Skip toast/sound/desktop notif. Phase 2 sau khi có data |
+| **F1** | (c) Cả 2 — Telegram bot + email nếu có | Notify service: try bot first, fallback email if user has email |
+| **F2** | (b) Không khiếu nại | Reject = final. Đơn giản hoá xử lý |
+| **F3** | (a) Mọi admin role >= "admin" | Không cần config riêng |
+| **F4** | (a) Có nút xoá cả lô | Nút "Xoá cả lô" trong banner `import_batch_id`, ConfirmDialog typed-confirm "XOA LO" |
+| **G1** | Đủ | Enum 6-value: no_connect / slow / ip_blocked / wrong_country / auth_fail / other |
+| **G3** | (a) Không tăng giới hạn tạm | User mất proxy đó cho đến khi xử lý xong |
+
+### Câu hỏi mới phát sinh sau brainstorm vòng 2
+
+**H1. Proxy gốc sau khi DUYỆT warranty:**
+- (a) Auto-banned, có nút "Thử test lại" để re-evaluate sau
+- (b) Auto-maintenance, admin phải bấm "Mark banned" thủ công sau khi confirm hỏng hẳn
+
+**H2. Multi-user proxy (1 proxy giao N user):**
+- (a) Tách Wave 26-E riêng (3-5 ngày refactor)
+- (b) Merge vào Wave 26-D — Wave dài hơn (6-8 ngày), rủi ro bug cao
+
+**H3. Báo lỗi proxy: ngoài enum reason, có ô text tự do không?**
+- (a) Chỉ enum
+- (b) Enum + ô "Mô tả thêm" tự chọn
+- (c) Bắt buộc text nếu chọn `other`
+
+**H4. Admin có thể thêm note thủ công vào proxy_events timeline không?**
+- (a) Có — event_type `admin_note`
+- (b) Không — dùng field `notes` của proxy
+
+**H5. Khôi phục proxy từ banned: cần test pass không?**
+- (a) Auto-test khi khôi phục, pass → available, fail → giữ banned
+- (b) Khôi phục thẳng về available, admin tự test sau
+- (c) Khôi phục về maintenance, admin phải test pass mới về available
