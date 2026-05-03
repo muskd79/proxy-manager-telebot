@@ -39,10 +39,22 @@ import {
   ClipboardPaste,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
 import { parseProxyLine as parseProxyLineLib } from "@/lib/proxy-parse";
+import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 
 /**
  * Wave 22I — Smart proxy import wizard.
@@ -156,11 +168,21 @@ export function ProxyImport() {
   const [importing, setImporting] = useState(false);
   const [probing, setProbing] = useState(false);
   const [probeProgress, setProbeProgress] = useState(0);
+  const [probeErrors, setProbeErrors] = useState<string[]>([]);
+  // Wave 26-A — AbortController so the user can cancel a long
+  // probe (1000 proxy × 5s/probe ≈ 100s on hobby).
+  const probeAbortRef = useRef<AbortController | null>(null);
   const [dropDead, setDropDead] = useState(true);
   const [result, setResult] = useState<ImportProxyResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
   const [categories, setCategories] = useState<ProxyCategoryOption[]>([]);
+  // Wave 26-A — confirm dialog for bulk imports. Pre-fix a typo'd
+  // "Import 1000" was irreversible (admin would have to bulk-delete
+  // 1000 rows). Threshold 100 chosen so casual 1-30 imports stay
+  // friction-free.
+  const BULK_CONFIRM_THRESHOLD = 100;
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
   useEffect(() => {
     fetch("/api/proxies/stats")
@@ -215,12 +237,31 @@ export function ProxyImport() {
   // so vitest can exercise it without mounting React. The component
   // still owns the parsedProxies state + UI; the helper is a pure
   // function shared with future server-side imports.
+  //
+  // Wave 26-A — also dedupe by host:port within the batch. Pre-fix two
+  // identical lines both passed validation; the backend `upsert
+  // ON CONFLICT(host,port) ignoreDuplicates: true` only inserted one
+  // and the user saw a mysterious "skipped 1" they couldn't trace.
+  // Now the second occurrence is flagged invalid up-front with an
+  // error that points to the original line number.
   function parseContent(content: string) {
     const lines = content.split(/\r?\n/).filter((l) => l.trim());
     const parsed: ParsedProxy[] = lines.map((line, i) => parseProxyLineLib(line, i + 1));
+    const seenHostPort = new Map<string, number>(); // key → first line number
+    for (const p of parsed) {
+      if (!p.valid) continue;
+      const key = `${p.host}:${p.port}`;
+      if (seenHostPort.has(key)) {
+        p.valid = false;
+        p.error = `Trùng dòng ${seenHostPort.get(key)} (${key})`;
+      } else {
+        seenHostPort.set(key, p.line);
+      }
+    }
     setParsedProxies(parsed);
     setResult(null);
     setProbeProgress(0);
+    setProbeErrors([]);
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -245,85 +286,213 @@ export function ProxyImport() {
    * Wave 22I — batch-probe all valid rows. Calls /api/proxies/probe-batch
    * in chunks of 200 so the UI can show progress instead of one big spinner.
    * Each chunk concurrency is server-side (50 parallel).
+   *
+   * Wave 26-A robustness pass:
+   *   - skip rows already probed (re-running adds new rows only;
+   *     "Probe lại tất cả" button below resets first then re-runs)
+   *   - per-chunk failure no longer breaks the loop (collect errors,
+   *     continue; final toast names which chunks failed)
+   *   - apply partial updates in `finally` so abort / network drop
+   *     keeps the rows we DID probe
+   *   - AbortController wired to a cancel button — admin can stop a
+   *     1000-row probe early without reload
+   *
+   * Args: `forceAll = true` re-probes every valid row regardless of
+   * whether it was probed before. Default false = additive (typical
+   * case after pasting more rows on top of an already-probed batch).
    */
-  async function handleProbe() {
+  async function handleProbe(forceAll: boolean = false) {
     const valid = parsedProxies.filter((p) => p.valid);
+    const todo = forceAll
+      ? valid
+      : valid.filter((p) => p.alive === undefined);
+
     if (valid.length === 0) return;
+    if (todo.length === 0) {
+      toast.info("Tất cả proxy đã được probe rồi. Bấm \"Probe lại\" để chạy lại.");
+      return;
+    }
+
+    const ac = new AbortController();
+    probeAbortRef.current = ac;
     setProbing(true);
     setProbeProgress(0);
+    setProbeErrors([]);
+
+    const updates = new Map<number, Partial<ParsedProxy>>();
+    const errors: string[] = [];
+
     try {
       const CHUNK = 200;
-      const updates = new Map<number, Partial<ParsedProxy>>();
-      for (let i = 0; i < valid.length; i += CHUNK) {
-        const chunk = valid.slice(i, i + CHUNK);
-        const res = await fetch("/api/proxies/probe-batch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proxies: chunk.map((p) => ({
-              host: p.host,
-              port: p.port,
-              ref: String(p.line),
-            })),
-          }),
-        });
-        if (!res.ok) {
-          const body = await res.json();
-          toast.error(body.error || `Probe failed at chunk ${i}`);
-          break;
-        }
-        const body = await res.json();
-        type ProbeRow = {
-          ref?: string;
-          alive: boolean;
-          type: ProxyType | null;
-          speed_ms: number;
-        };
-        for (const r of body.data.results as ProbeRow[]) {
-          const lineNum = Number(r.ref);
-          if (Number.isFinite(lineNum)) {
-            updates.set(lineNum, {
-              detected_type: r.type,
-              alive: r.alive,
-              speed_ms: r.speed_ms,
-            });
-          }
-        }
-        setProbeProgress(Math.min(100, Math.round(((i + chunk.length) / valid.length) * 100)));
-      }
+      for (let i = 0; i < todo.length; i += CHUNK) {
+        if (ac.signal.aborted) break;
+        const chunk = todo.slice(i, i + CHUNK);
+        try {
+          const res = await fetch("/api/proxies/probe-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              proxies: chunk.map((p) => ({
+                host: p.host,
+                port: p.port,
+                ref: String(p.line),
+              })),
+            }),
+            signal: ac.signal,
+          });
 
-      // Apply all updates in one setState pass to avoid re-renders.
+          if (!res.ok) {
+            // Wave 26-A — per-chunk failure no longer aborts the run.
+            // Earlier chunks' updates still apply (in finally below);
+            // the failing chunk gets recorded for the summary toast.
+            let body: { error?: string } | null = null;
+            try {
+              body = await res.json();
+            } catch {
+              body = null;
+            }
+            errors.push(
+              `Chunk ${Math.floor(i / CHUNK) + 1}: ${body?.error ?? `HTTP ${res.status}`}`,
+            );
+            continue;
+          }
+
+          const body = await res.json();
+          type ProbeRow = {
+            ref?: string;
+            alive: boolean;
+            type: ProxyType | null;
+            speed_ms: number;
+          };
+          for (const r of body.data.results as ProbeRow[]) {
+            const lineNum = Number(r.ref);
+            if (Number.isFinite(lineNum)) {
+              updates.set(lineNum, {
+                detected_type: r.type,
+                alive: r.alive,
+                speed_ms: r.speed_ms,
+              });
+            }
+          }
+          setProbeProgress(
+            Math.min(100, Math.round(((i + chunk.length) / todo.length) * 100)),
+          );
+        } catch (err) {
+          // AbortError: admin cancelled — break cleanly, applying partial.
+          if (err instanceof DOMException && err.name === "AbortError") {
+            break;
+          }
+          errors.push(
+            `Chunk ${Math.floor(i / CHUNK) + 1}: ${
+              err instanceof Error ? err.message : "Lỗi không xác định"
+            }`,
+          );
+        }
+      }
+    } finally {
+      // Wave 26-A — apply EVERY partial update we collected, even on
+      // abort or network drop. Pre-fix the apply was outside try{} so
+      // a thrown error mid-loop discarded everything probed so far.
       setParsedProxies((rows) =>
         rows.map((r) => {
           const u = updates.get(r.line);
           return u ? { ...r, ...u } : r;
         }),
       );
+      probeAbortRef.current = null;
+      setProbing(false);
+      setProbeErrors(errors);
+
+      // Surface a summary regardless of how the loop exited.
       const aliveCount = Array.from(updates.values()).filter((u) => u.alive).length;
       const deadCount = updates.size - aliveCount;
-      toast.success(
-        `Probed ${updates.size} — ${aliveCount} alive, ${deadCount} dead. Loại đã detect tự fill mỗi row.`,
-      );
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Probe failed");
-    } finally {
-      setProbing(false);
+      const aborted = ac.signal.aborted;
+      const message =
+        `Đã probe ${updates.size}/${todo.length} — ` +
+        `${aliveCount} alive, ${deadCount} dead` +
+        (errors.length > 0 ? ` · ${errors.length} chunk lỗi` : "") +
+        (aborted ? " · đã huỷ giữa chừng" : "");
+      if (aborted || errors.length > 0) {
+        toast.warning(message, { duration: 8000 });
+      } else {
+        toast.success(message, { duration: 6000 });
+      }
     }
   }
 
-  async function handleImport() {
+  function handleAbortProbe() {
+    probeAbortRef.current?.abort();
+  }
+
+  /**
+   * Wave 26-A — clear every form-level field except categoryId.
+   *
+   * Pre-fix `handleImport` only set the result Card; pasted text,
+   * preview rows, country, vendor, prices, ghi chú, etc. all
+   * remained on screen. Admins importing batch after batch had to
+   * manually clear each input.
+   *
+   * categoryId is intentionally PRESERVED: admins commonly run
+   * many batches under the same category (e.g. "VN Mobile 4G") so
+   * forcing a re-pick after every batch was hostile UX.
+   */
+  function resetFormFields() {
+    setPasteText("");
+    setParsedProxies([]);
+    setNotes("");
+    setNetworkType("");
+    setVendorSource("");
+    setCountry("");
+    setPurchasePrice("");
+    setSalePrice("");
+    setExpiresAt("");
+    setPurchaseDate(today);
+    setProxyType(ProxyType.HTTP);
+    setProbeProgress(0);
+    setDropDead(true);
+  }
+
+  /**
+   * Wave 26-A — split confirm path from execution path.
+   *
+   * confirmAndImport: gatekeeper. Routes to doImport directly for
+   *   small batches; opens confirm AlertDialog for bulk imports.
+   *   The dialog's primary action calls doImport.
+   * doImport: the actual API call + toast + form reset.
+   */
+  async function confirmAndImport() {
     const valid = parsedProxies.filter((p) => p.valid);
-    // If user probed + opted to drop dead, exclude dead rows.
     const target = dropDead && valid.some((p) => p.alive !== undefined)
       ? valid.filter((p) => p.alive !== false)
       : valid;
 
     if (target.length === 0) {
-      toast.error("No proxies to import");
+      toast.error("Không có proxy hợp lệ để import");
+      return;
+    }
+
+    if (target.length >= BULK_CONFIRM_THRESHOLD) {
+      // Open the dialog; doImport runs on dialog confirm.
+      setShowBulkConfirm(true);
+      return;
+    }
+    return doImport();
+  }
+
+  async function doImport() {
+    const valid = parsedProxies.filter((p) => p.valid);
+    const target = dropDead && valid.some((p) => p.alive !== undefined)
+      ? valid.filter((p) => p.alive !== false)
+      : valid;
+
+    if (target.length === 0) {
+      toast.error("Không có proxy hợp lệ để import");
       return;
     }
 
     setImporting(true);
+    setShowBulkConfirm(false);
+
     try {
       const payloadProxies = target.map((p) => ({
         host: p.host,
@@ -336,6 +505,13 @@ export function ProxyImport() {
         raw: p.raw,
       }));
 
+      // Wave 26-A — normalize networkType client-side. Pre-fix `IPv4`
+      // / `ipv4` / `IPV4` would land as 3 distinct values in DB, which
+      // broke the network-type filter on the proxies list. The backend
+      // also normalises (defence-in-depth) but we want admins to see
+      // the canonical form before pressing Import.
+      const normalizedNetworkType = networkType.trim().toLowerCase() || undefined;
+
       const res = await fetch("/api/proxies/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -347,7 +523,7 @@ export function ProxyImport() {
           isp: isp || undefined,
           category_id: categoryId || null,
           // Wave 22K — bulk-applied per-proxy metadata.
-          network_type: networkType || undefined,
+          network_type: normalizedNetworkType,
           vendor_source: vendorSource || undefined,
           purchase_date: purchaseDate || undefined,
           expires_at: expiresAt || undefined,
@@ -358,16 +534,48 @@ export function ProxyImport() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setResult(data.data);
+      // Wave 26-A — robust error handling. Pre-fix `await res.json()`
+      // on a non-OK response could itself throw if the server
+      // returned an HTML 500 page. Wrap parse in try/catch.
+      let body: { data?: ImportProxyResult; error?: string } | null = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+
+      if (res.ok && body?.data) {
+        setResult(body.data);
+
+        // Wave 26-A — detailed success toast. User feedback: "cần có
+        // thêm toast thông báo đã import thành công bao nhiêu proxy,
+        // xịt bao nhiêu". Kept under 8s so admin has time to read
+        // the breakdown before next action.
+        const r = body.data;
+        const parts: string[] = [
+          `[OK] Đã import ${r.imported}/${r.total} proxy`,
+        ];
+        if (r.skipped > 0) parts.push(`bỏ qua ${r.skipped} dòng trùng`);
+        if (r.failed > 0) parts.push(`${r.failed} lỗi`);
+        const message = parts.join(" — ");
+
+        if (r.failed > 0) {
+          toast.warning(message, { duration: 8000 });
+        } else {
+          toast.success(message, { duration: 8000 });
+        }
+
+        // Wave 26-A — reset form (keeps categoryId per the
+        // resetFormFields rationale).
+        resetFormFields();
       } else {
-        const body = await res.json();
-        toast.error(body.error || "Import failed");
+        const errMsg = body?.error || `Import thất bại (HTTP ${res.status})`;
+        toast.error(errMsg);
       }
     } catch (err) {
       console.error("Failed to import proxies:", err);
-      toast.error("Failed to import proxies");
+      const msg = err instanceof Error ? err.message : "Import thất bại";
+      toast.error(`Lỗi mạng: ${msg}`);
     } finally {
       setImporting(false);
     }
@@ -418,6 +626,11 @@ export function ProxyImport() {
               rows={8}
               className="font-mono text-xs"
             />
+            {/* Wave 26-A — line/char counter + clear button. Pre-fix
+                user could overshoot the 10k-line limit silently
+                (server rejects with 400 only after they hit Import).
+                Now: counter goes red at >10k, plus a quick-clear
+                button when content present. */}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">
                 Mỗi dòng 1 proxy theo dạng{" "}
@@ -425,11 +638,33 @@ export function ProxyImport() {
                 <code className="rounded bg-muted px-1 text-[11px]">host:port:user:pass</code>.
                 Tối đa 10.000 dòng / lần.
               </p>
-              {parsedProxies.length > 0 && (
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  Đã đọc <span className="font-semibold text-foreground">{parsedProxies.length}</span> dòng
-                </span>
-              )}
+              <div className="flex items-center gap-3 whitespace-nowrap">
+                {(() => {
+                  const lineCount = pasteText
+                    ? pasteText.split(/\r?\n/).filter((l) => l.trim()).length
+                    : 0;
+                  const overLimit = lineCount > 10_000;
+                  if (lineCount === 0) return null;
+                  return (
+                    <span
+                      className={`text-xs ${overLimit ? "font-medium text-red-500" : "text-muted-foreground"}`}
+                    >
+                      {overLimit && "[!] "}
+                      <span className={`font-semibold ${!overLimit ? "text-foreground" : ""}`}>{lineCount.toLocaleString()}</span> dòng
+                      {overLimit && " (vượt 10.000)"}
+                    </span>
+                  );
+                })()}
+                {pasteText && (
+                  <button
+                    type="button"
+                    onClick={() => setPasteText("")}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Xoá nội dung
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -562,7 +797,32 @@ export function ProxyImport() {
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
+              {/* Wave 26-A — quick-fill suggestion. Most proxy
+                  packages run 30 days from purchase. Pre-fix admins
+                  manually clicked the date picker every time. The
+                  hint only appears when expiresAt is empty AND
+                  purchaseDate is set. */}
+              {!expiresAt && purchaseDate && (() => {
+                const d = new Date(purchaseDate);
+                if (Number.isNaN(d.getTime())) return null;
+                d.setDate(d.getDate() + 30);
+                const suggestion = d.toISOString().slice(0, 10);
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => setExpiresAt(suggestion)}
+                      className="text-primary hover:underline"
+                    >
+                      Đề xuất 30 ngày sau: {suggestion}
+                    </button>{" "}
+                    · để trống = không giới hạn
+                  </p>
+                );
+              })()}
+              {expiresAt && (
+                <p className="text-xs text-muted-foreground">Để trống = không giới hạn</p>
+              )}
             </div>
           </div>
 
@@ -590,11 +850,35 @@ export function ProxyImport() {
                 value={salePrice}
                 onChange={(e) => setSalePrice(e.target.value)}
               />
-              {purchasePrice && salePrice && Number(salePrice) > Number(purchasePrice) && (
-                <p className="text-xs text-emerald-500">
-                  Lãi: ${(Number(salePrice) - Number(purchasePrice)).toFixed(2)}/proxy
-                </p>
-              )}
+              {/* Wave 26-A — lo/lai warning. Pre-fix only showed lãi
+                  when sale > purchase; if admin typo'd them swapped
+                  (mua 5, bán 1) there was no signal. Now: gain green,
+                  break-even neutral, loss amber. */}
+              {purchasePrice && salePrice && (() => {
+                const buy = Number(purchasePrice);
+                const sell = Number(salePrice);
+                if (!Number.isFinite(buy) || !Number.isFinite(sell)) return null;
+                const diff = sell - buy;
+                if (diff > 0) {
+                  return (
+                    <p className="text-xs text-emerald-500">
+                      Lãi: ${diff.toFixed(2)}/proxy
+                    </p>
+                  );
+                }
+                if (diff < 0) {
+                  return (
+                    <p className="text-xs text-amber-600">
+                      [!] Bán &lt; mua — lỗ ${Math.abs(diff).toFixed(2)}/proxy. Kiểm tra lại?
+                    </p>
+                  );
+                }
+                return (
+                  <p className="text-xs text-muted-foreground">
+                    Hoà vốn (chưa có lãi).
+                  </p>
+                );
+              })()}
             </div>
             {/* Wave 22AB — ISP input removed (column dropped from UI in Wave 22Y) */}
           </div>
@@ -629,24 +913,115 @@ export function ProxyImport() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={handleProbe} disabled={probing || importing || validCount === 0}>
-                  {probing ? (
-                    <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang probe ({probeProgress}%)</>
-                  ) : (
-                    <><Radar className="size-4 mr-1.5" />Auto-detect loại + alive</>
-                  )}
-                </Button>
-                <Button onClick={handleImport} disabled={importing || probing || validCount === 0}>
+                {/* Wave 26-A — three states for Auto-detect:
+                    1. Idle, no probes yet → "Auto-detect loại + alive"
+                    2. Idle, some probes done → "Probe rows mới" +
+                       optional "Probe lại tất cả" secondary button
+                    3. Probing → progress + Huỷ button
+                    Pre-fix only state 1 + 3 existed; re-clicking after
+                    a partial probe re-ran from scratch with no opt-in. */}
+                {probing ? (
+                  <>
+                    <Button variant="outline" disabled>
+                      <Loader2 className="size-4 mr-1.5 animate-spin" />
+                      Đang probe ({probeProgress}%)
+                    </Button>
+                    <Button variant="ghost" onClick={handleAbortProbe}>
+                      Huỷ
+                    </Button>
+                  </>
+                ) : probedCount > 0 && probedCount < validCount ? (
+                  <>
+                    <Button variant="outline" onClick={() => handleProbe(false)} disabled={importing}>
+                      <Radar className="size-4 mr-1.5" />
+                      Probe {validCount - probedCount} dòng mới
+                    </Button>
+                    <Button variant="ghost" onClick={() => handleProbe(true)} disabled={importing}>
+                      Probe lại tất cả
+                    </Button>
+                  </>
+                ) : probedCount > 0 ? (
+                  <Button variant="ghost" onClick={() => handleProbe(true)} disabled={importing}>
+                    <Radar className="size-4 mr-1.5" />
+                    Probe lại tất cả
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => handleProbe(false)} disabled={importing || validCount === 0}>
+                    <Radar className="size-4 mr-1.5" />
+                    Auto-detect loại + alive
+                  </Button>
+                )}
+                {/* Wave 26-A — explicit label "Import N proxy vào hệ
+                    thống". Pre-fix "Import 19" was ambiguous (could
+                    read as line number, not a count). User report
+                    2026-05-03: "nút Import để ghi rõ ràng là import
+                    vào hệ thống". */}
+                <Button onClick={confirmAndImport} disabled={importing || probing || validCount === 0}>
                   {importing ? (
                     <><Loader2 className="size-4 mr-1.5 animate-spin" />Đang import...</>
                   ) : (
-                    <><Upload className="size-4 mr-1.5" />Import {dropDead && probedCount > 0 ? aliveCount : validCount}</>
+                    <><Upload className="size-4 mr-1.5" />Import {dropDead && probedCount > 0 ? aliveCount : validCount} proxy vào hệ thống</>
                   )}
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
+            {/* Wave 26-A — "Sẽ áp dụng cho tất cả" banner. User report
+                2026-05-03: "cột nguồn và tất cả các cột khác khi thêm
+                vào có điền ở trên thì ở dưới preview cần hiện đầy đủ".
+                Pre-fix the form fields at the top (country, vendor,
+                phân loại, dates, prices, notes) didn't appear anywhere
+                in the preview — admin had to scroll back up to verify.
+                Now: a compact summary card lists every non-empty bulk
+                field so admin sees AT A GLANCE what will be applied to
+                all {validCount} rows. */}
+            {(() => {
+              const selectedCategory = categories.find((c) => c.id === categoryId);
+              const bulkRows: Array<{ label: string; value: React.ReactNode }> = [];
+              if (selectedCategory) {
+                bulkRows.push({
+                  label: "Danh mục",
+                  value: <span className="font-medium">{selectedCategory.name}</span>,
+                });
+              }
+              bulkRows.push({
+                label: "Loại proxy mặc định",
+                value: <span className="font-mono">{proxyType.toUpperCase()}</span>,
+              });
+              if (networkType) bulkRows.push({ label: "Phân loại", value: <span className="font-mono">{networkType}</span> });
+              if (vendorSource) bulkRows.push({ label: "Nguồn", value: <span className="font-mono">{vendorSource}</span> });
+              if (country) bulkRows.push({ label: "Quốc gia", value: <span className="font-mono">{country}</span> });
+              if (purchaseDate) bulkRows.push({ label: "Ngày mua", value: <span className="font-mono">{purchaseDate}</span> });
+              if (expiresAt) bulkRows.push({ label: "Ngày hết hạn", value: <span className="font-mono">{expiresAt}</span> });
+              if (purchasePrice) bulkRows.push({ label: "Giá mua", value: <span className="font-mono">${purchasePrice}</span> });
+              if (salePrice) bulkRows.push({ label: "Giá bán", value: <span className="font-mono">${salePrice}</span> });
+              return (
+                <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-primary">
+                    Sẽ áp dụng cho TẤT CẢ {validCount} proxy hợp lệ
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2 md:grid-cols-3">
+                    {bulkRows.map((r) => (
+                      <div key={r.label} className="flex gap-2">
+                        <span className="text-muted-foreground">{r.label}:</span>
+                        {r.value}
+                      </div>
+                    ))}
+                  </div>
+                  {notes && (
+                    <p className="mt-2 border-t border-primary/20 pt-2 text-xs">
+                      <span className="text-muted-foreground">Ghi chú:</span>{" "}
+                      <span className="italic">{notes}</span>
+                    </p>
+                  )}
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Auto-detect (nếu probe) sẽ override <span className="font-mono">Loại proxy mặc định</span> per-row.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Probe summary */}
             {probedCount > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 p-3 text-sm">
@@ -668,32 +1043,56 @@ export function ProxyImport() {
               </div>
             )}
 
+            {/* Wave 26-A — surface per-chunk probe errors. Pre-fix
+                a server hiccup midway through 1000-proxy probe was
+                visible only as a single toast and lost partial data;
+                now errors are listed inline, each chunk's failure is
+                explicit, and the rows that DID probe are still applied. */}
+            {probeErrors.length > 0 && (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+                <p className="font-medium text-amber-700 dark:text-amber-300">
+                  Probe có {probeErrors.length} chunk lỗi (các chunk khác đã apply):
+                </p>
+                <ul className="mt-1 list-disc pl-5 text-xs text-amber-700/80 dark:text-amber-300/80">
+                  {probeErrors.slice(0, 5).map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                  {probeErrors.length > 5 && (
+                    <li>… và {probeErrors.length - 5} chunk khác</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
             {/* Wave 23B-fix — preview legend bar. Pre-fix the table had
                 7 columns with terse headers and no explanation of what
                 "-" meant. User feedback: "cần mô tả rõ ở phần xem
-                trước có những cột gì và cột gì trống". */}
+                trước có những cột gì và cột gì trống".
+                Wave 26-A — drop the "không auth" entry until user/pass
+                actually appears blank in any row, and only mention
+                "dead" semantics when the user has actually probed
+                (otherwise the legend describes columns the table
+                doesn't even render). */}
             <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
               <span className="font-medium text-foreground">Chú giải:</span>
-              <span className="flex items-center gap-1">
-                <span className="font-mono text-muted-foreground">—</span>
-                <span>trống / chưa có</span>
-              </span>
               <span className="flex items-center gap-1">
                 <span className="font-mono text-amber-600">—</span>
                 <span>không auth (user/pass trống — proxy public)</span>
               </span>
               <span className="flex items-center gap-1">
                 <CheckCircle className="size-3 text-emerald-500" />
-                <span>hợp lệ / alive</span>
+                <span>hợp lệ{probedCount > 0 ? " / alive" : ""}</span>
               </span>
               <span className="flex items-center gap-1">
                 <XCircle className="size-3 text-red-500" />
                 <span>format lỗi (dòng đỏ, không import)</span>
               </span>
-              <span className="flex items-center gap-1">
-                <AlertCircle className="size-3 text-red-500" />
-                <span>dead (mờ, sẽ bị bỏ nếu bật &quot;dropDead&quot;)</span>
-              </span>
+              {probedCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <AlertCircle className="size-3 text-red-500" />
+                  <span>dead (mờ, sẽ bị bỏ nếu bật &quot;Bỏ qua proxy chết&quot;)</span>
+                </span>
+              )}
             </div>
 
             <div className="max-h-[400px] overflow-y-auto rounded-md border">
@@ -705,8 +1104,17 @@ export function ProxyImport() {
                     <TableHead className="w-20" title="Cổng (1-65535, bắt buộc)">Cổng</TableHead>
                     <TableHead className="w-32" title="Tên đăng nhập của proxy (có thể trống nếu proxy public)">User</TableHead>
                     <TableHead className="w-24" title="Mật khẩu (đi kèm User)">Pass</TableHead>
-                    <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
-                    <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
+                    {/* Wave 26-A — "Loại detect" + "Tốc độ" only render
+                        AFTER the user clicks Auto-detect. Pre-fix two
+                        empty "—" columns took table width before any
+                        probe ran (user feedback: "tốc độ lúc thêm vào
+                        chưa quét được thì không cần có trong preview"). */}
+                    {probedCount > 0 && (
+                      <>
+                        <TableHead className="w-24" title="Loại proxy detect được sau khi probe (HTTP/HTTPS/SOCKS5)">Loại detect</TableHead>
+                        <TableHead className="w-20" title="Thời gian phản hồi từ probe (ms)">Tốc độ</TableHead>
+                      </>
+                    )}
                     <TableHead className="w-32" title="Trạng thái dòng: hợp lệ / lỗi format / alive / dead">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -744,20 +1152,26 @@ export function ProxyImport() {
                             <span className="text-amber-600" title="Không có pass">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {proxy.detected_type ? (
-                            <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground" title="Chưa probe">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {proxy.speed_ms != null ? (
-                            `${proxy.speed_ms}ms`
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
+                        {/* Wave 26-A — match the conditional header
+                            above. Cells only render when probe ran. */}
+                        {probedCount > 0 && (
+                          <>
+                            <TableCell className="font-mono text-xs">
+                              {proxy.detected_type ? (
+                                <Badge variant="outline" className="text-xs">{proxy.detected_type.toUpperCase()}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground" title="Chưa probe được">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {proxy.speed_ms != null ? (
+                                `${proxy.speed_ms}ms`
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell>
                           {!proxy.valid ? (
                             <span className="flex items-center gap-1 text-red-500 text-xs" title={proxy.error}>
@@ -824,9 +1238,64 @@ export function ProxyImport() {
                 )}
               </div>
             )}
+            {/* Wave 26-A — next-action CTAs. Pre-fix admin had to
+                navigate sidebar manually after import. Two buttons:
+                  - primary: jump to the proxies list (with success
+                    toast already fired earlier)
+                  - secondary: "Import thêm" — keeps the user on this
+                    page, the form was already cleared in handleImport. */}
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+              <Link href="/proxies" className={buttonVariants()}>
+                Xem danh sách proxy
+              </Link>
+              <Button variant="outline" onClick={() => setResult(null)}>
+                Import thêm
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Wave 26-A — bulk-import confirm. Pre-fix a typo'd 1000-row
+          import was irreversible without manual bulk-delete. Threshold
+          set in BULK_CONFIRM_THRESHOLD (currently 100). Dialog reads
+          back the number AND the bulk fields so admin re-checks before
+          committing. */}
+      <AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận import hàng loạt</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const valid = parsedProxies.filter((p) => p.valid);
+                const target = dropDead && valid.some((p) => p.alive !== undefined)
+                  ? valid.filter((p) => p.alive !== false)
+                  : valid;
+                const cat = categories.find((c) => c.id === categoryId);
+                return (
+                  <>
+                    Sắp import <strong>{target.length}</strong> proxy vào hệ thống. Hành động này không thể tự động hoàn tác.
+                    <br /><br />
+                    <span className="block text-xs">
+                      Danh mục: <strong>{cat?.name ?? "Không phân loại"}</strong>
+                      {networkType && <> · Phân loại: <strong>{networkType}</strong></>}
+                      {vendorSource && <> · Nguồn: <strong>{vendorSource}</strong></>}
+                      {country && <> · Quốc gia: <strong>{country}</strong></>}
+                    </span>
+                    <span className="block text-xs mt-1">
+                      Loại proxy mặc định: <strong>{proxyType.toUpperCase()}</strong> (Auto-detect override per-row khi đã probe)
+                    </span>
+                  </>
+                );
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogAction onClick={doImport}>Xác nhận import</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

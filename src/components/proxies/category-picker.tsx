@@ -105,6 +105,24 @@ export function CategoryPicker({
     }
   }
 
+  // Wave 26-A — controlled label render. Pre-fix: when a category was
+  // created inline, parent's setCategories(...) hadn't propagated by
+  // the time onValueChange(newId) fired, so shadcn <SelectValue> failed
+  // to find the matching <SelectItem> and rendered the raw UUID.
+  // User report 2026-05-03: "sau khi tạo danh mục xong nó hiển thị là
+  // 1 mã ký tự vậy". Now we resolve the label ourselves from `value`
+  // + `categories`, with stable fallbacks for the two sentinel values.
+  const selected = categories.find((c) => c.id === value);
+  const displayLabel =
+    !value || value === NONE
+      ? noneLabel
+      : selected
+        ? `${selected.name}${selected.default_proxy_type ? ` · ${String(selected.default_proxy_type).toUpperCase()}` : ""}${selected.default_country ? ` · ${selected.default_country}` : ""}`
+        : // value points at a category we don't know yet (e.g. just-created,
+          // parent state hasn't propagated). Show a friendly hint instead of
+          // the raw UUID — once `categories` updates, this branch resolves.
+          "Đang tải danh mục…";
+
   return (
     <>
       <Select
@@ -112,7 +130,12 @@ export function CategoryPicker({
         onValueChange={handleSelectChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder={placeholder} />
+          {/* Wave 26-A — use a span (not <SelectValue>) so we control
+              the rendered label. SelectValue would fall back to the
+              raw `value` (UUID) when no matching SelectItem is found. */}
+          <span className={!value || value === NONE ? "text-muted-foreground" : ""}>
+            {displayLabel}
+          </span>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NONE}>{noneLabel}</SelectItem>
