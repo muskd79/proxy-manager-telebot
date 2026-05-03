@@ -499,10 +499,26 @@ bot.on(
       raw_data: null,
     });
 
-    const reply = lang === "vi"
-      ? "Bot chỉ hỗ trợ tin nhắn dạng văn bản. Gửi /help để xem các lệnh có sẵn."
-      : "This bot only supports text messages. Send /help to see available commands.";
-    await ctx.reply(reply);
+    // Wave 25-pre4 (Pass 4.B) — context-aware reply. If the user is
+    // mid-conversation (e.g. screenshot after /checkproxy prompt or
+    // a number screenshot during qty input) point them at what we
+    // actually need next, not the generic /help fallback.
+    const { state } = await getBotStateWithExpiry(user.id);
+    let reply: string;
+    if (state.step === "awaiting_check_list") {
+      reply = lang === "vi"
+        ? "Tôi cần văn bản, không phải ảnh. Hãy paste danh sách proxy dạng *text* (mỗi dòng 1 proxy)."
+        : "I need text, not an image. Please paste your proxy list as *text* (one proxy per line).";
+    } else if (state.step === "awaiting_quick_qty" || state.step === "awaiting_custom_qty") {
+      reply = lang === "vi"
+        ? "Hãy nhập 1 *số* (ví dụ: 5)."
+        : "Please type a *number* (e.g. 5).";
+    } else {
+      reply = lang === "vi"
+        ? "Bot chỉ hỗ trợ tin nhắn dạng văn bản. Gửi /help để xem các lệnh có sẵn."
+        : "This bot only supports text messages. Send /help to see available commands.";
+    }
+    await ctx.reply(reply, { parse_mode: "Markdown" });
 
     await supabaseAdmin.from("chat_messages").insert({
       tele_user_id: user.id,
