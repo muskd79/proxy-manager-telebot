@@ -18,7 +18,7 @@ export const msg = {
       "/status - Trạng thái tài khoản",
       "/history - Lịch sử yêu cầu",
       "/revoke - Trả proxy",
-      "/cancel - Huỷ yêu cầu",
+      "/cancel - Hủy yêu cầu",
       "/support - Hỗ trợ",
       "/language - Đổi ngôn ngữ",
       "/requests - Duyệt yêu cầu (Admin)",

@@ -23,12 +23,14 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
       expect(rows.every((r) => r.length === 2)).toBe(true);
 
       const labels = rows.flat().map((b) => b.text);
+      // Wave 25-pre2 (P0 1.1) — "Bảo hành proxy" → "Trả proxy".
+      // Real warranty deferred to Wave 26 (decision-log.md).
       expect(labels).toEqual([
         "Yêu cầu proxy",
         "Proxy của tôi",
         "Kiểm tra proxy",
         "Limit yêu cầu",
-        "Bảo hành proxy",
+        "Trả proxy",
         "Lịch sử",
         "Hướng dẫn",
         "English",
@@ -38,12 +40,13 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
     it("English — labels translated", () => {
       const kb = mainMenuKeyboard("en");
       const labels = kb.inline_keyboard.flat().map((b) => b.text);
+      // Wave 25-pre2 (P0 1.1) — "Warranty claim" → "Return proxy".
       expect(labels).toEqual([
         "Request proxy",
         "My proxies",
         "Check proxy",
         "Quota & limits",
-        "Warranty claim",
+        "Return proxy",
         "History",
         "Help",
         "Tiếng Việt",
@@ -56,27 +59,31 @@ describe("mainMenuKeyboard (Wave 23B-bot)", () => {
         // grammy InlineKeyboardButton.text variant
         return "callback_data" in b ? b.callback_data : null;
       });
+      // Wave 25-pre2 (P0 1.1) — `menu:warranty` → `menu:return` so
+      // a future Wave 26 warranty schema can claim `menu:warranty`
+      // for itself without colliding with the revoke flow.
       expect(data).toEqual([
         "menu:request",
         "menu:my",
         "menu:check",
         "menu:limit",
-        "menu:warranty",
+        "menu:return",
         "menu:history",
         "menu:help",
         "menu:language",
       ]);
     });
 
-    it("regression: warranty button maps to menu:warranty (not menu:revoke)", () => {
-      // The warranty button reuses the /revoke handler at runtime, but
-      // its callback_data MUST stay menu:warranty so future warranty
-      // schema (Wave 24, Option C) can swap the handler without
-      // changing the keyboard.
+    it("regression: return button maps to menu:return (not menu:revoke or menu:warranty)", () => {
+      // Wave 25-pre2 (P0 1.1) — replaces the pre-25 "warranty button
+      // maps to menu:warranty" regression. The label and callback
+      // both now say "return" so the user mental model and the code
+      // agree. Wave 26 warranty schema will introduce a new button
+      // with callback `menu:warranty` (or its own namespace).
       const kb = mainMenuKeyboard("vi");
-      const warrantyBtn = kb.inline_keyboard[2][0];
-      expect("callback_data" in warrantyBtn ? warrantyBtn.callback_data : null).toBe(
-        "menu:warranty",
+      const returnBtn = kb.inline_keyboard[2][0];
+      expect("callback_data" in returnBtn ? returnBtn.callback_data : null).toBe(
+        "menu:return",
       );
     });
   });

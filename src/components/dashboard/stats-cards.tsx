@@ -46,17 +46,23 @@ function StatCard({ title, value, subtitle, icon, trend, href }: StatCardProps) 
         <div className="flex items-center gap-2 mt-1">
           <p className="text-xs text-muted-foreground">{subtitle}</p>
           {trend && (
+            // Wave 25-pre2 (Pass 6.4) — accessibility: trend up/down was
+            // signalled with green/red color only. ~8% of men (red-green
+            // colorblind) lost the signal. Prefix sign so "+12%" / "-3%"
+            // carries the direction without color. Icon stays for the
+            // sighted majority.
             <span
               className={`flex items-center gap-0.5 text-xs font-medium ${
                 trend.positive ? "text-emerald-500" : "text-red-500"
               }`}
+              aria-label={`Trend: ${trend.positive ? "up" : "down"} ${Math.abs(trend.value)}%`}
             >
               {trend.positive ? (
-                <TrendingUp className="size-3" />
+                <TrendingUp className="size-3" aria-hidden="true" />
               ) : (
-                <TrendingDown className="size-3" />
+                <TrendingDown className="size-3" aria-hidden="true" />
               )}
-              {trend.value}%
+              {trend.positive ? "+" : "-"}{Math.abs(trend.value)}%
             </span>
           )}
         </div>

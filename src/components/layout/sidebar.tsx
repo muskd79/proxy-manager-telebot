@@ -192,7 +192,12 @@ function NavContent({
               <Link
                 href={item.href}
                 className={cn(
-                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  // Wave 25-pre2 (Pass 6.5) — keyboard-only users (Tab nav)
+                  // had no visible focus indicator on sidebar items.
+                  // focus-visible:ring-* renders ONLY on keyboard focus,
+                  // not mouse click — preserves the clean look for mouse
+                  // users while restoring the affordance for the rest.
+                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",

@@ -7,9 +7,15 @@ import type { SupportedLanguage } from "@/types/telegram";
  * 4 rows × 2 columns = 8 buttons. Layout matches user spec:
  *   row 1: Yêu cầu proxy           | Proxy của tôi
  *   row 2: Kiểm tra proxy          | Limit yêu cầu (formerly Trạng thái)
- *   row 3: Bảo hành proxy          | Lịch sử
- *      (warranty label routes to revoke flow; full warranty
- *       schema is deferred to Wave 24 per warranty-rename agent.)
+ *   row 3: Trả proxy               | Lịch sử
+ *      Wave 25-pre2 (P0 1.1) — renamed from "Bảo hành proxy" /
+ *      "Warranty claim". The pre-25 label was a lie: clicking it
+ *      ran the revoke flow (return-no-replacement), not a warranty
+ *      claim (broken-proxy → replacement). Real warranty schema is
+ *      tracked in docs/decision-log.md#warranty-schema and deferred
+ *      to Wave 26. Callback prefix renamed `menu:warranty` →
+ *      `menu:return` so future warranty work doesn't share a name
+ *      with the revoke flow.
  *   row 4: Hướng dẫn               | English / Tiếng Việt
  *
  * Replaces the persistent reply Keyboard() previously rendered in
@@ -24,7 +30,7 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
         my: "Proxy của tôi",
         check: "Kiểm tra proxy",
         limit: "Limit yêu cầu",
-        warranty: "Bảo hành proxy",
+        return: "Trả proxy",
         history: "Lịch sử",
         help: "Hướng dẫn",
         language: "English",
@@ -34,7 +40,7 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
         my: "My proxies",
         check: "Check proxy",
         limit: "Quota & limits",
-        warranty: "Warranty claim",
+        return: "Return proxy",
         history: "History",
         help: "Help",
         language: "Tiếng Việt",
@@ -47,7 +53,7 @@ export function mainMenuKeyboard(lang: SupportedLanguage): InlineKeyboard {
     .text(labels.check, "menu:check")
     .text(labels.limit, "menu:limit")
     .row()
-    .text(labels.warranty, "menu:warranty")
+    .text(labels.return, "menu:return")
     .text(labels.history, "menu:history")
     .row()
     .text(labels.help, "menu:help")

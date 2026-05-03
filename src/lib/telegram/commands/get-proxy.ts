@@ -151,7 +151,8 @@ export async function handleProxyTypeSelection(
   // see they did cancel.
   if (proxyType === "cancel") {
     await ctx.answerCallbackQuery();
-    const text = lang === "vi" ? "Đã huỷ." : "Cancelled.";
+    // Wave 25-pre2 (P0 5.4) — diacritic unified: "huỷ" → "hủy".
+    const text = lang === "vi" ? "Đã hủy." : "Cancelled.";
     await ctx.reply(text);
     await logChatMessage(user.id, null, ChatDirection.Outgoing, text, MessageType.Text);
     return;
