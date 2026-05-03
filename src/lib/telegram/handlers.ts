@@ -35,6 +35,8 @@ import {
   handleCheckListInput,
 } from "./commands";
 import { getBotState, clearBotState } from "./state";
+import type { BotStep, BotState } from "./state";
+import type { Context } from "grammy";
 import {
   handleQuantitySelection,
   handleAdminBulkApproveCallback,
@@ -297,6 +299,40 @@ bot.on("callback_query:data", async (ctx) => {
 });
 
 // ---------------------------------------------------------------------------
+// Wave 25-pre3 (Pass 2.A) — state-handler dispatch table.
+//
+// Pre-fix the message:text handler had a cascade of `if (state.step
+// === "X")` checks. Each new conversation state added a new branch.
+// Wave 26 will introduce more states (payment_proof, renewal_choice,
+// kyc_id, etc.) and the cascade would balloon.
+//
+// Now the dispatch table maps each BotStep to a handler that returns
+// `true` if it consumed the message (caller should `return`). Adding
+// a new state in pre-4 (or Wave 26) is one new entry here, not a new
+// `if` branch in the message:text body.
+//
+// `idle` and `awaiting_confirm` return false because:
+//   - idle: no state-aware action; fall through to /support / /help logic
+//   - awaiting_confirm: user is supposed to click Yes/No callback, not
+//     type. If they DO type, ignore + fall through.
+// ---------------------------------------------------------------------------
+type StateTextHandler = (
+  ctx: Context,
+  state: BotState,
+  text: string,
+) => Promise<boolean>;
+
+const STATE_TEXT_HANDLERS: Record<BotStep, StateTextHandler> = {
+  idle: async () => false,
+  awaiting_quick_qty: (ctx, state, text) =>
+    handleQtyTextInput(ctx, "awaiting_quick_qty", state.proxyType, text),
+  awaiting_custom_qty: (ctx, state, text) =>
+    handleQtyTextInput(ctx, "awaiting_custom_qty", state.proxyType, text),
+  awaiting_confirm: async () => false,
+  awaiting_check_list: (ctx, _state, text) => handleCheckListInput(ctx, text),
+};
+
+// ---------------------------------------------------------------------------
 // Text message handler (non-command messages)
 // ---------------------------------------------------------------------------
 
@@ -327,18 +363,13 @@ bot.on("message:text", async (ctx) => {
   // commands use. Source: gap doc case #14 (P1).
   if (await denyIfNotApproved(ctx, user, lang)) return;
 
-  // Wave 23B-bot UX — first check if we're mid-conversation (e.g. user
-  // is typing a quantity for an Order nhanh / Order riêng flow). If
-  // yes, dispatch to the state-aware handler and stop.
+  // Wave 25-pre3 (Pass 2.A) — dispatch via STATE_TEXT_HANDLERS table.
+  // Pre-fix this was a cascade of two `if` blocks; new states required
+  // a new branch each. Now adding a state = adding a row to the table.
   const state = await getBotState(user.id);
-  if (state.step === "awaiting_quick_qty" || state.step === "awaiting_custom_qty") {
-    const consumed = await handleQtyTextInput(ctx, state.step, state.proxyType, ctx.message.text);
-    if (consumed) return;
-  }
-
-  // Wave 24-checkproxy — user pasted a proxy list after /checkproxy.
-  if (state.step === "awaiting_check_list") {
-    const consumed = await handleCheckListInput(ctx, ctx.message.text);
+  const stateHandler = STATE_TEXT_HANDLERS[state.step];
+  if (stateHandler) {
+    const consumed = await stateHandler(ctx, state, ctx.message.text);
     if (consumed) return;
   }
 
