@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
@@ -7,6 +8,7 @@ import { denyIfNotApproved } from "../guards";
 import { safeCredentialString } from "../format";
 import { chunkMessage } from "../chunk";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
+import { CB } from "../callbacks";
 
 export async function handleMyProxies(ctx: Context) {
   const user = await getOrCreateUser(ctx);
@@ -85,6 +87,27 @@ export async function handleMyProxies(ctx: Context) {
   // past it; pre-fix the API returned 400 and the user saw silence.
   for (const chunk of chunkMessage(text)) {
     await ctx.reply(chunk, { parse_mode: "Markdown" });
+  }
+
+  // Wave 26-D-2B — warranty per-proxy buttons. Posted as a SEPARATE
+  // follow-up message so the credential listing above stays clean
+  // (and so the chunked-message split above doesn't have to think
+  // about reply_markup placement). Telegram allows up to 100 inline
+  // rows; even users with 80 max_proxies fit.
+  if (proxies.length > 0) {
+    const warrantyHeader =
+      lang === "vi"
+        ? "Proxy nào bị lỗi? Bấm để báo lỗi:"
+        : "Which proxy is broken? Tap to report:";
+    const kb = new InlineKeyboard();
+    proxies.forEach((p, i) => {
+      const buttonLabel =
+        lang === "vi"
+          ? `Báo lỗi #${i + 1}`
+          : `Report #${i + 1}`;
+      kb.text(buttonLabel, CB.warrantyClaim(p.id)).row();
+    });
+    await ctx.reply(warrantyHeader, { reply_markup: kb });
   }
 
   // Wave 25-pre1 (P0 3.9) — mask credentials in audit log. Pre-fix

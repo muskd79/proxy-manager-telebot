@@ -39,6 +39,10 @@ import {
   handleQtyTextInput,
   handleConfirmCallback,
   handleCheckListInput,
+  handleWarrantyClaim,
+  handleWarrantyReason,
+  handleWarrantyReasonText,
+  handleWarrantyCancel,
 } from "./commands";
 import { getBotStateWithExpiry, clearBotState } from "./state";
 import type { BotStep, BotState } from "./state";
@@ -286,6 +290,19 @@ bot.on("callback_query:data", async (ctx) => {
           return;
       }
       return;
+
+    // -----------------------------------------------------------------
+    // Wave 26-D-2B — warranty bot flow
+    // -----------------------------------------------------------------
+    case "warrantyClaim":
+      await handleWarrantyClaim(ctx, parsed.proxyId);
+      return;
+    case "warrantyReason":
+      await handleWarrantyReason(ctx, parsed.proxyId, parsed.reasonCode);
+      return;
+    case "warrantyCancel":
+      await handleWarrantyCancel(ctx);
+      return;
   }
 });
 
@@ -332,6 +349,12 @@ const STATE_TEXT_HANDLERS: StateTextHandlers = {
     handleQtyTextInput(ctx, "awaiting_custom_qty", state.proxyType, text),
   awaiting_confirm: async () => false,
   awaiting_check_list: (ctx, _state, text) => handleCheckListInput(ctx, text),
+  // Wave 26-D-2B — user typed the "other" reason text after picking
+  // it from the warranty reason keyboard.
+  awaiting_warranty_reason_text: async (ctx, state, text) => {
+    await handleWarrantyReasonText(ctx, state.proxyId, text);
+    return true;
+  },
 };
 
 /**

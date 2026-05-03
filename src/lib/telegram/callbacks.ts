@@ -109,7 +109,62 @@ export type CallbackData =
   | { kind: "revoke"; target: string }
   | { kind: "revokeCancel" }
 
+  /**
+   * Wave 26-D-2B — warranty bot flow.
+   *
+   * `warrantyClaim` — emitted by the "Báo lỗi" button on the
+   * `/myproxies` per-proxy keyboard. Carries the proxy_id that the
+   * user is reporting broken.
+   *
+   * `warrantyReason` — emitted by the reason-picker keyboard shown
+   * after `warrantyClaim`. Carries proxy_id + reason_code from the
+   * 6-value enum (no_connect / slow / ip_blocked / wrong_country /
+   * auth_fail / other).
+   *
+   * `warrantyCancel` — abort the flow (back button on either keyboard).
+   *
+   * No `warrantyConfirm` callback — `other` reason transitions the bot
+   * state machine into a free-text input mode handled by the message:text
+   * handler (NOT a callback) so the user can type the reason in line
+   * with how `quantity:custom` already works in custom-order.
+   */
+  | { kind: "warrantyClaim"; proxyId: string }
+  | {
+      kind: "warrantyReason";
+      proxyId: string;
+      reasonCode: WarrantyReasonCode;
+    }
+  | { kind: "warrantyCancel" }
+
   | { kind: "admin"; action: AdminAction; targetId: string };
+
+/**
+ * Wave 26-D-2B — mirrors WarrantyReasonCode in src/types/database.ts
+ * but kept local to keep callbacks.ts self-contained (the same
+ * rationale as `ProxyType` — low-level wire-format module).
+ */
+export type WarrantyReasonCode =
+  | "no_connect"
+  | "slow"
+  | "ip_blocked"
+  | "wrong_country"
+  | "auth_fail"
+  | "other";
+
+const WARRANTY_REASON_CODES: ReadonlySet<string> = new Set([
+  "no_connect",
+  "slow",
+  "ip_blocked",
+  "wrong_country",
+  "auth_fail",
+  "other",
+]);
+
+function isWarrantyReasonCode(s: string): s is WarrantyReasonCode {
+  return WARRANTY_REASON_CODES.has(s);
+}
+
+const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 // ---------------------------------------------------------------------------
 // Parser
@@ -274,6 +329,32 @@ export function parseCallback(data: string): CallbackData | null {
     return { kind: "admin", action: "reject", targetId: data.slice("admin_reject:".length) };
   }
 
+  // -----------------------------------------------------------------
+  // Wave 26-D-2B — warranty:<kind>:<args>
+  // -----------------------------------------------------------------
+  if (data === "warranty:cancel") {
+    return { kind: "warrantyCancel" };
+  }
+  if (data.startsWith("warranty:claim:")) {
+    const proxyId = data.slice("warranty:claim:".length);
+    if (UUID_RE.test(proxyId)) {
+      return { kind: "warrantyClaim", proxyId };
+    }
+    return null;
+  }
+  if (data.startsWith("warranty:reason:")) {
+    // warranty:reason:<proxy_id>:<reason_code>
+    const rest = data.slice("warranty:reason:".length);
+    const sepIdx = rest.lastIndexOf(":");
+    if (sepIdx <= 0) return null;
+    const proxyId = rest.slice(0, sepIdx);
+    const reasonCode = rest.slice(sepIdx + 1);
+    if (UUID_RE.test(proxyId) && isWarrantyReasonCode(reasonCode)) {
+      return { kind: "warrantyReason", proxyId, reasonCode };
+    }
+    return null;
+  }
+
   return null;
 }
 
@@ -313,6 +394,12 @@ export function serializeCallback(cb: CallbackData): string {
       return "revoke:cancel";
     case "admin":
       return `admin_${cb.action}:${cb.targetId}`;
+    case "warrantyClaim":
+      return `warranty:claim:${cb.proxyId}`;
+    case "warrantyReason":
+      return `warranty:reason:${cb.proxyId}:${cb.reasonCode}`;
+    case "warrantyCancel":
+      return "warranty:cancel";
   }
 }
 
@@ -345,6 +432,12 @@ export const CB = {
   revokeCancel: (): string => serializeCallback({ kind: "revokeCancel" }),
   admin: (action: AdminAction, targetId: string): string =>
     serializeCallback({ kind: "admin", action, targetId }),
+  // Wave 26-D-2B — warranty bot flow.
+  warrantyClaim: (proxyId: string): string =>
+    serializeCallback({ kind: "warrantyClaim", proxyId }),
+  warrantyReason: (proxyId: string, reasonCode: WarrantyReasonCode): string =>
+    serializeCallback({ kind: "warrantyReason", proxyId, reasonCode }),
+  warrantyCancel: (): string => serializeCallback({ kind: "warrantyCancel" }),
 } as const;
 
 // ---------------------------------------------------------------------------

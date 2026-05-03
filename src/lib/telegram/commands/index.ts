@@ -19,3 +19,10 @@ export {
   handleAdminApproveUser,
   handleAdminBlockUser,
 } from "./admin-approve";
+// Wave 26-D-2B — bot warranty flow.
+export {
+  handleWarrantyClaim,
+  handleWarrantyReason,
+  handleWarrantyReasonText,
+  handleWarrantyCancel,
+} from "./warranty";
