@@ -83,9 +83,14 @@ export default function ProxiesPage() {
   // Wave 26-B (gap 2.5) — soft banner when realtime drops. Pre-fix
   // CHANNEL_ERROR was console.error only — admin had no visual cue
   // that the auto-refresh on DB changes had stopped.
+  // Wave 26-C — fixed false-positive on cleanup CLOSED + admin-driven
+  // reconnect via realtimeKey bump (see useEffect below).
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "ok" | "error">(
     "connecting",
   );
+  // Bumping this state forces the realtime useEffect to tear down and
+  // re-subscribe — the path the "Tải lại" button takes.
+  const [realtimeKey, setRealtimeKey] = useState(0);
 
   // Phase 3 (PM UX) — read ?status= / ?type= / ?category_id= from
   // URL on first mount so dashboard KPI drill-down lands on a
@@ -220,6 +225,29 @@ export default function ProxiesPage() {
   // Realtime sync: re-fetch when proxies table changes (debounced to reduce load)
   const proxiesDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
+    // Wave 26-C — fix realtime banner false positive (user report
+    // 2026-05-03: banner showed even on first load with no actual
+    // failure). Two root causes:
+    //
+    // 1. fetchProxies is a useCallback whose identity changes on every
+    //    `filters` mutation. The effect's [fetchProxies] dep meant
+    //    every filter tweak tore down + re-subscribed the channel.
+    //    The teardown's `channel.unsubscribe()` invokes the subscribe
+    //    callback ONE more time with status="CLOSED" — pre-fix we
+    //    treated that as an error and flipped the banner on. Now
+    //    only CHANNEL_ERROR or TIMED_OUT count as real errors;
+    //    CLOSED (intentional teardown) does NOT.
+    //
+    // 2. The status callback ran AFTER the effect cleanup function
+    //    started executing — racing with the next effect's setup.
+    //    An `isCancelled` flag now gates state updates so a stale
+    //    callback can't flip the banner on a freshly-mounted instance.
+    //
+    // Also: drop fetchProxies from the dep array. The channel only
+    // needs to fire fetchProxies on a postgres_changes event; we
+    // grab the LATEST fetchProxies via a ref so the channel stays
+    // subscribed across filter changes (no more teardown thrash).
+    let isCancelled = false;
     const supabase = createClient();
     const channel = supabase
       .channel("proxies-changes")
@@ -228,28 +256,39 @@ export default function ProxiesPage() {
         // Debounce: only re-fetch after 2s of no changes
         clearTimeout(proxiesDebounceRef.current);
         proxiesDebounceRef.current = setTimeout(() => {
-          fetchProxies();
+          fetchProxiesRef.current?.();
         }, 2000);
       })
       .subscribe((status) => {
-        // Wave 26-B (gap 2.5) — surface the channel state to UI.
-        // CHANNEL_ERROR / TIMED_OUT / CLOSED all degrade live-sync;
-        // SUBSCRIBED is the happy path. The banner gives admins a
-        // way to know "the auto-refresh stopped — click reload" so
-        // they don't trust a stale list.
+        if (isCancelled) return; // stale callback after cleanup — drop
         if (status === "SUBSCRIBED") {
           setRealtimeStatus("ok");
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error("Realtime subscription error on proxies channel:", status);
           setRealtimeStatus("error");
         }
+        // CLOSED intentionally NOT treated as error — it's the normal
+        // status emitted during cleanup. We can't always tell apart
+        // server-side disconnects from voluntary teardown via the
+        // status alone; CHANNEL_ERROR / TIMED_OUT are the only
+        // statuses that unambiguously mean "real problem".
       });
 
     return () => {
+      isCancelled = true;
       clearTimeout(proxiesDebounceRef.current);
       channel.unsubscribe();
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtimeKey]);
+
+  // Wave 26-C — keep the realtime callback pointing at the latest
+  // fetchProxies (which closes over the latest filters). Without
+  // this ref the channel would fire a stale fetch with stale filters.
+  const fetchProxiesRef = useRef<typeof fetchProxies>(fetchProxies);
+  useEffect(() => {
+    fetchProxiesRef.current = fetchProxies;
   }, [fetchProxies]);
 
   function handleSort(column: string) {
@@ -586,11 +625,13 @@ export default function ProxiesPage() {
             size="sm"
             variant="outline"
             onClick={() => {
+              // Wave 26-C — explicit reconnect: bump realtimeKey to
+              // tear down the dead channel and create a fresh one.
+              // Also kick off a manual fetch so the table immediately
+              // reflects whatever changed during the outage.
               setRealtimeStatus("connecting");
+              setRealtimeKey((k) => k + 1);
               fetchProxies();
-              // Re-subscribe by changing fetchProxies identity.
-              // The useEffect with [fetchProxies] dep will tear down +
-              // resubscribe on the next render.
             }}
             className="h-7 gap-1.5 text-xs"
           >
