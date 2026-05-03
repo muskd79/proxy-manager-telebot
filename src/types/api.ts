@@ -112,6 +112,14 @@ export interface LogFilters {
   actorId?: string;
   action?: string;
   resourceType?: string;
+  /**
+   * Wave 26-D-pre1 — filter activity_logs by the resource the event
+   * targeted (e.g. all logs for proxy X). Lets the proxy detail timeline
+   * fetch only the events relevant to one proxy without dragging the
+   * full audit log over the wire. Indexed by `idx_logs_resource
+   * (resource_type, resource_id)` (mig 002).
+   */
+  resourceId?: string;
   dateFrom?: string;
   dateTo?: string;
   page?: number;
