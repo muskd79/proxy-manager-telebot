@@ -122,6 +122,28 @@ export const msg = {
       "Expires: {expires}",
     ].join("\n"),
   },
+  // Wave 25-pre4 (Pass 3.A) — distinct copy for the post-approval
+  // path. Pre-fix admin-approved proxies used `proxyAssigned` (same
+  // template as self-serve auto-assign) — the wait was hours but the
+  // reveal looked like an instant grab. Now we acknowledge the wait.
+  proxyAssignedAfterApproval: {
+    vi: [
+      "[OK] Yêu cầu của bạn đã được duyệt — cảm ơn bạn đã đợi!",
+      "",
+      "`{host}:{port}:{username}:{password}`",
+      "",
+      "Loại: {type}",
+      "Hết hạn: {expires}",
+    ].join("\n"),
+    en: [
+      "[OK] Your request was approved — thanks for waiting!",
+      "",
+      "`{host}:{port}:{username}:{password}`",
+      "",
+      "Type: {type}",
+      "Expires: {expires}",
+    ].join("\n"),
+  },
   requestPending: {
     vi: "[i] Y\u00EAu c\u1EA7u c\u1EE7a b\u1EA1n \u0111\u00E3 \u0111\u01B0\u1EE3c t\u1EA1o v\u00E0 \u0111ang ch\u1EDD duy\u1EC7t.\nID: `{id}`",
     en: "[i] Your request has been created and is pending approval.\nID: `{id}`",
@@ -135,8 +157,13 @@ export const msg = {
     en: "[X] Your account has been blocked. Contact admin for details.",
   },
   accountPendingApproval: {
-    vi: "[!] Tài khoản của bạn đang chờ admin duyệt. Bạn sẽ nhận thông báo khi được phê duyệt.",
-    en: "[!] Your account is pending admin approval. You will be notified once approved.",
+    // Wave 25-pre4 (Pass 3.B) — append ETA. Pre-fix users with no
+    // sense of timeline spammed /start to test if the bot was alive.
+    // v1 hardcodes "trong 24 giờ" / "within 24 hours". v2 (deferred
+    // to Wave 26) computes from a Supabase `admin_response_avg_seconds`
+    // view if/when we have enough data to publish a real number.
+    vi: "[!] Tài khoản của bạn đang chờ admin duyệt. Thời gian thường: *trong 24 giờ*. Bạn sẽ nhận thông báo khi được phê duyệt.",
+    en: "[!] Your account is pending admin approval. Typical wait: *within 24 hours*. You will be notified once approved.",
   },
   // Wave 23B-bot UX — order type chooser, ported from VIA bot's
   // custom.choose_type. Two explicit modes + status hint.

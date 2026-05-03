@@ -11,6 +11,7 @@ import { ChatDirection, MessageType, ApprovalMode } from "@/types/database";
 import type { OrderMode } from "../keyboard";
 import { InlineKeyboard } from "grammy";
 import { CB } from "../callbacks";
+import { getFirstProxyFooter } from "../milestones";
 
 const BULK_AUTO_THRESHOLD = 5; // Above this, force manual approval
 
@@ -119,10 +120,19 @@ export async function handleQuantitySelection(
       });
     }
 
+    // Wave 25-pre4 (Pass 3.2) — first-proxy delight footer. Only
+    // fires when this is the user's lifetime first; subsequent
+    // assignments skip via the conditional UPDATE inside the helper.
+    const firstFooter = await getFirstProxyFooter(
+      user.id,
+      (user.first_proxy_at as string | null | undefined) ?? null,
+      lang,
+    );
+
     if (proxies.length <= 3) {
       // Send inline
       const proxyLines = formatProxiesAsText(proxies);
-      const text = resultMsg + "\n\n`" + proxyLines + "`";
+      const text = resultMsg + "\n\n`" + proxyLines + "`" + firstFooter;
       await ctx.reply(text, { parse_mode: "Markdown" });
     } else {
       // Send as file

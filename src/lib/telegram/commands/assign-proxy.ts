@@ -3,6 +3,7 @@ import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
 import { logChatMessage, logActivity } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
+import { getFirstProxyFooter } from "../milestones";
 import {
   ChatDirection,
   MessageType,
@@ -147,7 +148,7 @@ export async function autoAssignProxy(
     expiresAtDate = (fresh as { expires_at: string | null } | null)?.expires_at ?? null;
   }
 
-  const text = fillTemplate(t("proxyAssigned", lang), {
+  const baseText = fillTemplate(t("proxyAssigned", lang), {
     host: proxy.host,
     port: String(proxy.port),
     type: proxy.type.toUpperCase(),
@@ -157,6 +158,12 @@ export async function autoAssignProxy(
       ? new Date(expiresAtDate).toISOString().split("T")[0]
       : "—",
   });
+
+  // Wave 25-pre4 (Pass 3.2) — first-proxy delight footer (no-op
+  // on subsequent assignments; race-safe via conditional UPDATE).
+  const firstProxyAt = (user.first_proxy_at as string | null | undefined) ?? null;
+  const footer = await getFirstProxyFooter(userId, firstProxyAt, lang);
+  const text = baseText + footer;
 
   await logChatMessage(
     userId,

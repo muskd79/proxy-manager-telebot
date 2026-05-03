@@ -5,6 +5,7 @@ import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
 import { safeCredentialString } from "../format";
 import { CB } from "../callbacks";
+import { getFirstProxyFooter } from "../milestones";
 // DEFAULT_PROXY_EXPIRY_MS no longer needed: safe_assign_proxy RPC
 // is now the source of truth for proxy state on approval.
 
@@ -162,9 +163,11 @@ export async function handleAdminApproveCallback(
   }).proxy;
 
   // 4. Notify the user who requested.
+  // Wave 25-pre4 (Pass 3.A + 3.2) — distinct post-approval copy
+  // (acknowledge the wait) + first-proxy delight footer.
   const { data: teleUser } = await supabaseAdmin
     .from("tele_users")
-    .select("telegram_id, language")
+    .select("id, telegram_id, language, first_proxy_at")
     .eq("id", request.tele_user_id)
     .single();
 
@@ -180,12 +183,20 @@ export async function handleAdminApproveCallback(
       proxy.username,
       proxy.password,
     );
-    const text =
+    // Wave 25-pre4 (Pass 3.A) — different copy from self-serve auto.
+    const baseText =
       lang === "vi"
-        ? `Proxy đã được cấp!\n\n\`${cred}\`\n\nLoại: ${proxy.type.toUpperCase()}`
-        : `Proxy assigned!\n\n\`${cred}\`\n\nType: ${proxy.type.toUpperCase()}`;
+        ? `[OK] Yêu cầu của bạn đã được duyệt — cảm ơn bạn đã đợi!\n\n\`${cred}\`\n\nLoại: ${proxy.type.toUpperCase()}`
+        : `[OK] Your request was approved — thanks for waiting!\n\n\`${cred}\`\n\nType: ${proxy.type.toUpperCase()}`;
 
-    await sendTelegramMessage(teleUser.telegram_id, text);
+    // Wave 25-pre4 (Pass 3.2) — first-proxy delight footer.
+    const footer = await getFirstProxyFooter(
+      teleUser.id,
+      teleUser.first_proxy_at,
+      lang,
+    );
+
+    await sendTelegramMessage(teleUser.telegram_id, baseText + footer);
   }
 
   await ctx.answerCallbackQuery("Approved!");
