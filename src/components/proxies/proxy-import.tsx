@@ -52,7 +52,7 @@ import {
 import { ProxyType } from "@/types/database";
 import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
-import { parseProxyLine as parseProxyLineLib } from "@/lib/proxy-parse";
+import { parseProxyLine as parseProxyLineLib, dedupeByHostPort } from "@/lib/proxy-parse";
 import { buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -246,19 +246,11 @@ export function ProxyImport() {
   // error that points to the original line number.
   function parseContent(content: string) {
     const lines = content.split(/\r?\n/).filter((l) => l.trim());
-    const parsed: ParsedProxy[] = lines.map((line, i) => parseProxyLineLib(line, i + 1));
-    const seenHostPort = new Map<string, number>(); // key → first line number
-    for (const p of parsed) {
-      if (!p.valid) continue;
-      const key = `${p.host}:${p.port}`;
-      if (seenHostPort.has(key)) {
-        p.valid = false;
-        p.error = `Trùng dòng ${seenHostPort.get(key)} (${key})`;
-      } else {
-        seenHostPort.set(key, p.line);
-      }
-    }
-    setParsedProxies(parsed);
+    const parsed = lines.map((line, i) => parseProxyLineLib(line, i + 1));
+    // Wave 26-C — dedupe is now a shared utility (see proxy-parse.ts);
+    // tests live in __tests__/proxy-parse.test.ts.
+    const deduped = dedupeByHostPort(parsed) as ParsedProxy[];
+    setParsedProxies(deduped);
     setResult(null);
     setProbeProgress(0);
     setProbeErrors([]);
