@@ -237,12 +237,6 @@ describe("useSharedQuery", () => {
         </>
       );
     }
-    const { findByTestId } = renderHook(
-      () => null,
-      { wrapper },
-    );
-    void findByTestId; // silence unused-helper lint
-    // Use a proper render path.
     const { render, screen, fireEvent } = await import("@testing-library/react");
     render(<Pair />, { wrapper });
     await waitFor(() =>
