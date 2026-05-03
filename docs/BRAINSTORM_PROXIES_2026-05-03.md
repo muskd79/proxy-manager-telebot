@@ -17,18 +17,25 @@ recommendation and a rough cost estimate, but the user picks the order.
 
 ## Glossary (terms used below)
 
-- **Quota** — hạn mức proxy mỗi user Telegram được lấy. Mỗi user có
-  một số "slot" cố định (vd 5 proxy/tháng, do admin set ở /settings).
-  Lấy proxy = trừ 1 slot; trả proxy = hoàn 1 slot. Hết quota → bot
-  từ chối /getproxy. Liên quan tới warranty (Section 4): khi proxy
-  hỏng và admin cấp proxy mới, tôi đề xuất KHÔNG trừ thêm 1 slot
-  (proxy hỏng không phải lỗi user) — chỉ track riêng qua
+- **Giới hạn yêu cầu** (tên trước: "quota" — đã thống nhất với bot
+  vocab 2026-05-03 theo yêu cầu user). Số lượng proxy tối đa mà mỗi
+  user Telegram được phép có cùng lúc / lấy trong 1 giờ / 1 ngày /
+  tổng cộng. Cấu hình ở `/settings` admin web (4 trường:
+  `rate_limit_hourly`, `rate_limit_daily`, `rate_limit_total`,
+  `max_concurrent_proxies`).
+  Lấy proxy → cộng counter `proxies_used_*` lên 1; vượt giới hạn →
+  bot từ chối với message "Bạn đã vượt giới hạn yêu cầu". Trả proxy
+  (`/return`) → counter giảm 1.
+  **Liên quan tới Bảo hành (Section 4):** khi proxy hỏng và admin
+  duyệt cấp proxy mới thay thế → tôi đề xuất KHÔNG cộng thêm 1 vào
+  counter (proxy hỏng không phải lỗi user) — chỉ track riêng qua
   `warranty_claims.replacement_proxy_id` để báo cáo doanh thu khỏi
   nhầm "1 lần bán = 2 proxy đã giao".
 - **Sub-tab** — tab con bên trong 1 page (vd `<Tabs>` trong page
   `/requests` hiện đang có "Chờ xử lý" + "Gần đây 7 ngày"). Sau
-  feedback của user 2026-05-03, doc khuyến cáo HẠN CHẾ sub-tab —
-  dùng filter dropdown thay thế (Section 5 REVISED).
+  feedback của user 2026-05-03, doc khuyến cáo CHỈ DÙNG 2 sub-tab
+  top-level (Yêu cầu / Bảo hành), trong mỗi tab dùng filter
+  dropdown mạnh thay vì đẻ tab con (Section 5 REVISED).
 
 ---
 
@@ -147,9 +154,9 @@ until user explicitly asks.
 ### Problem statement
 
 Today the bot's "Trả proxy" button (renamed from "Bảo hành proxy" in
-Wave 25-pre2) runs the **revoke flow only** — user gets quota refund,
+Wave 25-pre2) runs the **revoke flow only** — user gets giới hạn yêu cầu refund,
 no replacement. There is no path for "this proxy is dead, give me a
-working one without consuming my quota again". Decision log has this
+working one without consuming my giới hạn yêu cầu again". Decision log has this
 as `warranty-schema` deferred to Wave 26.
 
 ### Proposed flow
@@ -197,7 +204,7 @@ USER (Telegram)                     SYSTEM                           ADMIN (web)
                   from same category       Update claim.status='rejected'
                   Same expiry copied
                   Original proxy: status='banned'
-                  New assignment: NO quota consumed
+                  New assignment: NO giới hạn yêu cầu consumed
                   Notify user "Proxy mới đã được giao"
                               │
                               ▼
@@ -237,7 +244,7 @@ CREATE INDEX warranty_claims_pending_idx
 2. **Cool-down:** one user can have ≤2 pending claims at once.
 3. **Auto-reject after 72h:** unresolved claims auto-reject + notify
    user. (Cron job — extends `cron/expire-requests/route.ts` pattern.)
-4. **Replacement quota:** the new proxy does NOT consume quota even
+4. **Replacement giới hạn yêu cầu:** the new proxy does NOT consume giới hạn yêu cầu even
    though it's a "fresh" assignment. Audit table tracks this so revenue
    reports stay accurate.
 5. **Same category required:** replacement allocator filters by the
@@ -296,30 +303,63 @@ User đúng. Tôi đã over-engineer. Logic chuẩn:
 - Default filter mở ra hợp lý (e.g. "Chờ xử lý + 7 ngày") để admin
   thấy queue cần xử lý ngay; switch dropdown khi cần audit cũ.
 
-### Page `/requests` — proposed final layout
+### Page `/requests` — proposed final layout (REVISED 2026-05-03 round 2)
+
+User yêu cầu filter "thật sự mạnh". Filter dropdown đầy đủ:
 
 Bảng cột:
-| User | Proxy | Loại | Trạng thái | Tạo lúc | Xử lý lúc | Hành động |
+| User | Proxy | Loại | Loại mạng | Quốc gia | Danh mục | Trạng thái | Tạo lúc | Xử lý lúc | Hành động |
 
-Filter row:
-- **Trạng thái:** [Chờ xử lý] / Đã duyệt (auto + manual) / Từ chối / Hết hạn / Sắp hết hạn (≤24h) / Tất cả
-- **Khoảng thời gian:** [7 ngày] / 30 ngày / Tất cả
-- **Loại proxy:** [Tất cả] / HTTP / HTTPS / SOCKS5
-- **Theo nguồn (vendor):** [Tất cả] / dropdown vendor_label
-- **Tìm kiếm:** user_id / proxy host:port
+Filter row (responsive — collapse vào "More filters" trên mobile):
+- **Trạng thái:** Đang đợi / Đã duyệt (auto+manual) / Từ chối / Hết hạn / Sắp hết hạn (≤24h) / Tất cả
+- **Khoảng thời gian:** Hôm nay / 7 ngày / 30 ngày / Tự chọn (date-from + date-to)
+- **Loại proxy:** Tất cả / HTTP / HTTPS / SOCKS5
+- **Loại mạng:** Tất cả / Datacenter IPv4 / Datacenter IPv6 / Residential / Mobile / ISP / Static Residential
+- **Quốc gia:** dropdown các country code thực có trong DB
+- **Danh mục:** dropdown các proxy_category thực có
+- **Nguồn (vendor):** dropdown vendor_label thực có
+- **Cách duyệt:** Tất cả / Auto / Manual
+- **Search free-text:** user_id (Telegram) hoặc username hoặc proxy host:port hoặc lý do từ chối
 
-Default filter: `Chờ xử lý + 7 ngày`.
+Default filter khi mở page: `Trạng thái = Đang đợi + Khoảng thời gian = 7 ngày`.
 
-**KHÔNG** đẻ thêm sub-tabs. Mọi "use case" tôi list trước đây giải
-quyết bằng switch dropdown:
-- "Sắp hết hạn 24h" → Trạng thái = "Sắp hết hạn"
-- "Đã hết hạn chưa thu hồi" → Trạng thái = "Hết hạn"
-- "Bị từ chối" → Trạng thái = "Từ chối" + Khoảng thời gian = Tất cả
-- "Theo nguồn" → dropdown Theo nguồn
+URL state — filter encoded vào query string (e.g.
+`/requests?status=pending&within=7d&type=http&country=US`) → admin
+share link với colleague trực tiếp; bookmark cho saved view; back/forward
+browser navigation hoạt động.
 
-### Page `/warranty` — proposed final layout
+**KHÔNG đẻ thêm sub-tabs.** Mọi use case dùng filter:
+- "Đang đợi" → Trạng thái = Đang đợi
+- "Sắp hết hạn 24h" → Trạng thái = Sắp hết hạn
+- "Đã hết hạn chưa thu hồi" → Trạng thái = Hết hạn
+- "Bị từ chối + lý do" → Trạng thái = Từ chối + Khoảng thời gian = Tất cả + search free-text "lý do"
+- "Theo nguồn" → dropdown Nguồn
 
-Mirror `/requests`. Single table + filter dropdown (xem Section 4 UI sketch).
+### Page `/warranty` — proposed final layout (REVISED 2026-05-03 round 2)
+
+Bảng cột:
+| User | Proxy | Lý do báo lỗi | Trạng thái | Tạo lúc | Admin xử lý | Proxy thay thế | Hành động |
+
+Filter row (mirror /requests + 1 filter riêng cho warranty):
+- **Trạng thái:** Đang đợi / Đã duyệt / Từ chối / Hết hạn không xử lý (auto-rejected) / Tất cả
+- **Khoảng thời gian:** giống /requests
+- **Lý do báo lỗi:** Tất cả / Không kết nối / Chậm / IP bị block / Khác
+- **Loại proxy / Loại mạng / Quốc gia / Danh mục / Nguồn:** giống /requests
+- **Có proxy thay thế:** Tất cả / Có / Không (cho admin filter ra claim duyệt nhưng chưa allocate được proxy mới)
+- **Admin xử lý:** dropdown các admin (filter "claim của admin X")
+- **Search free-text:** user / proxy / lý do text
+
+Default filter: `Trạng thái = Đang đợi + Khoảng thời gian = 7 ngày`.
+
+### Why filter dropdown beats sub-tabs
+
+| Yếu tố | Sub-tabs | Filter dropdown |
+|--------|----------|------------------|
+| Add new view (vd "Bị từ chối tuần này") | Phải code thêm tab + URL route + filter logic | KHÔNG cần code — admin tự switch dropdown |
+| Combine 2 dimension (vd "Từ chối + tuần này + HTTP") | Phải đẻ thêm cross-tab → vỡ tab bar | Switch nhiều dropdown cùng lúc |
+| Share link cho admin khác | Mỗi tab = 1 URL, ổn | URL có query string đầy đủ → share trực tiếp |
+| Học | Phải nhớ "tab nào chứa cái gì" | Chỉ cần học filter row 1 lần |
+| Mở rộng tương lai (vd thêm filter "vendor") | Mỗi vendor = 1 tab → vỡ | Thêm 1 dropdown |
 
 ### Migration path từ trang `/requests` hiện tại
 
@@ -390,19 +430,155 @@ Total ~7-8 days of work end-to-end.
 
 ---
 
-## Open questions for the user
+## Câu hỏi cần bro chốt trước khi code
 
-1. **Warranty replacement quota policy:** does the user want
-   "replacement does NOT consume quota" (recommended, fairness) OR
-   "replacement consumes a fresh quota slot" (simpler bookkeeping)?
-2. **Warranty eligibility window:** 50% lifetime is a guess. Should it
-   be 24h regardless of lifetime? 7 days? Lifetime − 24h?
-3. **Health-check history:** user wants every probe stored, or just the
-   last 5/20? (Storage cost: 1000 proxies × 1 probe/day = 30k rows/month
-   if we keep all.)
-4. **`proxy_assignments` table vs `activity_logs` derivation:** does the
-   user prefer a dedicated assignments table (cleaner, more storage) or
-   reuse activity_logs with an index on `(resource_id, action)` (cheaper,
-   query gymnastics)? Recommend dedicated table — query simplicity wins.
-5. **Sub-tab "Lô import":** does it deserve a top-level sub-tab under
-   Quản lý proxy, or just a panel inside `/proxies` filter?
+### A. Cơ chế bảo hành (Wave 26-D)
+
+**A1. Proxy thay thế có tốn giới hạn yêu cầu không?**
+Khi user báo lỗi proxy → admin duyệt → cấp proxy mới. Có 2 lựa chọn:
+- (a) **KHÔNG trừ giới hạn** — proxy mới = thay thế proxy hỏng, không tính counter `proxies_used_*`. Công bằng vì proxy hỏng đâu phải lỗi user. *(tôi đề xuất)*
+- (b) **Trừ giới hạn như bình thường** — đơn giản cho code (không cần flag riêng) nhưng user thiệt.
+*Bro chọn?*
+
+**A2. User được báo bảo hành trong khoảng thời gian nào sau khi nhận proxy?**
+Ví dụ user nhận proxy hôm nay HSD 30 ngày:
+- (a) **Trong 24h sau khi nhận** — chặt nhất, chỉ proxy hỏng ngay từ đầu mới claim được.
+- (b) **Trong 7 ngày** — hợp lý cho đa số use case, giống chính sách bán điện tử.
+- (c) **Trong 50% lifetime** — proxy 30 ngày → claim được 15 ngày đầu.
+- (d) **Cho đến trước khi HSD còn ≤24h** — gần như cả lifetime, dễ nhất cho user nhưng tốn proxy thay thế.
+- (e) **Vô thời hạn cho đến khi HSD** — bất cứ lúc nào còn HSD đều claim được.
+*Bro chọn?*
+
+**A3. Giới hạn số claim cho 1 user?**
+Để tránh user lạm dụng (báo lỗi liên tục để đổi proxy mới):
+- (a) **Tối đa N claim đang chờ duyệt cùng lúc** (vd N=2)
+- (b) **Tối đa N claim trong X ngày** (vd 5 claim/30 ngày)
+- (c) **Không giới hạn** — để admin tự xử lý
+- (d) **Cooldown sau mỗi claim** — claim xong phải đợi 1h mới claim được proxy khác
+*Bro chọn?*
+
+**A4. Auto-reject sau bao lâu nếu admin không xử lý?**
+Claim treo lâu = user chờ bực. Auto-reject sau 24h / 48h / 72h / không auto-reject?
+
+**A5. Proxy thay thế lấy từ đâu?**
+- (a) **Cùng category** — replacement allocator filter `category_id = original.category_id`
+- (b) **Cùng category + cùng loại mạng (network_type)** — chặt hơn nhưng có thể hết hàng
+- (c) **Cùng category + cùng loại mạng + cùng quốc gia** — chặt nhất
+- (d) **Bất kỳ proxy nào available** — không filter
+- (e) **Admin chọn tay từ list** — admin click chọn từ dropdown khi duyệt claim, không auto-allocate
+
+Nếu hết proxy thoả điều kiện → fallback về cấp ít chặt hơn? Hay từ chối + báo "hết hàng"?
+
+**A6. HSD proxy thay thế tính thế nào?**
+- (a) **Copy đúng HSD còn lại của proxy gốc** (vd proxy gốc còn 10 ngày → proxy mới HSD 10 ngày)
+- (b) **Reset HSD đầy đủ** (vd HSD 30 ngày từ ngày cấp lại)
+- (c) **Cộng thêm bonus 1-2 ngày** để bù thời gian user không dùng được
+*Bro chọn?*
+
+**A7. Proxy gốc sau khi duyệt warranty xử lý sao?**
+- (a) **Set status='banned'** — không cấp lại được nữa
+- (b) **Set status='maintenance'** — admin có thể test sau, nếu lại sống thì re-issue
+- (c) **Soft-delete (chuyển vào thùng rác)** — coi như mất hẳn
+*Bro chọn?*
+
+### B. Lịch sử test proxy (health-check history)
+
+**B1. Mỗi proxy được hệ thống tự test sống/chết bao lâu 1 lần?**
+Hiện tại có cron health-check trong `/api/cron/health-check/route.ts`. Cần biết tần suất hiện tại + có muốn admin trigger thủ công.
+
+**B2. Lưu lịch sử test thế nào?**
+- (a) **Lưu hết** — 1000 proxy × 1 lần/ngày × 365 ngày = 365k row/năm. Tốn storage nhưng audit đầy đủ.
+- (b) **Chỉ giữ N lần gần nhất** mỗi proxy (vd N=20). Tự động xoá lần cũ. Storage nhỏ.
+- (c) **Giữ tất cả lần FAIL + 5 lần PASS gần nhất** — focus vào lần lỗi để debug.
+- (d) **Lưu hết, archive sau 90 ngày sang bảng cold storage** — cân bằng audit + cost.
+*Bro chọn?*
+
+**B3. Hiển thị ở đâu?**
+- (a) **Card riêng trong /proxies/[id]** (proxy detail page)
+- (b) **Sub-tab trong /proxies/[id]**
+- (c) **Tooltip khi hover icon "Đã kiểm tra X giờ trước"** ở bảng proxy
+
+### C. Lịch sử giao proxy (assignment history)
+
+**C1. Lưu vào đâu?**
+Hiện tại "ai nhận proxy nào lúc nào" rải rác giữa `proxies.assigned_at/assigned_to` (chỉ giữ lần GẦN NHẤT) + `activity_logs` (chứa đủ loại event lẫn lộn). Để query "proxy này đã giao bao lần, ai nhận, lúc nào, thu hồi lúc nào" rất khổ.
+- (a) **Tạo bảng `proxy_assignments` riêng** — mỗi event giao/thu hồi là 1 row. Schema đơn giản: `proxy_id, user_id, assigned_at, revoked_at, reason`. Query 1 phát ra ngay. *(tôi đề xuất)*
+- (b) **Reuse `activity_logs`** — tiết kiệm bảng nhưng query phức tạp + dễ sai.
+*Bro chọn?*
+
+**C2. Có cần lưu LÝ DO mỗi lần thu hồi không?**
+- (a) Có — enum: `expired, revoked_by_user, revoked_by_admin, banned, warranty_replaced, manual_unassign`
+- (b) Không — chỉ cần biết "ai nhận lúc nào, đến khi nào"
+
+### D. Proxy detail page (Wave 26-D-pre1)
+
+**D1. Bro muốn thấy gì ở /proxies/[id]?**
+Tôi đề xuất 3 card (xem Section 1) nhưng bro muốn rearrange?
+
+**D2. Click-to-reveal password — mặc định ẩn hay hiện?**
+- (a) **Mặc định ẩn**, click mới hiện 5s rồi tự ẩn lại (giống /proxies list view hiện tại).
+- (b) **Mặc định hiện** — vì admin đã vào tới detail page rồi, tin tưởng level cao.
+- (c) **Reveal phải nhập mật khẩu admin lần nữa** — strict security.
+
+**D3. Quick actions row — bro muốn nút gì?**
+Tôi đề xuất: Toggle ẩn / Force expire / Mark banned / Unassign current user / Revoke với lý do. Còn thiếu nút nào?
+
+### E. UI/UX
+
+**E1. Filter row của /requests + /warranty trên mobile xử lý sao?**
+Filter có 7-9 dropdown. Mobile width hẹp.
+- (a) **Sticky bar trên cùng có nút "Bộ lọc (3)"** mở dialog full-screen chứa hết dropdown (giống Shopee filter)
+- (b) **Carousel ngang scroll-able** — admin scroll ngang để chọn dropdown
+- (c) **Accordion "Hiện thêm bộ lọc"** — chỉ show 2-3 dropdown thường dùng, ẩn còn lại
+
+**E2. Filter mới lưu thành "saved view" không?**
+Admin filter "Đang đợi + 7 ngày + Vendor X" rất nhiều lần → có nút "Lưu bộ lọc" để mở lần sau khỏi click lại?
+
+**E3. Realtime update khi có claim/request mới?**
+- (a) Có — toast "Bạn có 1 yêu cầu mới" + counter sidebar tăng
+- (b) Có — chỉ cập nhật bảng silent
+- (c) Không — admin tự refresh
+
+### F. Operational concerns
+
+**F1. Notification cho user khi claim bảo hành được duyệt/từ chối?**
+- (a) Bot Telegram gửi tin nhắn cho user
+- (b) Email (nếu có)
+- (c) Cả 2
+- (d) Chỉ silent — user phải tự /status check
+
+**F2. Nếu admin từ chối claim → user có được phản đối / khiếu nại không?**
+- (a) Có — bot có nút "Khiếu nại" → vào queue khiếu nại admin xử lý lại
+- (b) Không — từ chối là quyết định cuối cùng
+- (c) Có nhưng giới hạn (vd 1 lần khiếu nại / claim)
+
+**F3. Admin nào được duyệt claim bảo hành?**
+- (a) Mọi admin role >= "admin"
+- (b) Chỉ "super_admin"
+- (c) Có thể cấu hình ở /settings (default = admin trở lên)
+
+**F4. Lịch sử "Lô import" — admin có thể XOÁ cả lô không?**
+Vd admin import nhầm 200 proxy spam → muốn xoá hết 1 phát thay vì select-all-checkbox. Có nên thêm nút "Xoá cả lô" trong banner `import_batch_id`?
+
+### G. Schema / data choices
+
+**G1. `warranty_claims.reason_code` enum — list đề xuất:**
+`no_connect` (không kết nối được), `slow` (chậm), `ip_blocked` (IP bị block), `wrong_country` (sai quốc gia), `auth_fail` (sai user/pass), `other` (lý do khác — kèm `reason_text`).
+Bro thấy đủ không? Cần thêm code nào?
+
+**G2. `import_batch_id` có cần lưu thêm metadata?**
+Hiện tại chỉ là UUID. Có nên bổ sung bảng `proxy_import_batches`?
+- `id, created_at, created_by, total, imported, skipped, failed, source_filename, notes`
+- Cho phép admin XEM tất cả lô đã import + ai import + lúc nào + thành công bao nhiêu
+- Là tiền đề cho UI "Lịch sử import" sau này
+*Có ship cùng Wave 26-D không?*
+
+**G3. Bảo hành — tăng giới hạn yêu cầu của user lên trong khi xử lý?**
+Trong khi admin xử lý claim (có thể mất 24-72h), user có cần được tăng giới hạn yêu cầu tạm thời để lấy proxy khác không, hay phải đợi xong claim?
+- (a) Không tăng — user chấp nhận mất proxy đó cho đến khi xử lý
+- (b) Tăng tạm thời 1 slot — bồi thường thời gian chờ
+- (c) "Đóng băng" proxy hỏng (không tính vào counter `proxies_used_*` nữa) — user dùng counter đó đi lấy proxy khác
+
+---
+
+**Phương án ưu tiên ship:** chốt A1 + A2 + A3 + B2 + C1 + D2 + E1 + F1 + G2 trước. 9 câu này quyết định 80% schema và UX. Còn lại có thể chốt sau khi prototype xong.
