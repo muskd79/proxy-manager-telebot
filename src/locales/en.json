@@ -26,6 +26,16 @@
     "account": "ACCOUNT",
     "pendingBadge": "{count} pending"
   },
+  "dashboardCards": {
+    "totalProxies": "Total Proxies",
+    "totalProxiesSub": "{available} available / {assigned} assigned / {expired} expired",
+    "telegramUsers": "Telegram Users",
+    "telegramUsersSub": "{active} active / {blocked} blocked / {pending} pending",
+    "pendingRequests": "Pending Requests",
+    "pendingRequestsSub": "{total} total requests",
+    "assignedToday": "Assigned Today",
+    "assignedTodaySub": "{requests} requests today"
+  },
   "proxyTabs": {
     "list": "Proxy list",
     "categories": "Categories",

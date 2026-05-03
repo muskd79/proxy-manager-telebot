@@ -17,6 +17,22 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { DashboardStats } from "@/types/api";
+import { routes } from "@/lib/routes";
+import { useI18n } from "@/lib/i18n";
+
+/**
+ * Wave 25-pre2 (Pass 4 quick — string interpolation helper).
+ * The shared i18n.t() doesn't accept variables yet (see lib/i18n.tsx);
+ * keep the call site readable by handling the {placeholder} swap here.
+ * Future Wave 25-pre3 will fold this into i18n.t() proper.
+ */
+function fillI18n(template: string, vars: Record<string, string | number>): string {
+  let result = template;
+  for (const [k, v] of Object.entries(vars)) {
+    result = result.replaceAll(`{${k}}`, String(v));
+  }
+  return result;
+}
 
 interface StatsCardsProps {
   stats: DashboardStats | null;
@@ -74,6 +90,15 @@ function StatCard({ title, value, subtitle, icon, trend, href }: StatCardProps) 
 }
 
 export function StatsCards({ stats, loading }: StatsCardsProps) {
+  // Wave 25-pre2 (Pass 7.C/7.D) — i18n + routes module integration.
+  // Pre-fix titles + subtitles were hardcoded English ("Total Proxies",
+  // "available / assigned / expired") inside an i18n product, and the
+  // drill-down hrefs were raw query strings that would silently break
+  // on a future URL refactor. Switch to:
+  //   - t("dashboardCards.*") for both labels (parity-safe with vi/en)
+  //   - routes.proxies({status: ...}) for typed, single-source-of-truth URLs
+  const { t } = useI18n();
+
   if (loading || !stats) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -93,40 +118,49 @@ export function StatsCards({ stats, loading }: StatsCardsProps) {
   }
 
   return (
-    // Phase 3 (PM UX) — KPI drill-down. Pre-fix the 4 cards linked
-    // to broad pages (/proxies, /users, /requests, /history) which
-    // showed all rows; admin had to filter again. Now each card
-    // deep-links to the FILTERED view that matches its number, so
-    // clicking "Pending Requests: 12" lands on the pending tab
-    // with 12 rows visible. PM finding #14 closed.
+    // Phase 3 (PM UX) — KPI drill-down. Each card deep-links to the
+    // FILTERED view that matches its number, so clicking "Pending
+    // Requests: 12" lands on the pending tab with 12 rows visible.
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <StatCard
-        title="Total Proxies"
+        title={t("dashboardCards.totalProxies")}
         value={stats.totalProxies}
-        subtitle={`${stats.availableProxies} available / ${stats.assignedProxies} assigned / ${stats.expiredProxies} expired`}
+        subtitle={fillI18n(t("dashboardCards.totalProxiesSub"), {
+          available: stats.availableProxies,
+          assigned: stats.assignedProxies,
+          expired: stats.expiredProxies,
+        })}
         icon={<Server className="size-4" />}
-        href="/proxies?status=available"
+        href={routes.proxies({ status: "available" })}
       />
       <StatCard
-        title="Telegram Users"
+        title={t("dashboardCards.telegramUsers")}
         value={stats.totalUsers}
-        subtitle={`${stats.activeUsers} active / ${stats.blockedUsers} blocked / ${stats.pendingUsers} pending`}
+        subtitle={fillI18n(t("dashboardCards.telegramUsersSub"), {
+          active: stats.activeUsers,
+          blocked: stats.blockedUsers,
+          pending: stats.pendingUsers,
+        })}
         icon={<Users className="size-4" />}
-        href="/users?status=pending"
+        href={routes.users({ status: "pending" })}
       />
       <StatCard
-        title="Pending Requests"
+        title={t("dashboardCards.pendingRequests")}
         value={stats.pendingRequests}
-        subtitle={`${stats.totalRequests} total requests`}
+        subtitle={fillI18n(t("dashboardCards.pendingRequestsSub"), {
+          total: stats.totalRequests,
+        })}
         icon={<Clock className="size-4" />}
-        href="/requests?status=pending"
+        href={routes.requests({ status: "pending" })}
       />
       <StatCard
-        title="Assigned Today"
+        title={t("dashboardCards.assignedToday")}
         value={stats.todayApproved}
-        subtitle={`${stats.todayRequests} requests today`}
+        subtitle={fillI18n(t("dashboardCards.assignedTodaySub"), {
+          requests: stats.todayRequests,
+        })}
         icon={<CheckCircle className="size-4" />}
-        href="/history"
+        href={routes.history()}
       />
     </div>
   );

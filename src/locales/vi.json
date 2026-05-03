@@ -26,6 +26,16 @@
     "account": "TÀI KHOẢN",
     "pendingBadge": "{count} chưa duyệt"
   },
+  "dashboardCards": {
+    "totalProxies": "Tổng số proxy",
+    "totalProxiesSub": "{available} sẵn sàng / {assigned} đang dùng / {expired} hết hạn",
+    "telegramUsers": "Người dùng Telegram",
+    "telegramUsersSub": "{active} hoạt động / {blocked} bị chặn / {pending} chờ duyệt",
+    "pendingRequests": "Yêu cầu chờ duyệt",
+    "pendingRequestsSub": "{total} tổng yêu cầu",
+    "assignedToday": "Đã cấp hôm nay",
+    "assignedTodaySub": "{requests} yêu cầu hôm nay"
+  },
   "proxyTabs": {
     "list": "Danh sách proxy",
     "categories": "Danh mục",
