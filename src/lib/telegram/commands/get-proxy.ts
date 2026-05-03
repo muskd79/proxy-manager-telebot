@@ -49,9 +49,12 @@ export async function handleGetProxy(ctx: Context) {
     .eq("is_deleted", false);
 
   if (pendingCount !== null && pendingCount > 0) {
+    // Wave 25-pre2 (Pass 2.5) — append recovery hint. Pre-fix the
+    // pending message was a dead-end: user knows they're waiting,
+    // doesn't know they can /history view or /cancel back out.
     const pendingText = lang === "vi"
-      ? "Bạn đã có yêu cầu đang chờ xử lý.\nVui lòng đợi admin duyệt."
-      : "You already have a pending request.\nPlease wait for admin approval.";
+      ? "Bạn đã có yêu cầu đang chờ xử lý.\nVui lòng đợi admin duyệt.\n\nDùng /history để xem yêu cầu hoặc /cancel để hủy."
+      : "You already have a pending request.\nPlease wait for admin approval.\n\nUse /history to view it or /cancel to cancel.";
     await ctx.reply(pendingText);
     await logChatMessage(
       user.id,

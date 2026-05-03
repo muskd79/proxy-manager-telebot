@@ -4,6 +4,7 @@ import { t } from "../messages";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { languageKeyboard } from "../keyboard";
+import { clearBotState, getBotState } from "../state";
 import { ChatDirection, MessageType } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
 
@@ -59,9 +60,36 @@ export async function handleLanguageSelection(
     .update({ language: newLang })
     .eq("id", user.id);
 
+  // Wave 25-pre2 (Pass 3.5) — clear any non-idle conversation state
+  // when language switches. Pre-fix a user mid-`awaiting_quick_qty`
+  // who flipped lang would still see their old prompt in the OLD
+  // language, then their next text input got consumed silently by
+  // the qty handler. Now we drop the state + tell them to start
+  // over so the next prompt comes in the NEW language.
+  const state = await getBotState(user.id);
+  const wasMidFlow = state.step !== "idle";
+  if (wasMidFlow) {
+    await clearBotState(user.id);
+  }
+
   const text = t("languageChanged", newLang);
   await ctx.answerCallbackQuery();
   await ctx.editMessageText(text);
+
+  if (wasMidFlow) {
+    const restartText = newLang === "vi"
+      ? "Phiên trước đã được hủy do đổi ngôn ngữ. Bấm /getproxy để bắt đầu lại."
+      : "Previous session cleared due to language change. Use /getproxy to start over.";
+    await ctx.reply(restartText);
+    await logChatMessage(
+      user.id,
+      null,
+      ChatDirection.Outgoing,
+      restartText,
+      MessageType.Text,
+    );
+  }
+
   await logChatMessage(
     user.id,
     null,

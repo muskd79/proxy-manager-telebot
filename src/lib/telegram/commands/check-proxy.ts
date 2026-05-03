@@ -125,20 +125,27 @@ export async function handleCheckListInput(
   const invalid = rows.length - valid.length;
 
   if (valid.length === 0) {
+    // Wave 25-pre2 (Pass 3.3) — bad-paste recovery. Pre-fix we kept
+    // the user in awaiting_check_list state, so a retry that was
+    // also bad showed the same message in a loop with no way out.
+    // Clear state and tell them to /checkproxy again — fresh start.
+    await clearBotState(user.id);
     await ctx.reply(
       lang === "vi"
-        ? "[!] Không tìm thấy proxy hợp lệ. Mỗi dòng phải là `host:port` hoặc `host:port:user:pass`."
-        : "[!] No valid proxies found. Each line must be `host:port` or `host:port:user:pass`.",
+        ? "[!] Không tìm thấy proxy hợp lệ. Mỗi dòng phải là `host:port` hoặc `host:port:user:pass`.\n\nBấm /checkproxy để thử lại."
+        : "[!] No valid proxies found. Each line must be `host:port` or `host:port:user:pass`.\n\nUse /checkproxy to try again.",
       { parse_mode: "Markdown" },
     );
     return true;
   }
 
   if (valid.length > MAX_CHECK_PER_BATCH) {
+    // Wave 25-pre2 (Pass 3.3) — same recovery: clear state + retry.
+    await clearBotState(user.id);
     await ctx.reply(
       lang === "vi"
-        ? `[!] Tối đa *${MAX_CHECK_PER_BATCH}* proxy/lần. Bạn vừa dán ${valid.length} dòng — vui lòng cắt bớt.`
-        : `[!] Maximum *${MAX_CHECK_PER_BATCH}* proxies per call. You sent ${valid.length} — please trim.`,
+        ? `[!] Tối đa *${MAX_CHECK_PER_BATCH}* proxy/lần. Bạn vừa dán ${valid.length} dòng — vui lòng cắt bớt rồi /checkproxy lại.`
+        : `[!] Maximum *${MAX_CHECK_PER_BATCH}* proxies per call. You sent ${valid.length} — please trim then /checkproxy again.`,
       { parse_mode: "Markdown" },
     );
     return true;

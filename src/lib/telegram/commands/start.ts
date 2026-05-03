@@ -152,13 +152,24 @@ export async function handleStart(ctx: Context) {
   const rawFirstName = ctx.from?.first_name?.trim() || user.first_name || "";
   const firstName = escapeMarkdown(rawFirstName);
 
+  // Wave 25-pre2 (Pass 4.5) — zero-pool contingency. When the
+  // available pool is 0 a literal "0 proxy sẵn sàng" reads as
+  // "the bot is broken." Append a softer line so user knows it's
+  // a stocking issue, not a bug.
+  const poolCount = availableProxies ?? 0;
+  const zeroPoolHint = poolCount === 0
+    ? (lang === "vi"
+      ? "\n_Đang nạp thêm proxy — vui lòng quay lại sau ít phút._"
+      : "\n_Restocking proxies — please come back in a few minutes._")
+    : "";
+
   const text = lang === "vi"
     ? [
         firstName ? `Xin chào *${firstName}*!` : "Xin chào!",
         "",
         "*Proxy Bot*",
         "Bot hỗ trợ yêu cầu và quản lý proxy.",
-        `Hiện có *${availableProxies ?? 0}* proxy sẵn sàng.`,
+        `Hiện có *${poolCount}* proxy sẵn sàng.${zeroPoolHint}`,
         "",
         "Chọn chức năng bên dưới:",
       ].join("\n")
@@ -167,7 +178,7 @@ export async function handleStart(ctx: Context) {
         "",
         "*Proxy Bot*",
         "Bot for requesting and managing proxies.",
-        `*${availableProxies ?? 0}* proxies available.`,
+        `*${poolCount}* proxies available.${zeroPoolHint}`,
         "",
         "Pick an action below:",
       ].join("\n");
