@@ -34,7 +34,7 @@ import {
   handleConfirmCallback,
   handleCheckListInput,
 } from "./commands";
-import { getBotState, clearBotState } from "./state";
+import { getBotStateWithExpiry, clearBotState } from "./state";
 import type { BotStep, BotState } from "./state";
 import type { Context } from "grammy";
 import { parseCallback } from "./callbacks";
@@ -380,7 +380,18 @@ bot.on("message:text", async (ctx) => {
   // a new branch each. Now adding a state = adding a row to the table.
   // Wave 25-pre4 — `state` is now a typed discriminated union; the
   // `dispatchStateTextHandler` helper carries the per-step narrowing.
-  const state = await getBotState(user.id);
+  // Pass 2.3 — when the read just expired, surface a recovery hint
+  // before falling through to the /support/help generic fallback.
+  const { state, expired } = await getBotStateWithExpiry(user.id);
+
+  if (expired) {
+    const expiredMsg = lang === "vi"
+      ? "Phiên trước đã hết hạn (30 phút). Bấm /getproxy hoặc /checkproxy để bắt đầu lại."
+      : "Your previous session expired (30 minutes). Use /getproxy or /checkproxy to start again.";
+    await ctx.reply(expiredMsg);
+    return;
+  }
+
   const consumed = await dispatchStateTextHandler(ctx, state, ctx.message.text);
   if (consumed) return;
 

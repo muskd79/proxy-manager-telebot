@@ -5,6 +5,7 @@ import { getOrCreateUser, getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
 import { safeCredentialString } from "../format";
+import { chunkMessage } from "../chunk";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleMyProxies(ctx: Context) {
@@ -79,7 +80,12 @@ export async function handleMyProxies(ctx: Context) {
       ? `*Proxy của bạn (${proxies.length}/${user.max_proxies}):*`
       : `*Your proxies (${proxies.length}/${user.max_proxies}):*`;
   const text = `${header}\n\n${lines.join("\n")}`;
-  await ctx.reply(text, { parse_mode: "Markdown" });
+  // Wave 25-pre4 (Pass 2.1) — split on Telegram's 4096 ceiling.
+  // A user with ~80 max_proxies and full credentials easily blew
+  // past it; pre-fix the API returned 400 and the user saw silence.
+  for (const chunk of chunkMessage(text)) {
+    await ctx.reply(chunk, { parse_mode: "Markdown" });
+  }
 
   // Wave 25-pre1 (P0 3.9) — mask credentials in audit log. Pre-fix
   // chat_messages stored full host:port:user:pass; if the DB ever

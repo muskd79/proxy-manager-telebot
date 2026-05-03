@@ -8,6 +8,7 @@ import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
 import { setBotState, clearBotState } from "../state";
 import { CB } from "../callbacks";
+import { chunkMessage } from "../chunk";
 import { ChatDirection, MessageType } from "@/types/database";
 
 /**
@@ -254,6 +255,12 @@ export async function handleCheckListInput(
     ? "\n\n_Loại giao thức tự động phát hiện qua handshake. Kết quả TCP có thể khác client thật khi proxy yêu cầu auth._"
     : "\n\n_Protocol detected via handshake. TCP-level result may differ from a real client when the proxy requires auth._";
 
-  await ctx.reply(`${header}\n\n${body}${footer}`, { parse_mode: "Markdown" });
+  // Wave 25-pre4 (Pass 2.1) — split on Telegram's 4096 ceiling.
+  // 20 proxies × 80-char rows + header + footer can easily blow
+  // past it; pre-fix the API returned 400 and the user saw silence.
+  const fullReport = `${header}\n\n${body}${footer}`;
+  for (const chunk of chunkMessage(fullReport)) {
+    await ctx.reply(chunk, { parse_mode: "Markdown" });
+  }
   return true;
 }
