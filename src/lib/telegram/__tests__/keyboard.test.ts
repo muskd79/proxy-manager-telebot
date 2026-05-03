@@ -200,3 +200,90 @@ describe("quantityKeyboard with mode (Wave 23B-bot)", () => {
     expect(kb.inline_keyboard.flat().map((b) => b.text)[0]).toBe("1");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Wave 25-pre2 (Pass 6.2) — inline button label length budget.
+//
+// Telegram mobile renders inline buttons in 2 columns at ~140px each on
+// 320px-wide phones. Empirically, labels ≤ 12 chars never wrap; 13-14
+// occasionally wrap to two lines depending on font; ≥ 15 always wrap.
+// Two-line buttons look broken.
+//
+// We enforce a TEMPORARY ceiling of 14 chars to match what currently
+// ships ("Bảo hành proxy" / "Warranty claim" — both 14 — were renamed
+// to "Trả proxy" / "Return proxy" in 2.A but other 13-char labels like
+// "Yêu cầu proxy" remain). Future Wave 25-pre3 may tighten the budget
+// to 12 once labels are shortened with user input. Tracked in
+// docs/decision-log.md#button-label-length.
+//
+// New buttons must respect the 14-char ceiling FROM DAY ONE — that's
+// the entire point of having this test.
+// ---------------------------------------------------------------------------
+describe("Wave 25-pre2 — inline button label length budget", () => {
+  const MAX_LABEL_LEN = 14;
+
+  function assertLabels(label: string, value: string) {
+    expect(value.length, `${label}: "${value}" exceeds ${MAX_LABEL_LEN} chars`).toBeLessThanOrEqual(
+      MAX_LABEL_LEN,
+    );
+  }
+
+  it("mainMenuKeyboard labels (vi) fit the budget", () => {
+    const kb = mainMenuKeyboard("vi");
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("mainMenuKeyboard.vi", btn.text);
+    }
+  });
+
+  it("mainMenuKeyboard labels (en) fit the budget", () => {
+    const kb = mainMenuKeyboard("en");
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("mainMenuKeyboard.en", btn.text);
+    }
+  });
+
+  it("orderTypeKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = orderTypeKeyboard("http", lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`orderTypeKeyboard.${lang}`, btn.text);
+      }
+    }
+  });
+
+  it("quantityKeyboard labels fit the budget (both modes, both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      for (const mode of ["quick", "custom"] as const) {
+        const kb = quantityKeyboard("http", lang, mode);
+        for (const btn of kb.inline_keyboard.flat()) {
+          assertLabels(`quantityKeyboard.${mode}.${lang}`, btn.text);
+        }
+      }
+    }
+  });
+
+  it("proxyTypeKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = proxyTypeKeyboard(lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`proxyTypeKeyboard.${lang}`, btn.text);
+      }
+    }
+  });
+
+  it("languageKeyboard labels fit the budget", () => {
+    const kb = languageKeyboard();
+    for (const btn of kb.inline_keyboard.flat()) {
+      assertLabels("languageKeyboard", btn.text);
+    }
+  });
+
+  it("confirmKeyboard labels fit the budget (both langs)", () => {
+    for (const lang of ["vi", "en"] as const) {
+      const kb = confirmKeyboard(lang);
+      for (const btn of kb.inline_keyboard.flat()) {
+        assertLabels(`confirmKeyboard.${lang}`, btn.text);
+      }
+    }
+  });
+});

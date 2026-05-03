@@ -23,7 +23,8 @@
     "operations": "OPERATIONS",
     "monitoring": "MONITORING",
     "system": "SYSTEM",
-    "account": "ACCOUNT"
+    "account": "ACCOUNT",
+    "pendingBadge": "{count} pending"
   },
   "proxyTabs": {
     "list": "Proxy list",

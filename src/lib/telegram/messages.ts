@@ -4,6 +4,11 @@ import type { SupportedLanguage } from "@/types/telegram";
 // All bot message strings (vi/en) – no emojis
 // ---------------------------------------------------------------------------
 
+// Wave 25-pre2 (Pass 1.4) — the welcome and help blocks below MUST
+// stay in the canonical command order defined by lib/constants.ts
+// BOT_COMMANDS. The parity test in __tests__/commands.test.ts will
+// fail on drift. Do NOT reorder lines without updating BOT_COMMANDS
+// in the same commit.
 export const msg = {
   welcome: {
     vi: [
@@ -21,8 +26,8 @@ export const msg = {
       "/cancel - Hủy yêu cầu",
       "/support - Hỗ trợ",
       "/language - Đổi ngôn ngữ",
-      "/requests - Duyệt yêu cầu (Admin)",
       "/help - Hướng dẫn sử dụng",
+      "/requests - Duyệt yêu cầu (Admin)",
     ].join("\n"),
     en: [
       "*Proxy Manager Bot*",
@@ -39,8 +44,8 @@ export const msg = {
       "/cancel - Cancel request",
       "/support - Contact support",
       "/language - Change language",
-      "/requests - Approve requests (Admin)",
       "/help - Show help",
+      "/requests - Approve requests (Admin)",
     ].join("\n"),
   },
   welcomeBack: {
@@ -61,8 +66,8 @@ export const msg = {
       "/cancel - Hủy yêu cầu đang chờ",
       "/support - Gửi tin nhắn cho admin",
       "/language - Đổi ngôn ngữ (Việt/Anh)",
-      "/requests - Duyệt yêu cầu (Admin)",
       "/help - Hiển thị trợ giúp",
+      "/requests - Duyệt yêu cầu (Admin)",
       "",
       "*Giới hạn yêu cầu:*",
       "Mỗi người dùng có giới hạn số proxy yêu cầu theo giờ, theo ngày và tổng cộng. Dùng /status để xem chi tiết.",
@@ -80,8 +85,8 @@ export const msg = {
       "/cancel - Cancel pending requests",
       "/support - Send message to admin",
       "/language - Change language (Vi/En)",
-      "/requests - Approve requests (Admin)",
       "/help - Show this help",
+      "/requests - Approve requests (Admin)",
       "",
       "*Rate limits:*",
       "Each user has hourly, daily, and total request limits. Use /status to see details.",

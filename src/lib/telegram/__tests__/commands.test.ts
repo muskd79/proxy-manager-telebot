@@ -171,4 +171,51 @@ describe("Bot Commands", () => {
       expect(commands.handleUnknownCommand).toBeDefined();
     });
   });
+
+  // ---------------------------------------------------------------------
+  // Wave 25-pre2 (Pass 1.4) — canonical command order parity.
+  //
+  // Three surfaces must agree on order:
+  //   (1) BOT_COMMANDS in lib/constants.ts (drives Telegram setMyCommands)
+  //   (2) msg.welcome.{vi,en} in lib/telegram/messages.ts
+  //   (3) msg.help.{vi,en}   in lib/telegram/messages.ts
+  //
+  // Pre-fix `requests` and `help` were swapped between BOT_COMMANDS and
+  // the welcome/help blocks. The slip is invisible in production because
+  // both render correctly — but tooling that diffs the three lists for
+  // documentation / changelog generation produced spurious deltas.
+  // Lock parity here so Wave 26+ command additions stay aligned.
+  // ---------------------------------------------------------------------
+  describe("canonical command order parity", () => {
+    it("BOT_COMMANDS, welcome, and help all agree on slash-command order", async () => {
+      const { BOT_COMMANDS } = await import("@/lib/constants");
+      const { msg } = await import("../../telegram/messages");
+
+      const expectedOrder = BOT_COMMANDS.map((c) => `/${c.command}`);
+
+      // Extract slash commands in document order from a multi-line block.
+      const extractOrder = (text: string): string[] => {
+        const found: string[] = [];
+        // Match the first slash command on each line (e.g. "/getproxy - ...")
+        const re = /^\s*(\/[a-z]+)\b/gm;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(text)) !== null) found.push(m[1]);
+        return found;
+      };
+
+      const welcomeViOrder = extractOrder(msg.welcome.vi);
+      const welcomeEnOrder = extractOrder(msg.welcome.en);
+      const helpViOrder = extractOrder(msg.help.vi);
+      const helpEnOrder = extractOrder(msg.help.en);
+
+      // welcome lists 11 commands (excludes /start since that's the entry).
+      // help lists all 12 (including /start). Compare each list to its
+      // expected sub-sequence.
+      const welcomeExpected = expectedOrder.filter((c) => c !== "/start");
+      expect(welcomeViOrder).toEqual(welcomeExpected);
+      expect(welcomeEnOrder).toEqual(welcomeExpected);
+      expect(helpViOrder).toEqual(expectedOrder);
+      expect(helpEnOrder).toEqual(expectedOrder);
+    });
+  });
 });

@@ -23,7 +23,8 @@
     "operations": "VẬN HÀNH",
     "monitoring": "GIÁM SÁT",
     "system": "HỆ THỐNG",
-    "account": "TÀI KHOẢN"
+    "account": "TÀI KHOẢN",
+    "pendingBadge": "{count} chưa duyệt"
   },
   "proxyTabs": {
     "list": "Danh sách proxy",
