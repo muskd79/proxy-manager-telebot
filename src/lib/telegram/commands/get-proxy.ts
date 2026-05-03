@@ -12,6 +12,7 @@ import {
 import { denyIfNotApproved } from "../guards";
 import { setBotState } from "../state";
 import { InlineKeyboard } from "grammy";
+import { CB } from "../callbacks";
 import {
   ChatDirection,
   MessageType,
@@ -314,7 +315,7 @@ export async function handleOrderModeSelection(
       ].join("\n");
 
   const cancelKb = new InlineKeyboard()
-    .text(lang === "vi" ? "Hủy" : "Cancel", "qty:cancel");
+    .text(lang === "vi" ? "Hủy" : "Cancel", CB.qtyCancel());
 
   await ctx.answerCallbackQuery();
   await ctx.reply(text, { parse_mode: "Markdown", reply_markup: cancelKb });

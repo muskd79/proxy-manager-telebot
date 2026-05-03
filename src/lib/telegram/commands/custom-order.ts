@@ -7,6 +7,8 @@ import { ChatDirection, MessageType } from "@/types/database";
 import type { BotStep } from "../state";
 import { clearBotState, setBotState } from "../state";
 import { handleQuantitySelection } from "./bulk-proxy";
+import { CB } from "../callbacks";
+import { restartFlowKeyboard } from "../recovery-keyboard";
 
 /**
  * Wave 23B-bot UX — handle a number typed by the user while we are
@@ -119,8 +121,8 @@ export async function handleQtyTextInput(
       ].join("\n");
 
   const kb = new InlineKeyboard()
-    .text(lang === "vi" ? "Xác nhận" : "Confirm", "confirm:yes")
-    .text(lang === "vi" ? "Hủy" : "Cancel", "confirm:no");
+    .text(lang === "vi" ? "Xác nhận" : "Confirm", CB.confirm("yes"))
+    .text(lang === "vi" ? "Hủy" : "Cancel", CB.confirm("no"));
 
   await ctx.reply(confirmText, { parse_mode: "Markdown", reply_markup: kb });
   await logChatMessage(
@@ -160,11 +162,13 @@ export async function handleConfirmCallback(
 
   if (state.step !== "awaiting_confirm" || !state.proxyType || !state.quantity || !state.mode) {
     // State drift: another flow / TTL expiry / older deploy.
+    // Wave 25-pre3 (Pass 2.B) — pre-fix this was text-only and the
+    // user had to remember /getproxy. Now: 1-tap restart button.
     await clearBotState(user.id);
     const msg = lang === "vi"
-      ? "Phiên đã hết hạn. Vui lòng thử lại."
-      : "Session expired. Please try again.";
-    await ctx.reply(msg);
+      ? "Phiên đã hết hạn. Vui lòng bấm bên dưới để bắt đầu lại."
+      : "Session expired. Tap below to start again.";
+    await ctx.reply(msg, { reply_markup: restartFlowKeyboard(lang, "request") });
     return;
   }
 

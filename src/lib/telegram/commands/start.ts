@@ -7,6 +7,7 @@ import { logChatMessage } from "../logging";
 import { mainMenuKeyboard } from "../keyboard";
 import { notifyAllAdmins } from "../notify-admins";
 import { escapeMarkdown } from "../format";
+import { CB } from "../callbacks";
 import { ChatDirection, MessageType, ProxyStatus } from "@/types/database";
 
 export async function handleStart(ctx: Context) {
@@ -37,8 +38,8 @@ export async function handleStart(ctx: Context) {
       : ctx.from?.first_name || "Unknown";
     const adminText = `[New User] ${username} (ID: ${ctx.from?.id ?? user.telegram_id}) registered and is pending approval.\n\nApprove or block?`;
     const adminKb = new InlineKeyboard()
-      .text("Approve", `admin_approve_user:${user.id}`)
-      .text("Block", `admin_block_user:${user.id}`);
+      .text("Approve", CB.admin("approve_user", user.id))
+      .text("Block", CB.admin("block_user", user.id));
     notifyAllAdmins(adminText, { inlineKeyboard: adminKb }).catch((e) =>
       console.error("notify-admins on first /start failed:", e instanceof Error ? e.message : String(e)),
     );

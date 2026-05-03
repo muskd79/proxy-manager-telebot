@@ -7,6 +7,7 @@ import { getUserLanguage } from "../user";
 import { logChatMessage } from "../logging";
 import { denyIfNotApproved } from "../guards";
 import { setBotState, clearBotState } from "../state";
+import { CB } from "../callbacks";
 import { ChatDirection, MessageType } from "@/types/database";
 
 /**
@@ -82,7 +83,7 @@ export async function handleCheckProxy(ctx: Context) {
       ].join("\n");
 
   const cancelKb = new InlineKeyboard()
-    .text(lang === "vi" ? "Hủy" : "Cancel", "check:cancel");
+    .text(lang === "vi" ? "Hủy" : "Cancel", CB.checkCancel());
 
   await ctx.reply(text, { parse_mode: "Markdown", reply_markup: cancelKb });
   await logChatMessage(
@@ -217,8 +218,13 @@ export async function handleCheckListInput(
   }
 
   // Build the report. One line per proxy, plus a summary footer.
+  // Wave 25-pre3 (Pass 2.4) — tri-state summary. Pre-fix said "5/20
+  // alive, 15 dead" even when 7 of those 15 were timed_out (untested,
+  // not actually dead). Now report alive / dead / timed_out separately
+  // so the user knows which proxies might still work after a retry.
   const aliveCount = results.filter((r) => r.alive).length;
-  const deadCount = results.length - aliveCount;
+  const timedOutCount = results.filter((r) => r.timed_out).length;
+  const deadCount = results.length - aliveCount - timedOutCount;
 
   const formatLine = (r: (typeof results)[number]): string => {
     const target = `\`${r.host}:${r.port}\``;
@@ -236,8 +242,12 @@ export async function handleCheckListInput(
   };
 
   const header = lang === "vi"
-    ? `*Kết quả kiểm tra* (${aliveCount}/${results.length} sống, ${deadCount} chết)`
-    : `*Check results* (${aliveCount}/${results.length} alive, ${deadCount} dead)`;
+    ? timedOutCount > 0
+      ? `*Kết quả kiểm tra* (${aliveCount} sống, ${deadCount} chết, ${timedOutCount} không kịp kiểm tra)`
+      : `*Kết quả kiểm tra* (${aliveCount}/${results.length} sống, ${deadCount} chết)`
+    : timedOutCount > 0
+      ? `*Check results* (${aliveCount} alive, ${deadCount} dead, ${timedOutCount} not tested)`
+      : `*Check results* (${aliveCount}/${results.length} alive, ${deadCount} dead)`;
 
   const body = results.map(formatLine).join("\n");
   const footer = lang === "vi"
