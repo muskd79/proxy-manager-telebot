@@ -241,9 +241,13 @@ export async function handleAdminRejectCallback(
     const user = (request.tele_users as unknown) as JoinedTeleUser;
     if (user) {
       const lang = (user.language === "vi" || user.language === "en") ? user.language : "en";
+      // Wave 25-pre2 (P0 4.A) — restore Vietnamese diacritics. Pre-fix
+      // shipped "Yeu cau proxy bi tu choi." to real users, which reads
+      // as machine-translated. Surface goes straight to the user the
+      // moment admin clicks Reject — high visibility, must be correct.
       const text =
         lang === "vi"
-          ? "Yeu cau proxy bi tu choi."
+          ? "Yêu cầu proxy đã bị từ chối."
           : "Proxy request rejected.";
       await sendTelegramMessage(user.telegram_id, text);
     }
