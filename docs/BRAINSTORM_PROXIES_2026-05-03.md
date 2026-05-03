@@ -736,3 +736,68 @@ Trong khi admin xử lý claim (có thể mất 24-72h), user có cần được
 - (a) Auto-test khi khôi phục, pass → available, fail → giữ banned
 - (b) Khôi phục thẳng về available, admin tự test sau
 - (c) Khôi phục về maintenance, admin phải test pass mới về available
+
+---
+
+## Đáp án vòng 3 (2026-05-03) — agent quyết định cho bro
+
+### Bro chốt H3, H4
+
+| Câu | Bro chốt |
+|-----|----------|
+| **H3** | (c) Bắt buộc nhập text khi user chọn `other` |
+| **H4** | (a) Có — event_type `admin_note` để admin gắn note thủ công vào timeline |
+
+### Multi-agent brainstorm cho A7, H2, H5 (architect + brainstormer outside-voice)
+
+#### A7 → **(b) Auto-maintenance + checkbox + reliability_score column**
+
+Architect (b): false-positive rate cao, state machine đã enforce banned→maintenance, đi assigned→maintenance→available ít transition hơn.
+Brainstormer raise: "warranty approval ≠ proxy broken" — admin duyệt vì thương khách. Đề xuất reliability_score per proxy + auto-ban sau 3 strikes.
+
+**Synthesis (Wave 26-D scope):**
+- Auto-maintenance khi admin duyệt warranty
+- Checkbox `[ ] Đồng thời mark banned` trong dialog duyệt (default OFF) — admin có thể ban thẳng nếu xác định hỏng hẳn
+- **Migration thêm column** `proxies.reliability_score INT DEFAULT 100` (cheap, additive)
+- Decrement reliability_score mỗi lần warranty approved (vd -25)
+- Wave 26-E (sau) thêm logic auto-ban khi `reliability_score <= 0` + cron probation re-test
+
+State machine update: `assigned → maintenance` mới (admin trigger qua warranty approval). Existing `banned → maintenance` giữ nguyên.
+
+#### H2 → **TÁCH Wave 26-E + ASK clarifying question cho bro trước**
+
+Architect: defer (blast radius lớn, warranty không cần multi-user).
+Brainstormer raise: "multi-user" có 2 nghĩa khác nhau, có thể bro đang nhầm:
+1. **Shared pool** (rotating endpoint, residential pool) — không refactor schema, chỉ là loại proxy mới
+2. **Seat-sharing** (cùng IP, 2 user) — vi phạm ToS vendor 99% case (memory: `vendor_reseller_status.md`)
+
+**Synthesis:**
+- Wave 26-D giữ `assigned_to UUID` 1-to-1 nguyên xi
+- Trước khi plan Wave 26-E: bro cần clarify "shared pool hay seat-sharing"
+  - Nếu shared pool → Wave 28+ (sản phẩm mới riêng)
+  - Nếu seat-sharing → push back ToS, hoặc Wave 26-E refactor lớn 6-8 ngày
+  - Default: tách hẳn khỏi 26-D
+
+#### H5 → **(c) Restore về maintenance + bonus "Clone as new proxy"**
+
+Architect (c): state machine đã có path banned→maintenance→available, đừng fight invariant.
+Brainstormer: banned nên TERMINAL như deleted. Nếu cần "restore" thì re-import row mới với `previous_proxy_id` link.
+
+**Synthesis:**
+- (c) ship trong Wave 26-D — restore từ banned đi qua maintenance (zero schema change, state machine sẵn)
+- **Cộng nút "Clone as new proxy"** trên proxy detail row banned: pre-fill form import với cùng config → admin chọn dùng "Restore" (resurrect cùng row) hay "Clone" (re-import row mới với link history)
+- Brainstormer's idea trở thành UX sugar, không thay state machine
+
+### Implementation cost finalized
+
+Wave 26-D scope:
+- Migration `057_wave26d_warranty.sql`: ENUM mở rộng (`reported_broken`), bảng `warranty_claims`, bảng `proxy_events`, bảng `proxy_health_logs`, bảng `saved_views`, column `proxies.reliability_score`, settings rows (5 keys)
+- Bot: callback `warranty:claim:<proxy_id>:<reason_code>` + reason picker keyboard + text-input cho `other`
+- Web admin: `/warranty` page (single-table + powerful filter), proxy-detail.tsx storyteller rebuild, settings page UI cho 5 keys mới, sidebar badge với time-pressure
+- State machine: thêm 4 transition (`assigned→reported_broken`, `reported_broken→banned`, `reported_broken→assigned`, `assigned→maintenance` cho warranty approval)
+- Allocator: 3-tier replacement (Wave 26-D extends pickProxyFor)
+- Notifications: bot reply on approval/rejection + email if user has email (F1=c)
+- Tests: state machine transitions, allocator tiers, anti-abuse counters, warranty claim lifecycle
+
+Total: ~4-5 ngày eng (uplift từ 3 ngày ban đầu vì cộng `reliability_score` + email + clone-as-new + storyteller layout).
+
