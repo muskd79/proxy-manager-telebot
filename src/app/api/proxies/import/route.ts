@@ -8,6 +8,7 @@ import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { assertSameOrigin } from "@/lib/csrf";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 interface ImportProxyRow {
   host: string;
@@ -55,6 +56,13 @@ export async function POST(request: NextRequest) {
       purchase_price_usd,
       sale_price_usd,
     } = parsed.data;
+
+    // Wave 26-C — normalise the bulk-applied network_type ONCE (not
+    // per-row, since it's a single shared value). Pre-fix the wizard
+    // already lowercased client-side, but we keep server-side
+    // canonicalisation as defence-in-depth so direct API callers /
+    // future bulk paths can't write `IPv4` straight into DB.
+    const canonicalNetworkType = normalizeNetworkType(network_type);
 
     const importId = crypto.randomUUID();
 
@@ -105,7 +113,7 @@ export async function POST(request: NextRequest) {
         // Wave 22K — bulk-applied per-proxy purchase metadata.
         // Reuses Wave 21A columns: purchase_date / vendor_label /
         // cost_usd. sale_price_usd is new in Wave 22K.
-        network_type: network_type || null,
+        network_type: canonicalNetworkType,
         purchase_date: purchase_date || new Date().toISOString().slice(0, 10),
         expires_at: expires_at || null,
         vendor_label: vendor_source || null,

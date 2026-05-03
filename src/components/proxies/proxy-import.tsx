@@ -54,6 +54,7 @@ import type { ImportProxyResult } from "@/types/api";
 import { CategoryPicker } from "./category-picker";
 import { parseProxyLine as parseProxyLineLib, dedupeByHostPort } from "@/lib/proxy-parse";
 import { buttonVariants } from "@/components/ui/button";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 import Link from "next/link";
 
 /**
@@ -225,7 +226,16 @@ export function ProxyImport() {
     if (cat.default_country) setCountry(cat.default_country);
     if (cat.default_proxy_type) setProxyType(cat.default_proxy_type);
     // Wave 22AB — default_isp prefill removed (column dropped from UI)
-    if (cat.default_network_type) setNetworkType(cat.default_network_type);
+    // Wave 26-C — canonicalise the category default before adopting
+    // it. Pre-fix the wizard wrote whatever the category had verbatim
+    // (`IPv4`, `Datacenter IPv4`, `Dân cư`), which then survived the
+    // server import. Now: legacy → canonical at adoption time, so
+    // the Select widget shows the real option label and the API
+    // receives a clean enum value.
+    if (cat.default_network_type) {
+      const canonical = normalizeNetworkType(cat.default_network_type);
+      if (canonical) setNetworkType(canonical);
+    }
     if (cat.default_vendor_source) setVendorSource(cat.default_vendor_source);
     if (cat.default_purchase_price_usd != null)
       setPurchasePrice(String(cat.default_purchase_price_usd));
@@ -497,12 +507,16 @@ export function ProxyImport() {
         raw: p.raw,
       }));
 
-      // Wave 26-A — normalize networkType client-side. Pre-fix `IPv4`
-      // / `ipv4` / `IPV4` would land as 3 distinct values in DB, which
-      // broke the network-type filter on the proxies list. The backend
-      // also normalises (defence-in-depth) but we want admins to see
-      // the canonical form before pressing Import.
-      const normalizedNetworkType = networkType.trim().toLowerCase() || undefined;
+      // Wave 26-A → 26-C — normalise networkType client-side. Pre-fix
+      // `IPv4` / `ipv4` / `IPV4` / `Datacenter IPv4` / `4G` would land
+      // as distinct values in DB, which broke the network-type filter
+      // on the proxies list. Wave 26-C upgraded the trim/lower path to
+      // call the shared `normalizeNetworkType` helper so the same
+      // alias map (Datacenter IPv4 → datacenter_ipv4, 4G → mobile,
+      // dân cư → residential) is applied everywhere — wizard, form,
+      // category-default-adoption, server. Empty / unknown → undefined
+      // (omitted from request) instead of an invalid string.
+      const normalizedNetworkType = normalizeNetworkType(networkType) ?? undefined;
 
       const res = await fetch("/api/proxies/import", {
         method: "POST",

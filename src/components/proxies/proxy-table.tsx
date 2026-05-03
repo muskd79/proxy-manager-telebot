@@ -35,6 +35,7 @@ import {
 } from "@/lib/proxy-labels";
 import Link from "next/link";
 import { CredentialCell } from "@/components/proxies/credential-cell";
+import { formatRelativeWithTitle } from "@/lib/format-time";
 
 /**
  * Wave 22J — proxy table rebuild.
@@ -366,17 +367,22 @@ export function ProxyTable({
                     <span className="text-muted-foreground">-</span>
                   )}
                 </TableCell>
-                {/* Wave 22S — Thời gian giao */}
+                {/* Wave 22S → 26-C — Thời gian giao
+                    User feedback: an absolute timestamp ("28/04/2026
+                    14:32") forced admins to subtract dates mentally.
+                    Wave 26-C switches to a glanceable relative ("3
+                    ngày trước" / "30 ngày trước") with the absolute
+                    timestamp surfaced via the cell's `title` tooltip
+                    on hover, keeping both signals one click away. */}
                 <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
-                  {proxy.assigned_at
-                    ? new Date(proxy.assigned_at).toLocaleString("vi-VN", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "-"}
+                  {(() => {
+                    const t = formatRelativeWithTitle(proxy.assigned_at);
+                    return (
+                      <span title={t.absolute} aria-label={t.absolute}>
+                        {t.relative}
+                      </span>
+                    );
+                  })()}
                 </TableCell>
                 <TableCell>
                   {proxy.speed_ms != null ? (

@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
+  normalizeNetworkType,
   type NetworkType,
 } from "@/lib/proxy-labels";
 import { CategoryPicker, type CategoryOptionLite } from "./category-picker";
@@ -191,11 +192,12 @@ export function ProxyForm({
       (validProxyTypes as readonly string[]).includes(cat.default_proxy_type)
         ? (cat.default_proxy_type as (typeof validProxyTypes)[number])
         : null;
-    const defaultNetworkType =
-      cat.default_network_type &&
-      (NETWORK_TYPE_VALUES as readonly string[]).includes(cat.default_network_type)
-        ? (cat.default_network_type as NetworkType)
-        : null;
+    // Wave 26-C — normalise the category's default_network_type so
+    // legacy values (`IPv4`, `Dân cư`, `4G`) are adopted instead of
+    // being silently dropped. Pre-fix, only canonical enum values
+    // were accepted, so a category created before Wave 26-A would
+    // have its default fail to propagate to new proxies.
+    const defaultNetworkType = normalizeNetworkType(cat.default_network_type);
 
     setFormData((prev) => ({
       ...prev,
@@ -242,7 +244,12 @@ export function ProxyForm({
         host: formData.host,
         port: parseInt(formData.port),
         type: formData.type,
-        network_type: formData.network_type || null,
+        // Wave 26-C — normalise on submit too. The Select widget
+        // already constrains values to canonical enum, but a stale
+        // form re-mount or external script could inject a legacy
+        // alias; canonicalise once more so the API contract stays
+        // strict regardless of the form's input source.
+        network_type: normalizeNetworkType(formData.network_type),
         username: formData.username || null,
         password: formData.password || null,
         country: formData.country || null,

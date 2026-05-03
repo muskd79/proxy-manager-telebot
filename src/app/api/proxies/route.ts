@@ -8,6 +8,7 @@ import { CreateProxySchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { PROXIES_SORT, safeSort } from "@/lib/sort-allowlist";
 import { assertSameOrigin } from "@/lib/csrf";
+import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -92,7 +93,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Wave 22J — phân loại proxy (network_type)
-    const networkType = searchParams.get("networkType") || searchParams.get("network_type");
+    // Wave 26-C — normalise the filter param so legacy alias values
+    // (`IPv4`, `Datacenter IPv4`, `4G`) coming from saved bookmarks /
+    // shared URLs still resolve to the canonical enum the DB uses
+    // post Wave 26-C migration.
+    const rawNetworkType = searchParams.get("networkType") || searchParams.get("network_type");
+    const networkType = normalizeNetworkType(rawNetworkType);
     if (networkType) {
       query = query.eq("network_type", networkType);
     }
@@ -256,7 +262,11 @@ export async function POST(request: NextRequest) {
       host,
       port,
       type,
-      network_type: network_type || null,
+      // Wave 26-C — server-side normalisation. Defence-in-depth: even if
+      // the client sends a legacy alias (`IPv4`, `dân cư`), the DB only
+      // ever stores the canonical enum so the `/proxies` filter and
+      // category-default propagation stay consistent.
+      network_type: normalizeNetworkType(network_type),
       username: username || null,
       password: password || null,
       country: country || null,
