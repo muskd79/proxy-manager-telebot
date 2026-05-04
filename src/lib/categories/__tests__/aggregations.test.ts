@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveProgressBarSegments,
-  getAssignedSubBreakdown,
-  getBrokenSubBreakdown,
+  buildStatusBreakdown,
   isBelowMinStock,
   summariseDashboard,
 } from "../aggregations";
@@ -31,14 +30,6 @@ function makeRow(overrides: Partial<CategoryDashboardRow> = {}): CategoryDashboa
     cnt_expired: 0,
     cnt_banned: 0,
     cnt_maintenance: 0,
-    assigned_live: 0,
-    assigned_die: 0,
-    assigned_unchecked: 0,
-    broken_live: 0,
-    broken_die: 0,
-    broken_unchecked: 0,
-    total_live: 0,
-    total_die: 0,
     total_hidden: 0,
     stock_value_usd: 0,
     revenue_usd_cumulative: 0,
@@ -101,33 +92,80 @@ describe("deriveProgressBarSegments", () => {
   });
 });
 
-describe("getAssignedSubBreakdown", () => {
-  it("extracts the 3 assigned-* fields", () => {
+describe("buildStatusBreakdown", () => {
+  it("hides zero rows by default", () => {
     const row = makeRow({
-      assigned_live: 59,
-      assigned_die: 55,
-      assigned_unchecked: 0,
+      cnt_available: 5,
+      cnt_assigned: 0,
+      cnt_reported_broken: 2,
     });
-    expect(getAssignedSubBreakdown(row)).toEqual({
-      live: 59,
-      die: 55,
-      unchecked: 0,
-    });
+    const items = buildStatusBreakdown(row);
+    expect(items.map((i) => i.key)).toEqual(["available", "reported_broken"]);
   });
-});
 
-describe("getBrokenSubBreakdown", () => {
-  it("extracts the 3 broken-* fields", () => {
+  it("preserves order: available → assigned → broken → expired → banned → maintenance", () => {
     const row = makeRow({
-      broken_live: 18,
-      broken_die: 14,
-      broken_unchecked: 0,
+      cnt_available: 1,
+      cnt_assigned: 2,
+      cnt_reported_broken: 3,
+      cnt_expired: 4,
+      cnt_banned: 5,
+      cnt_maintenance: 6,
     });
-    expect(getBrokenSubBreakdown(row)).toEqual({
-      live: 18,
-      die: 14,
-      unchecked: 0,
+    const items = buildStatusBreakdown(row);
+    expect(items.map((i) => i.key)).toEqual([
+      "available",
+      "assigned",
+      "reported_broken",
+      "expired",
+      "banned",
+      "maintenance",
+    ]);
+  });
+
+  it("includes zeros when hideZero=false", () => {
+    const row = makeRow();
+    const items = buildStatusBreakdown(row, { hideZero: false });
+    expect(items).toHaveLength(6);
+    expect(items.every((i) => i.count === 0)).toBe(true);
+  });
+
+  it("Vietnamese labels match the spec", () => {
+    const row = makeRow({
+      cnt_available: 1,
+      cnt_assigned: 1,
+      cnt_reported_broken: 1,
+      cnt_expired: 1,
+      cnt_banned: 1,
+      cnt_maintenance: 1,
     });
+    const items = buildStatusBreakdown(row);
+    const map = Object.fromEntries(items.map((i) => [i.key, i.label]));
+    expect(map.available).toBe("Sẵn sàng");
+    expect(map.assigned).toBe("Đã giao");
+    expect(map.reported_broken).toBe("Báo lỗi");
+    expect(map.expired).toBe("Hết hạn");
+    expect(map.banned).toBe("Đã chặn");
+    expect(map.maintenance).toBe("Bảo trì");
+  });
+
+  it("tone classification maps the right buckets", () => {
+    const row = makeRow({
+      cnt_available: 1,
+      cnt_assigned: 1,
+      cnt_reported_broken: 1,
+      cnt_expired: 1,
+      cnt_banned: 1,
+      cnt_maintenance: 1,
+    });
+    const items = buildStatusBreakdown(row);
+    const tones = Object.fromEntries(items.map((i) => [i.key, i.tone]));
+    expect(tones.available).toBe("available");
+    expect(tones.assigned).toBe("assigned");
+    expect(tones.reported_broken).toBe("broken");
+    expect(tones.banned).toBe("broken");
+    expect(tones.expired).toBe("muted");
+    expect(tones.maintenance).toBe("muted");
   });
 });
 

@@ -81,42 +81,54 @@ function clampPct(p: number): number {
 }
 
 /**
- * Sub-breakdown for the "Đã giao ▶ N Live · M Die" line.
+ * Status row builder — consolidates a row's per-status counts into
+ * a list of {key, count, label, dotColor} ready for rendering. The
+ * card's right-hand breakdown column iterates this list. Statuses
+ * with count=0 are omitted so empty categories don't show 6 zero
+ * rows.
  *
- * `unchecked` is rolled into `die` for display? No — the card UI
- * shows it as a separate dot. Each property is exposed individually
- * so the row component can decide how to render.
+ * Order matches the user's mental model: Sẵn sàng first (admin's
+ * primary stock metric), then Đã giao, then problem states.
  */
-export interface StatusSubBreakdown {
-  live: number;
-  die: number;
-  unchecked: number;
+export interface StatusBreakdownItem {
+  /** Stable key for React. */
+  key:
+    | "available"
+    | "assigned"
+    | "reported_broken"
+    | "expired"
+    | "banned"
+    | "maintenance";
+  /** Vietnamese label rendered next to the dot. */
+  label: string;
+  /** Count value displayed before the label. */
+  count: number;
+  /** Tone hint — UI maps to a Tailwind dot color class. */
+  tone: "available" | "assigned" | "broken" | "muted";
 }
 
-export function getAssignedSubBreakdown(
+export function buildStatusBreakdown(
   row: Pick<
     CategoryDashboardRow,
-    "assigned_live" | "assigned_die" | "assigned_unchecked"
+    | "cnt_available"
+    | "cnt_assigned"
+    | "cnt_reported_broken"
+    | "cnt_expired"
+    | "cnt_banned"
+    | "cnt_maintenance"
   >,
-): StatusSubBreakdown {
-  return {
-    live: row.assigned_live,
-    die: row.assigned_die,
-    unchecked: row.assigned_unchecked,
-  };
-}
-
-export function getBrokenSubBreakdown(
-  row: Pick<
-    CategoryDashboardRow,
-    "broken_live" | "broken_die" | "broken_unchecked"
-  >,
-): StatusSubBreakdown {
-  return {
-    live: row.broken_live,
-    die: row.broken_die,
-    unchecked: row.broken_unchecked,
-  };
+  options: { hideZero?: boolean } = {},
+): StatusBreakdownItem[] {
+  const hideZero = options.hideZero ?? true;
+  const items: StatusBreakdownItem[] = [
+    { key: "available", label: "Sẵn sàng", count: row.cnt_available, tone: "available" },
+    { key: "assigned", label: "Đã giao", count: row.cnt_assigned, tone: "assigned" },
+    { key: "reported_broken", label: "Báo lỗi", count: row.cnt_reported_broken, tone: "broken" },
+    { key: "expired", label: "Hết hạn", count: row.cnt_expired, tone: "muted" },
+    { key: "banned", label: "Đã chặn", count: row.cnt_banned, tone: "broken" },
+    { key: "maintenance", label: "Bảo trì", count: row.cnt_maintenance, tone: "muted" },
+  ];
+  return hideZero ? items.filter((i) => i.count > 0) : items;
 }
 
 /**

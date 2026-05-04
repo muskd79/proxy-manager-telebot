@@ -4,14 +4,11 @@
 --
 -- Ships 4 things:
 --   1. Index `idx_proxies_dashboard_cover` — covering index for the
---      RPC's many FILTER aggregations. Brainstormer's cost concern
---      (~650 conditional COUNTs) was real; this turns the join into
---      an index-only scan.
+--      RPC's FILTER aggregations. Brainstormer's cost concern was
+--      real; this turns the join into an index-only scan.
 --   2. Function `get_category_dashboard()` — single-shot SQL returning
---      per-category breakdown (status counts, live/die sub-counts with
---      6h staleness TTL, totals, current-stock value, cumulative
---      revenue from proxy_events). Replaces N+1 fetches from the old
---      table view.
+--      per-category breakdown (status counts + hidden count + money
+--      triplet). Replaces N+1 fetches from the old table view.
 --   3. Trigger `fn_proxy_snapshot_category_defaults` — moves the
 --      "proxy follows category" rule from API code to the DB so it
 --      fires for ALL insert paths (admin web, CSV import, Telegram
@@ -19,25 +16,28 @@
 --      overwrite. Handles empty-string-vs-null normalisation
 --      (brainstormer caught this — bot may pass "" instead of NULL).
 --   4. Function `apply_category_defaults_retroactively(category_id,
---      fields, mode)` — admin-driven backfill. mode='only_null' fills
---      blanks only; mode='force' overwrites every proxy in the
---      category. Both paths write a row to activity_logs for audit.
+--      mode)` — admin-driven backfill. mode='only_null' fills blanks
+--      only; mode='force' overwrites every proxy in the category.
+--      Both paths write a row to activity_logs for audit.
 --
--- Live/Die TTL: 6 hours. A "Live" with a probe from 3 days ago is a
--- lie — we treat anything older than 6h as Unchecked. Configurable via
--- the `cat_live_freshness_hours` setting (default 6) — this lets ops
--- tune per environment without a re-deploy.
+-- Live/Die NOT INCLUDED — that semantic exists in the user's sibling
+-- VIA project (Facebook accounts have a binary alive/dead probe);
+-- proxies use a richer status enum (available/assigned/
+-- reported_broken/expired/banned/maintenance) which already encodes
+-- lifecycle. Probe freshness (speed_ms / last_checked_at) remains
+-- per-proxy operational metadata but does NOT drive the category
+-- card breakdown — the status enum is the breakdown axis.
 --
 -- Idempotent: every CREATE/ALTER guards with IF NOT EXISTS or DROP-then-CREATE.
 -- ============================================================
 
 -- ─── 1. Covering index for the dashboard query ───────────────
 -- Partial: only non-deleted rows (the dashboard ignores trash).
--- Includes the speed_ms / last_checked_at / sale_price_usd / cost_usd
--- / hidden columns so the RPC's FILTER + SUM work as index-only scan.
+-- Includes the sale_price_usd / cost_usd / hidden columns so the
+-- RPC's FILTER + SUM work as index-only scan.
 CREATE INDEX IF NOT EXISTS idx_proxies_dashboard_cover
   ON proxies (category_id, status)
-  INCLUDE (speed_ms, last_checked_at, sale_price_usd, cost_usd, hidden)
+  INCLUDE (sale_price_usd, cost_usd, hidden)
   WHERE is_deleted = false;
 
 COMMENT ON INDEX idx_proxies_dashboard_cover IS
@@ -71,17 +71,7 @@ RETURNS TABLE (
   cnt_expired INT,
   cnt_banned INT,
   cnt_maintenance INT,
-  -- live/die/unchecked sub-breakdowns (assigned + reported_broken)
-  -- TTL = 6h: probes older than 6h fall into "unchecked"
-  assigned_live INT,
-  assigned_die INT,
-  assigned_unchecked INT,
-  broken_live INT,
-  broken_die INT,
-  broken_unchecked INT,
-  -- footer pill totals (across all statuses)
-  total_live INT,
-  total_die INT,
+  -- aggregate footer
   total_hidden INT,
   -- money
   stock_value_usd NUMERIC,        -- point-in-time list price of currently assigned
@@ -93,14 +83,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH freshness AS (
-    SELECT NOW() - INTERVAL '6 hours' AS cutoff
-  ),
-  -- All-time revenue per category, queried from immutable proxy_events.
-  -- We snapshot category_id at the moment of assignment (proxy may move
-  -- categories later; the historical assignment stays attributed to the
-  -- category it was in at sale time — provenance preserved).
-  cumulative_revenue AS (
+  WITH cumulative_revenue AS (
+    -- All-time revenue per category, queried from immutable proxy_events.
+    -- We use proxy_events's category snapshot at event-time if we add
+    -- one later; for now we attribute to the proxy's CURRENT category
+    -- (acceptable since proxies rarely change category — Wave 27 will
+    -- track category-change events explicitly).
     SELECT
       p.category_id,
       COALESCE(SUM(p.sale_price_usd), 0) AS revenue_at_event
@@ -128,52 +116,7 @@ AS $$
     COUNT(*) FILTER (WHERE p.status = 'expired')::INT,
     COUNT(*) FILTER (WHERE p.status = 'banned')::INT,
     COUNT(*) FILTER (WHERE p.status = 'maintenance')::INT,
-    -- assigned: live = recent probe + speed_ms set
-    COUNT(*) FILTER (
-      WHERE p.status = 'assigned'
-        AND p.speed_ms IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
-    -- assigned: die = recent probe + speed_ms NULL (= probe failed)
-    COUNT(*) FILTER (
-      WHERE p.status = 'assigned'
-        AND p.speed_ms IS NULL
-        AND p.last_checked_at IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
-    -- assigned: unchecked = no probe yet OR probe stale
-    COUNT(*) FILTER (
-      WHERE p.status = 'assigned'
-        AND (p.last_checked_at IS NULL
-             OR p.last_checked_at <= (SELECT cutoff FROM freshness))
-    )::INT,
-    -- broken: same triplet
-    COUNT(*) FILTER (
-      WHERE p.status = 'reported_broken'
-        AND p.speed_ms IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
-    COUNT(*) FILTER (
-      WHERE p.status = 'reported_broken'
-        AND p.speed_ms IS NULL
-        AND p.last_checked_at IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
-    COUNT(*) FILTER (
-      WHERE p.status = 'reported_broken'
-        AND (p.last_checked_at IS NULL
-             OR p.last_checked_at <= (SELECT cutoff FROM freshness))
-    )::INT,
-    -- footer: aggregate live/die across all statuses
-    COUNT(*) FILTER (
-      WHERE p.speed_ms IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
-    COUNT(*) FILTER (
-      WHERE p.speed_ms IS NULL
-        AND p.last_checked_at IS NOT NULL
-        AND p.last_checked_at > (SELECT cutoff FROM freshness)
-    )::INT,
+    -- footer: hidden count
     COUNT(*) FILTER (WHERE p.hidden = true)::INT,
     -- money
     COALESCE(SUM(p.sale_price_usd) FILTER (WHERE p.status = 'assigned'), 0)::NUMERIC,
@@ -193,7 +136,7 @@ REVOKE ALL ON FUNCTION get_category_dashboard() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION get_category_dashboard() TO authenticated, service_role;
 
 COMMENT ON FUNCTION get_category_dashboard() IS
-  'Wave 27 — single-shot category dashboard data. Returns per-category status counts, live/die breakdown (6h TTL), and money summary. Used by /api/categories/dashboard.';
+  'Wave 27 — single-shot category dashboard data. Returns per-category status counts + hidden count + money summary. Used by /api/categories/dashboard.';
 
 
 -- ─── 3. BEFORE INSERT trigger: snapshot category defaults ────

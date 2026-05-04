@@ -19,6 +19,14 @@ import type { ProxyCategory } from "@/types/database";
  * Numeric SQL columns become `number` in JSON. The RPC
  * COALESCEs zero for any nullable count/sum so the client can
  * always render — never receive `null`.
+ *
+ * Wave 27 design note: live/die sub-counts are NOT included.
+ * The user's sibling VIA project tracks live/die for Facebook
+ * accounts (binary alive-or-banned probe); proxies have a richer
+ * status enum (available/assigned/reported_broken/expired/banned/
+ * maintenance) that already encodes lifecycle. Probe freshness
+ * (speed_ms / last_checked_at) stays as per-proxy operational
+ * metadata but does not drive the category card breakdown.
  */
 export interface CategoryDashboardRow {
   // ─── identity (mirrors ProxyCategory) ────────────────────
@@ -42,20 +50,8 @@ export interface CategoryDashboardRow {
   cnt_banned: number;
   cnt_maintenance: number;
 
-  // ─── live/die/unchecked sub-breakdowns ────────────────────
-  // 6h TTL — see mig 059 for the freshness cutoff. "Unchecked"
-  // covers both "never probed" and "stale probe" — UI just shows
-  // total. If we need to disambiguate later, split into two columns.
-  assigned_live: number;
-  assigned_die: number;
-  assigned_unchecked: number;
-  broken_live: number;
-  broken_die: number;
-  broken_unchecked: number;
-
-  // ─── footer pill totals (across ALL statuses) ────────────
-  total_live: number;
-  total_die: number;
+  // ─── footer ──────────────────────────────────────────────
+  /** Count of proxies with `hidden=true` in this category. */
   total_hidden: number;
 
   // ─── money ────────────────────────────────────────────────
