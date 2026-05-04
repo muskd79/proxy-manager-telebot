@@ -122,9 +122,23 @@ async function runExpiryWarning() {
     }
     const lang = user.language === "en" ? "en" : "vi";
     const expiresDate = new Date(proxy.expires_at!);
-    const daysLeft = Math.ceil(
-      (expiresDate.getTime() - nowMs) / (24 * 60 * 60 * 1000),
-    );
+
+    // Wave 27 bug hunt v6 [debugger #7, MEDIUM] — show hours when
+    // <24h remain. Pre-fix: a proxy expiring in 5 hours showed "1 ngay"
+    // (Math.ceil rounding 5h up to 1 day); user thought they had a
+    // full day and ignored the warning. Now: hours for sub-24h, days
+    // otherwise.
+    const msLeft = expiresDate.getTime() - nowMs;
+    const hoursLeft = Math.ceil(msLeft / (60 * 60 * 1000));
+    const isShortNotice = hoursLeft < 24;
+    const timeStr =
+      lang === "vi"
+        ? isShortNotice
+          ? `${hoursLeft} giờ`
+          : `${Math.ceil(hoursLeft / 24)} ngày`
+        : isShortNotice
+          ? `${hoursLeft} hour(s)`
+          : `${Math.ceil(hoursLeft / 24)} day(s)`;
 
     const text =
       lang === "vi"
@@ -132,7 +146,7 @@ async function runExpiryWarning() {
             `[!] Proxy sap het han`,
             "",
             `\`${proxy.host}:${proxy.port}\` (${proxy.type.toUpperCase()})`,
-            `Het han sau: ${daysLeft} ngay (${expiresDate.toISOString().split("T")[0]})`,
+            `Het han sau: ${timeStr} (${expiresDate.toISOString().split("T")[0]})`,
             "",
             `Dung /revoke de tra proxy hoac lien he admin de gia han.`,
           ].join("\n")
@@ -140,7 +154,7 @@ async function runExpiryWarning() {
             `[!] Proxy expiring soon`,
             "",
             `\`${proxy.host}:${proxy.port}\` (${proxy.type.toUpperCase()})`,
-            `Expires in: ${daysLeft} day(s) (${expiresDate.toISOString().split("T")[0]})`,
+            `Expires in: ${timeStr} (${expiresDate.toISOString().split("T")[0]})`,
             "",
             `Use /revoke to return or contact admin to renew.`,
           ].join("\n");
