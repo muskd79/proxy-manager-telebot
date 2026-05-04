@@ -22,11 +22,32 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
+/**
+ * Canonical API response envelope.
+ *
+ * Wave 27 craft review [code-reviewer #6, MEDIUM] — added `details`
+ * to the type because 7+ routes already return it on validation
+ * errors (Zod field errors via `.flatten().fieldErrors`). Pre-fix
+ * client code typing fetch responses as `ApiResponse<T>` silently
+ * lost field-level error details — `requests/route.ts` workaround
+ * `satisfies ApiResponse<never> & { details: unknown }` was a
+ * one-off patch around the gap.
+ */
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** Free-text human-readable message (e.g. "Quá nhiều lần thử"). */
   message?: string;
+  /**
+   * Structured details — most commonly Zod's
+   * `flatten().fieldErrors`: `{ fieldName: ["error msg", …] }`,
+   * but routes also use it for context payloads
+   * (e.g., `{ reclaimed_proxies: number }`). Typed as `unknown` so
+   * each route defines its own shape via intersection at the
+   * NextResponse.json call site without fighting the canonical type.
+   */
+  details?: unknown;
 }
 
 // ----------------------

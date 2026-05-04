@@ -53,16 +53,11 @@ interface TrashRequestsProps {
 
 // Wave 27 UX [ui-ux #3] — moved to trash-utils.ts as TRASH_TONE_CLASSES.
 
-// Vietnamese label map for ProxyRequest.status — mirrors what's in
-// /requests filter so trash status pills don't drift from main view.
-const REQUEST_STATUS_LABEL: Record<string, string> = {
-  pending: "Đang đợi",
-  approved: "Đã duyệt",
-  auto_approved: "Tự động duyệt",
-  rejected: "Bị từ chối",
-  expired: "Hết hạn chờ",
-  cancelled: "Đã huỷ",
-};
+// Wave 27 craft review [code-reviewer #3] — replaced inline map with
+// canonical helper from proxy-labels.ts. The `requestStatusLabel`
+// function safely falls back to the raw enum string for unknown
+// values, avoiding the TS index-narrowing issue with a typed map.
+import { requestStatusLabel } from "@/lib/proxy-labels";
 
 function formatRequestedAt(iso: string): string {
   try {
@@ -362,7 +357,7 @@ export function TrashRequests({ canWrite }: TrashRequestsProps) {
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
-                          {REQUEST_STATUS_LABEL[req.status] ?? req.status}
+                          {requestStatusLabel(req.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">

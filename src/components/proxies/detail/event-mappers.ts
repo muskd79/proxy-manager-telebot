@@ -22,16 +22,11 @@
 
 import type { ProxyRequest, ActivityLog, ProxyType } from "@/types/database";
 import type { TimelineEvent } from "./timeline";
-
-// Vietnamese labels for ProxyRequest statuses.
-const REQUEST_STATUS_LABEL: Record<string, string> = {
-  pending: "đang chờ duyệt",
-  approved: "được duyệt",
-  rejected: "bị từ chối",
-  auto_approved: "được duyệt tự động",
-  expired: "hết hạn chờ",
-  cancelled: "bị huỷ",
-};
+// Wave 27 craft review [code-reviewer #3] — use canonical verb-form
+// label map. The timeline renders sentences like "Yêu cầu được duyệt",
+// which needs verb conjugation (different from the noun-form
+// REQUEST_STATUS_LABEL used in badges/pills).
+import { REQUEST_STATUS_VERB_VI as REQUEST_STATUS_LABEL } from "@/lib/proxy-labels";
 
 const PROXY_TYPE_LABEL: Record<string, string> = {
   http: "HTTP",
