@@ -136,12 +136,10 @@ export async function handleProxyTypeSelection(
 ) {
   if (!ctx.from) return;
 
-  const { data: user } = await supabaseAdmin
-    .from("tele_users")
-    .select("*")
-    .eq("telegram_id", ctx.from.id)
-    .single();
-
+  // Wave 27 perf [perf #2] — use shared cached lookup. Pre-fix this
+  // re-queried tele_users (full row) even when getOrCreateUser had
+  // already fetched it earlier in the same /getproxy flow.
+  const user = await getOrCreateUser(ctx);
   if (!user) return;
 
   const lang = getUserLanguage(user);
@@ -259,11 +257,8 @@ export async function handleOrderModeSelection(
 ) {
   if (!ctx.from) return;
 
-  const { data: user } = await supabaseAdmin
-    .from("tele_users")
-    .select("*")
-    .eq("telegram_id", ctx.from.id)
-    .single();
+  // Wave 27 perf [perf #2] — use shared cached lookup.
+  const user = await getOrCreateUser(ctx);
   if (!user) return;
   const lang = getUserLanguage(user);
 
