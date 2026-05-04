@@ -36,8 +36,19 @@ export async function tryAcquireCronLock(
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString();
 
-  // Ensure the lock row exists (idempotent)
-  await supabase
+  // Ensure the lock row exists (idempotent).
+  //
+  // Wave 27 bug hunt v8 [debugger #3, HIGH] — capture upsert errors.
+  // Pre-fix the result was completely discarded. If the upsert failed
+  // (RLS rejection, FK violation, settings constraint), the lock row
+  // didn't exist → the conditional UPDATE below matched 0 rows →
+  // `tryAcquireCronLock` returned false → `withCronLock` returned
+  // {skipped: true} every single tick. Cron silently no-op'd
+  // forever with no error logged. Now: surface upsert failures via
+  // captureError + return false (caller treats as "lock infrastructure
+  // problem", same as a real "another instance" skip — at least it's
+  // logged for ops).
+  const { error: upsertErr } = await supabase
     .from("settings")
     .upsert(
       {
@@ -47,6 +58,13 @@ export async function tryAcquireCronLock(
       },
       { onConflict: "key", ignoreDuplicates: true },
     );
+  if (upsertErr) {
+    console.error(
+      `[cron-lock:${lockKey}] upsert failed (lock row does not exist; cron will be silently skipped this tick):`,
+      upsertErr.message,
+    );
+    return false;
+  }
 
   // Atomic conditional update: only claim when value.acquired_at is null or
   // older than cutoff. Using `->>` JSON text accessor to compare timestamps.

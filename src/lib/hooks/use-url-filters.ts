@@ -54,12 +54,24 @@ export function useUrlFilters<T>({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // Wave 27 bug hunt v8 [debugger #4, MEDIUM] — stabilise `parse`
+  // and `format` via refs. Pre-fix: `parse` was a dep of the sync
+  // effect. Module-level callers (the only adoption today) pass a
+  // stable function so this didn't bite — but if a future caller
+  // passes an inline arrow `parse={(p) => ...}` (new reference each
+  // render), the effect would fire on every render → fire
+  // `setFiltersState` → re-render → fire effect again. Time-bomb
+  // for the hook's reusability. Now: refs hold the latest function
+  // identity, deps drop `parse`, sync only reacts to `searchParams`.
+  const parseRef = useRef(parse);
+  parseRef.current = parse;
+
   // Initial state: parse the URL once on mount. Subsequent URL
   // changes (from browser back/forward) re-parse via the
   // searchParams effect below.
   const [filters, setFiltersState] = useState<T>(() => {
     if (!searchParams) return defaults;
-    return parse(new URLSearchParams(searchParams.toString()));
+    return parseRef.current(new URLSearchParams(searchParams.toString()));
   });
 
   // Sync URL → state when searchParams change externally (browser
@@ -72,17 +84,20 @@ export function useUrlFilters<T>({
       return;
     }
     if (!searchParams) return;
-    const next = parse(new URLSearchParams(searchParams.toString()));
+    const next = parseRef.current(
+      new URLSearchParams(searchParams.toString()),
+    );
     // Stringify-compare to avoid a state update when the parsed
     // value matches what we already have (which would re-trigger
     // the URL-write effect below in a loop).
     if (JSON.stringify(next) !== JSON.stringify(filters)) {
       setFiltersState(next);
     }
-    // Intentionally don't include `filters` in deps — we only want
-    // to react to searchParams changes here.
+    // Intentionally don't include `filters` or `parse` in deps —
+    // we only want to react to searchParams changes here. `parse`
+    // is stabilised via parseRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, parse]);
+  }, [searchParams]);
 
   // Debounced URL writer. Each setFilters call schedules a single
   // router.replace; rapid typing collapses to one URL change.
