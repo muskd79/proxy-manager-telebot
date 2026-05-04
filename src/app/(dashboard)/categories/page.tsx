@@ -24,7 +24,11 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CategoryFormDialog } from "@/components/categories/CategoryFormDialog";
 import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 import { CategoryGrid } from "@/components/categories/category-grid";
-import { BulkActionToolbar } from "@/components/categories/bulk-action-toolbar";
+// Wave 27 UX-3 — adopt shared BulkActionBar shell. Categories-specific
+// label-set (Hide/Show/Delete) lives in JSX below; the shell handles
+// the sticky surface + visibility transition + count display.
+import { BulkActionBar } from "@/components/shared/bulk-action-bar";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useUrlFilters } from "@/lib/hooks/use-url-filters";
 import type {
@@ -323,13 +327,41 @@ export default function CategoriesPage() {
         </div>
       </div>
 
-      <BulkActionToolbar
+      <BulkActionBar
         selectedCount={selectedIds.size}
-        busy={bulkBusy}
+        itemNoun="danh mục"
         onClearSelection={clearSelection}
-        onBulkHide={() => void bulkSetHidden(true)}
-        onBulkShow={() => void bulkSetHidden(false)}
-        onBulkDelete={() => setBulkDeleteOpen(true)}
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void bulkSetHidden(true)}
+              disabled={bulkBusy}
+            >
+              <EyeOff className="mr-1.5 h-4 w-4" />
+              Ẩn
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void bulkSetHidden(false)}
+              disabled={bulkBusy}
+            >
+              <Eye className="mr-1.5 h-4 w-4" />
+              Hiện
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={bulkBusy}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              Xoá
+            </Button>
+          </>
+        }
       />
 
       <CategoryGrid

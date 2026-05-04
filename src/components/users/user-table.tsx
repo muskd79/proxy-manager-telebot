@@ -10,7 +10,6 @@ import {
   Trash2,
   Settings,
   ArrowUpDown,
-  Inbox,
 } from "lucide-react";
 import {
   Table,
@@ -208,11 +207,13 @@ export function UserTable({
             {users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="h-32">
-                  <EmptyState
-                    icon={<Inbox className="h-10 w-10" />}
-                    title="No users found"
-                    description="No Telegram users match the current filters. Try adjusting your search criteria."
-                  />
+                  {/* Wave 27 UX-3 — adopt canonical preset. Pre-fix
+                      copy was English; the rest of the dashboard is
+                      Vietnamese. Preset uses the users entity's
+                      Vietnamese copy. Mode = "filter-empty" since
+                      the table only shows when filters are applied;
+                      page-level wrap handles the zero-data case. */}
+                  <EmptyState entity="users" mode="filter-empty" />
                 </TableCell>
               </TableRow>
             ) : (
