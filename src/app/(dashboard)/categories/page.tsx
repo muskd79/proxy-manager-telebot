@@ -1,37 +1,31 @@
 "use client";
 
 /**
- * Wave 27 PR-2 — categories page rewritten as card grid (was table).
+ * Wave 27 PR-2 + PR-3 — categories page (card grid + bulk actions
+ * + realtime).
  *
- * Visual goal: match the user's VIA Manager screenshot:
- *   - 3-column responsive grid of cards
- *   - Each card shows: visibility chip, name + count, description,
- *     stacked progress bar, status breakdown, money block
- *   - Click on card → /categories/[id] detail (read mode)
- *   - Edit dialog opened via "+ Tạo danh mục" button (top-right)
+ * PR-2 baseline: 3-col responsive grid, click-to-detail, +Tạo CTA.
+ * PR-3 additions:
+ *   - Sticky bulk-action toolbar (Hide / Show / Delete)
+ *   - Bulk delete confirm dialog
+ *   - Realtime debounced refetch on `proxy_categories` + `proxies`
+ *     row changes (per-table channels per UX-12)
  *
- * Data source: GET /api/categories/dashboard (RPC).
- *
- * Out of scope for PR-2 (deferred to PR-3):
- *   - Bulk-select toolbar (sticky)
- *   - Realtime per-card updates
- *   - "Apply defaults retroactively" dialog (only_null + force)
- *   - Filter chips (visible/hidden/empty/all + sort)
- *   - Pencil-edit-on-card overflow menu (currently the Sửa button
- *     stays in the legacy form-trigger flow)
- *
- * Reorder + toggle-hidden + delete are kept available via the
- * `/api/categories` endpoints — wired up in PR-3 alongside the
- * three-dot menu per card.
+ * Out of scope (defer):
+ *   - Filter chips (visible/hidden/empty/sort)
+ *   - Pencil-edit per card (user navigates to detail page to edit)
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CategoryFormDialog } from "@/components/categories/CategoryFormDialog";
 import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 import { CategoryGrid } from "@/components/categories/category-grid";
+import { BulkActionToolbar } from "@/components/categories/bulk-action-toolbar";
+import { createClient } from "@/lib/supabase/client";
 import type {
   CategoryDashboardRow,
   CategoryRow,
@@ -50,6 +44,8 @@ export default function CategoriesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryRow | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +67,47 @@ export default function CategoriesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Wave 27 PR-3d — realtime debounced refetch.
+  //
+  // Two channels (proxy_categories + proxies) — both can change the
+  // dashboard view (count drift, status flip, etc). Debounce 2s
+  // (perf agent's recommendation — under flood we don't want
+  // per-event refetch). Single fetchClaims-style ref so the
+  // subscription doesn't re-create on every render.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("categories-dashboard")
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        { event: "*", schema: "public", table: "proxy_categories" },
+        () => {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => loadRef.current?.(), 2000);
+        },
+      )
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        { event: "*", schema: "public", table: "proxies" },
+        () => {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => loadRef.current?.(), 2000);
+        },
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(debounceRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Clear stale selection IDs when underlying list changes (after refetch).
   useEffect(() => {
@@ -95,6 +132,10 @@ export default function CategoriesPage() {
     });
   }
 
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   function clearFilters() {
     setIncludeHidden(true);
   }
@@ -102,6 +143,78 @@ export default function CategoriesPage() {
   function openCreateDialog() {
     setEditing(null);
     setFormOpen(true);
+  }
+
+  // ─── Bulk actions ───────────────────────────────────────────────
+  // Pattern from Wave 26-D bug hunt v2 [MEDIUM]: split toast on
+  // partial success, retain failed IDs in selection so admin can
+  // retry without rebuilding the selection.
+
+  async function bulkSetHidden(targetHidden: boolean) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const failedIds: string[] = [];
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/categories/${id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ is_hidden: targetHidden }),
+        });
+        if (res.ok) successCount++;
+        else failedIds.push(id);
+      } catch {
+        failedIds.push(id);
+      }
+    }
+    setBulkBusy(false);
+    setSelectedIds(new Set(failedIds));
+    if (successCount > 0 && failedIds.length === 0) {
+      toast.success(
+        `Đã ${targetHidden ? "ẩn" : "hiện"} ${successCount}/${ids.length} danh mục`,
+      );
+    } else if (successCount > 0) {
+      toast.warning(
+        `${targetHidden ? "Ẩn" : "Hiện"} ${successCount} thành công, ${failedIds.length} thất bại — đã giữ lại các danh mục lỗi để bạn thử lại.`,
+      );
+    } else {
+      toast.error(
+        `Không ${targetHidden ? "ẩn" : "hiện"} được danh mục nào (${failedIds.length} lỗi).`,
+      );
+    }
+    await load();
+  }
+
+  async function bulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const failedIds: string[] = [];
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
+        if (res.ok) successCount++;
+        else failedIds.push(id);
+      } catch {
+        failedIds.push(id);
+      }
+    }
+    setBulkBusy(false);
+    setSelectedIds(new Set(failedIds));
+    setBulkDeleteOpen(false);
+    if (successCount > 0 && failedIds.length === 0) {
+      toast.success(`Đã xoá ${successCount}/${ids.length} danh mục`);
+    } else if (successCount > 0) {
+      toast.warning(
+        `Xoá ${successCount} thành công, ${failedIds.length} thất bại — đã giữ lại các danh mục lỗi để bạn thử lại.`,
+      );
+    } else {
+      toast.error(`Không xoá được danh mục nào (${failedIds.length} lỗi).`);
+    }
+    await load();
   }
 
   return (
@@ -150,6 +263,15 @@ export default function CategoriesPage() {
         </div>
       </div>
 
+      <BulkActionToolbar
+        selectedCount={selectedIds.size}
+        busy={bulkBusy}
+        onClearSelection={clearSelection}
+        onBulkHide={() => void bulkSetHidden(true)}
+        onBulkShow={() => void bulkSetHidden(false)}
+        onBulkDelete={() => setBulkDeleteOpen(true)}
+      />
+
       <CategoryGrid
         rows={visibleRows}
         isLoading={loading}
@@ -170,6 +292,17 @@ export default function CategoriesPage() {
         onSaved={() => {
           void load();
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        variant="destructive"
+        title={`Xoá ${selectedIds.size} danh mục?`}
+        description="Proxy thuộc các danh mục này sẽ chuyển về trạng thái KHÔNG PHÂN LOẠI (không xoá proxy). Hành động này không thể hoàn tác."
+        confirmText={bulkBusy ? "Đang xoá..." : `Xoá ${selectedIds.size} danh mục`}
+        cancelText="Huỷ"
+        onConfirm={bulkDelete}
       />
     </div>
   );
