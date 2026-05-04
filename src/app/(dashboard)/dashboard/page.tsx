@@ -12,6 +12,19 @@ import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import { DASHBOARD_POLL_INTERVAL_MS } from "@/lib/constants";
 
+// Wave 27 v10 perf [perf-optimizer #4, IMPORTANT] — dashboard
+// realtime channel scoped down to high-signal table only.
+// Pre-fix: subscribed to proxies + proxy_requests + tele_users on
+// `event: "*"`. With 10 admins online and 100 writes/min, this
+// produced 30 server-side filter evaluations per write * 100 writes
+// = 3000 evaluations/min just to drive a dashboard refresh, plus
+// 10 simultaneous /api/stats fetches every 2s after a bulk action.
+// Now: subscribe only to proxy_requests (the most admin-actionable
+// table) on UPDATE+INSERT (no DELETE — soft-delete is an UPDATE).
+// 30s poll (DASHBOARD_POLL_INTERVAL_MS) remains the safety net for
+// proxies + tele_users changes. The sluggishness gain on bulk
+// actions is negligible since a refresh fires 30s later.
+
 export default function DashboardPage() {
   const { t } = useI18n();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -41,7 +54,10 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  // Realtime sync: dashboard updates on data changes (debounced to reduce load)
+  // Realtime sync — scoped to proxy_requests UPDATE+INSERT only
+  // (see header comment for rationale). The 5s debounce collapses
+  // bursty writes (e.g., bulk-approve 50 requests) into one
+  // /api/stats fetch.
   const dashDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const supabase = createClient();
@@ -49,16 +65,22 @@ export default function DashboardPage() {
       clearTimeout(dashDebounceRef.current);
       dashDebounceRef.current = setTimeout(() => {
         fetchStats();
-      }, 2000);
+      }, 5000);
     };
     const channel = supabase
       .channel("dashboard-changes")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxies" }, debouncedFetch)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "proxy_requests" }, debouncedFetch)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JS realtime API does not export the literal union type for the event name
-      .on("postgres_changes" as any, { event: "*", schema: "public", table: "tele_users" }, debouncedFetch)
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        { event: "INSERT", schema: "public", table: "proxy_requests" },
+        debouncedFetch,
+      )
+      .on(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        "postgres_changes" as any,
+        { event: "UPDATE", schema: "public", table: "proxy_requests" },
+        debouncedFetch,
+      )
       .subscribe();
 
     return () => {
