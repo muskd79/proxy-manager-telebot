@@ -4,6 +4,7 @@ import {
   ActorType,
   ApprovalMode,
   TeleUserStatus,
+  type TeleUser,
 } from "@/types/database";
 import type { SupportedLanguage } from "@/types/telegram";
 import { logActivity } from "./logging";
@@ -17,11 +18,33 @@ import { logActivity } from "./logging";
  *
  * Wave 22E-4 split: extracted from src/lib/telegram/utils.ts.
  *
- * `getOrCreateUser` reads the `default_*` settings from the DB so admin
- * tweaks to defaults take effect without a deploy. Callers should treat
- * a `null` return as "user creation failed" — caller bails out, log
- * surfaces the error.
+ * Wave 27 perf [perf #2, HIGH] — slim projection + per-ctx cache.
+ *
+ * Pre-fix every command/callback handler called `getOrCreateUser(ctx)`
+ * which fired a `SELECT *` on tele_users (~20 columns). For a single
+ * `/getproxy` flow that hops command → type-selection callback →
+ * order-mode callback, this was 3 separate fetches per update.
+ *
+ * Now:
+ *   - Slim projection: read only the columns downstream code uses.
+ *   - Per-ctx cache via WeakMap keyed on `ctx` itself. The cache
+ *     lifetime is one update — grammy gives a fresh ctx each time,
+ *     so there's no leak. WeakMap so GC reclaims when the request
+ *     ends. Multiple calls to getOrCreateUser inside the same
+ *     handler chain all share one DB read.
  */
+
+/** Columns actually consumed by handlers. Keep in sync with TeleUser shape. */
+const TELE_USER_COLS =
+  "id, telegram_id, username, first_name, last_name, status, language, " +
+  "max_proxies, rate_limit_hourly, rate_limit_daily, rate_limit_total, " +
+  "proxies_used_hourly, proxies_used_daily, proxies_used_total, " +
+  "hourly_reset_at, daily_reset_at, approval_mode, created_at, " +
+  "updated_at, is_deleted, first_proxy_at, first_start_notified_at";
+
+// Per-ctx cache. WeakMap so GC reclaims the entry when ctx falls out
+// of scope (one update = one ctx = one entry). No tear-down needed.
+const ctxUserCache = new WeakMap<Context, TeleUser>();
 
 /**
  * Safely extract a SupportedLanguage from a user record.
@@ -39,13 +62,21 @@ export async function getOrCreateUser(ctx: Context) {
   const from = ctx.from;
   if (!from) return null;
 
+  // Per-ctx cache hit → skip the DB roundtrip entirely.
+  const cached = ctxUserCache.get(ctx);
+  if (cached) return cached;
+
   const { data: existing } = await supabaseAdmin
     .from("tele_users")
-    .select("*")
+    .select(TELE_USER_COLS)
     .eq("telegram_id", from.id)
     .single();
 
-  if (existing) return existing;
+  if (existing) {
+    const user = existing as unknown as TeleUser;
+    ctxUserCache.set(ctx, user);
+    return user;
+  }
 
   // Read default settings from DB
   const { data: settings } = await supabaseAdmin
@@ -84,7 +115,9 @@ export async function getOrCreateUser(ctx: Context) {
       ? TeleUserStatus.Pending
       : TeleUserStatus.Active;
 
-  // Create new user with settings-based defaults
+  // Create new user with settings-based defaults.
+  // Use SELECT * here — we want the full new row to populate the cache
+  // and to log the audit row.
   const { data: newUser, error } = await supabaseAdmin
     .from("tele_users")
     .insert({
@@ -109,7 +142,7 @@ export async function getOrCreateUser(ctx: Context) {
       is_deleted: false,
       deleted_at: null,
     })
-    .select()
+    .select(TELE_USER_COLS)
     .single();
 
   if (error) {
@@ -117,17 +150,20 @@ export async function getOrCreateUser(ctx: Context) {
     return null;
   }
 
+  const user = newUser as unknown as TeleUser;
+
   // Log activity
   await logActivity({
     actor_type: ActorType.Bot,
     actor_id: null,
     action: "user_registered",
     resource_type: "tele_user",
-    resource_id: newUser.id,
+    resource_id: user.id,
     details: { telegram_id: from.id, username: from.username },
     ip_address: null,
     user_agent: null,
   });
 
-  return newUser;
+  ctxUserCache.set(ctx, user);
+  return user;
 }
