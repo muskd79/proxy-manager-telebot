@@ -52,16 +52,30 @@ export async function loadWarrantySettings(): Promise<WarrantySettingsFull> {
       case "warranty_eligibility_unlimited":
         if (typeof v === "boolean") out.eligibility_unlimited = v;
         break;
+      // Wave 26-D bug hunt [HIGH-3, security H4] — upper bounds. Pre-fix
+      // an admin could set max_pending=999999 → effectively no anti-abuse;
+      // or cooldown_minutes=99999 → permanent ban for the user. Now
+      // each setting clamps to a sane range; out-of-range values fall
+      // back to DEFAULT silently (logged elsewhere if needed).
       case "warranty_max_pending":
-        if (typeof v === "number" && v > 0) out.max_pending = Math.floor(v);
+        // 1-20 — beyond 20 there's no realistic admin workflow that
+        // benefits, and disabling (max=0) breaks the bot entirely.
+        if (typeof v === "number" && v >= 1 && v <= 20)
+          out.max_pending = Math.floor(v);
         break;
       case "warranty_max_per_30d":
-        if (typeof v === "number" && v > 0) out.max_per_30d = Math.floor(v);
+        // 1-100 — beyond 100 in a 30d window is abuse, not legit.
+        if (typeof v === "number" && v >= 1 && v <= 100)
+          out.max_per_30d = Math.floor(v);
         break;
       case "warranty_cooldown_minutes":
-        if (typeof v === "number" && v >= 0) out.cooldown_minutes = Math.floor(v);
+        // 0 (disabled) up to 1440 (24h max) — beyond 24h is effectively
+        // permanent block, which is a settings bug not a feature.
+        if (typeof v === "number" && v >= 0 && v <= 1440)
+          out.cooldown_minutes = Math.floor(v);
         break;
       case "warranty_reliability_decrement":
+        // 0-100 (matches reliability_score range constraint mig 058).
         if (typeof v === "number" && v >= 0 && v <= 100)
           out.reliability_decrement = Math.floor(v);
         break;

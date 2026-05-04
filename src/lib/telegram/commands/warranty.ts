@@ -243,7 +243,52 @@ async function submitWarrantyClaim(
   // but skips the HTTP round-trip + x-bot-secret dance. The API route
   // is for external bot callers; the in-process bot has admin access
   // already.
+  //
+  // Wave 26-D bug hunt [P0-4, code-reviewer P0-2] — re-run eligibility
+  // gate IMMEDIATELY before insert. Pre-fix the gate ran in
+  // handleWarrantyClaim (step 1) but there was a 30-min state TTL
+  // window during which a settings change / proxy expiry / concurrent
+  // admin action could invalidate the original eligibility. Now we
+  // re-fetch fresh proxy + claims + settings, re-run gate, on reject
+  // bail with a friendly message. Cheap (3 small queries) — worth the
+  // safety.
   try {
+    const sinceIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const [proxyRes, claimsRes, settings] = await Promise.all([
+      supabaseAdmin.from("proxies").select("*").eq("id", proxyId).maybeSingle(),
+      supabaseAdmin
+        .from("warranty_claims")
+        .select("id, proxy_id, status, created_at")
+        .eq("user_id", userId)
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false }),
+      loadWarrantySettings(),
+    ]);
+
+    if (!proxyRes.data) {
+      await ctx.reply(
+        lang === "vi" ? "Không tìm thấy proxy này." : "Proxy not found.",
+      );
+      return;
+    }
+
+    const eligibility = checkWarrantyEligibility({
+      proxy: proxyRes.data,
+      userId,
+      userClaims: claimsRes.data ?? [],
+      settings,
+    });
+    if (!eligibility.allowed) {
+      const errMsg =
+        lang === "vi"
+          ? WARRANTY_REJECT_LABEL_VI[eligibility.code]
+          : eligibility.code; // English fallback
+      await ctx.reply(`[!] ${errMsg}`);
+      return;
+    }
+
     const { data: claim, error } = await supabaseAdmin
       .from("warranty_claims")
       .insert({
@@ -257,6 +302,19 @@ async function submitWarrantyClaim(
       .single();
 
     if (error || !claim) {
+      // Wave 26-D bug hunt [HIGH-1] — partial UNIQUE index in mig 058
+      // raises 23505 unique_violation when two simultaneous bot taps
+      // both try to insert pending claims for the same (user, proxy).
+      // Show a friendly message instead of a generic error.
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "23505") {
+        await ctx.reply(
+          lang === "vi"
+            ? "[!] Bạn đã báo lỗi proxy này — đang chờ admin xử lý."
+            : "[!] You already reported this proxy — admin is reviewing.",
+        );
+        return;
+      }
       captureError(error ?? new Error("Claim insert returned no row"), {
         source: "bot.warranty.submit",
         extra: { userId, proxyId, reasonCode },
