@@ -254,10 +254,21 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    // Check exists first
+    // Check exists first.
+    //
+    // Wave 27 bug hunt v9 [debugger #1, HIGH] — also pull `status` so
+    // the soft-delete branch below can refuse to deactivate a live
+    // proxy. Pre-fix the soft-delete only checked existence, then
+    // wrote `is_deleted=true` regardless of status. A proxy in
+    // `assigned` or `reported_broken` would silently disappear from
+    // every cron's `.eq("is_deleted", false)` filter — expire-proxies,
+    // expiry-warning, health-check — leaving a leaked active lease the
+    // user can still reference via cached bot replies but admin can't
+    // see in /proxies anymore. Now the soft-delete path returns 409
+    // and tells admin to revoke the lease first.
     const { data: existing } = await supabase
       .from("proxies")
-      .select("id")
+      .select("id, status")
       .eq("id", id)
       .single();
 
@@ -308,7 +319,27 @@ export async function DELETE(
       return NextResponse.json({ success: true, message: "Proxy permanently deleted" });
     }
 
-    // Soft delete
+    // Soft delete — guard against leaking active leases.
+    //
+    // Wave 27 bug hunt v9 [debugger #1, HIGH] — see existence-check
+    // comment above. A live (`assigned` / `reported_broken`) proxy
+    // must have its lease revoked first; otherwise crons can't see it
+    // to expire it, the user counter never decrements, and the proxy
+    // becomes a permanent zombie active record.
+    if (existing.status === "assigned" || existing.status === "reported_broken") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "active_lease_exists",
+          message:
+            "Proxy đang được cấp cho user (status: " +
+            existing.status +
+            "). Hãy revoke / unassign trước khi đưa vào thùng rác.",
+        },
+        { status: 409 },
+      );
+    }
+
     const { data, error } = await supabase
       .from("proxies")
       .update({ is_deleted: true, deleted_at: new Date().toISOString() })

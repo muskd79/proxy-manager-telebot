@@ -135,7 +135,11 @@ function makePendingClaim(overrides: Record<string, unknown> = {}) {
       network_type: null,
       country: null,
       assigned_to: VALID_USER_ID,
-      expires_at: null,
+      // Wave 27 bug hunt v9 [debugger #3] — fixture defaults to a future
+      // expiry so existing tests exercise the happy path. The guards
+      // covering null / past expiry are exercised by their own
+      // dedicated tests below.
+      expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     },
     ...overrides,
   };
@@ -265,6 +269,65 @@ describe("PATCH /api/warranty/[id] — approve flow", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.message).toMatch(/admin khác|đã được/i);
+  });
+
+  // Wave 27 bug hunt v9 [debugger #3, MEDIUM] — null-expiry guard.
+  it("returns 422 when original proxy has no expires_at (would silently grant perpetual lease)", async () => {
+    const pendingClaim = makePendingClaim({
+      proxy: {
+        id: VALID_PROXY_ID,
+        host: "1.2.3.4",
+        port: 8080,
+        type: "http",
+        status: "reported_broken",
+        category_id: null,
+        network_type: null,
+        country: null,
+        assigned_to: VALID_USER_ID,
+        expires_at: null, // perpetual original — must block auto-pick
+      },
+    });
+    const claimMock = createChainableMock({ data: pendingClaim, error: null });
+    fromMocks.set("warranty_claims", claimMock);
+
+    const res = await PATCH(makeRequest({ action: "approve" }), {
+      params: Promise.resolve({ id: VALID_CLAIM_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("original_proxy_has_no_expiry");
+    expect(body.message).toMatch(/không có thời hạn|null/i);
+  });
+
+  // Wave 27 bug hunt v7 [debugger #2, HIGH] — past-expiry guard
+  // (regression coverage; bug landed in v7 but had no test).
+  it("returns 422 when original proxy is already past its expires_at", async () => {
+    const pendingClaim = makePendingClaim({
+      proxy: {
+        id: VALID_PROXY_ID,
+        host: "1.2.3.4",
+        port: 8080,
+        type: "http",
+        status: "reported_broken",
+        category_id: null,
+        network_type: null,
+        country: null,
+        assigned_to: VALID_USER_ID,
+        // 1 day in the past — guard must catch this before any work.
+        expires_at: new Date(Date.now() - 86_400_000).toISOString(),
+      },
+    });
+    const claimMock = createChainableMock({ data: pendingClaim, error: null });
+    fromMocks.set("warranty_claims", claimMock);
+
+    const res = await PATCH(makeRequest({ action: "approve" }), {
+      params: Promise.resolve({ id: VALID_CLAIM_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("original_proxy_expired");
   });
 });
 
