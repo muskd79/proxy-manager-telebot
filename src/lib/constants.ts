@@ -12,7 +12,19 @@ export const HEALTH_CHECK_CONCURRENCY = 50;
 export const IMPORT_BATCH_SIZE = 500;
 
 // Health Check Cron
-export const HEALTH_CHECK_CRON_BATCH_SIZE = 2000;
+//
+// Wave 27 v10 perf [perf-optimizer #2, IMPORTANT] — lowered from 2000
+// to 500. Pre-fix: ceil(2000 / HEALTH_CHECK_CONCURRENCY=50) = 40
+// sequential batches. Each batch waits for its slowest probe (worst
+// case 10s timeout). 40 × 10s = 400s wall-clock — well past Vercel
+// hobby (60s) AND pro (300s) function caps. With 500: ceil(500/50) =
+// 10 batches × 10s = 100s worst case, comfortably under the 300s pro
+// cap. The single-tick coverage drops from 2000 → 500 proxies, but
+// the cron fires every minute, so the 30-minute rolling coverage
+// (1500 vs 6000) is still ample for typical fleets. Increase only
+// after either (a) shorter HEALTH_CHECK_TIMEOUT_MS, or (b) parallel
+// chunked dispatch.
+export const HEALTH_CHECK_CRON_BATCH_SIZE = 500;
 
 // Trash
 export const TRASH_AUTO_CLEAN_DAYS = 30;
