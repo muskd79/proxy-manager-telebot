@@ -14,7 +14,10 @@ import {
 
 interface BaseProps {
   title: string;
-  description: string;
+  // Wave 27 a11y/mobile [P0-3] — accept ReactNode so callers can mix
+  // bold / line-breaks / `<code>`-style emphasis (mirrors
+  // DangerousConfirmDialog API). Plain strings still work unchanged.
+  description: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
@@ -46,14 +49,19 @@ type ConfirmDialogProps = TriggerProps | ControlledProps;
  * pending; the dialog is also pinned open so the user cannot dismiss it by
  * pressing Escape or clicking the backdrop while work is in-flight.
  */
+// Wave 27 a11y/mobile [P2-8] — defaults flipped to Vietnamese.
+// Pre-fix: defaults were "Confirm" / "Cancel" / "..." despite the
+// project being Vietnamese-first. Most call sites override, but any
+// caller that forgets surfaces English to the admin. Explicit
+// overrides still win — zero-risk change.
 export function ConfirmDialog({
   trigger,
   open,
   onOpenChange,
   title,
   description,
-  confirmText = "Confirm",
-  cancelText = "Cancel",
+  confirmText = "Xác nhận",
+  cancelText = "Huỷ",
   variant = "default",
   loading = false,
   onConfirm,
@@ -89,7 +97,7 @@ export function ConfirmDialog({
             disabled={loading}
             variant={variant === "destructive" ? "destructive" : "default"}
           >
-            {loading ? "..." : confirmText}
+            {loading ? "Đang xử lý..." : confirmText}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
