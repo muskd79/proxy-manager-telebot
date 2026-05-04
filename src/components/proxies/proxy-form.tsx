@@ -309,8 +309,16 @@ export function ProxyForm({
           </DialogDescription>
         </DialogHeader>
 
+        {/*
+          Wave 27 a11y/mobile [P1-7] — every paired field row uses
+          `grid grid-cols-1 sm:grid-cols-2 gap-4` so on a 375px phone
+          inputs go full-width instead of jamming to ~140px each
+          (which clipped Vietnamese labels like "Static Residential").
+          The Dialog itself is `sm:max-w-lg`, so it auto-fullscreens
+          on mobile — the only blocker was the inner grid.
+        */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="host">Host *</Label>
               <Input
@@ -348,7 +356,7 @@ export function ProxyForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Giao thức *</Label>
               <Select
@@ -407,7 +415,7 @@ export function ProxyForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="username">Tên đăng nhập</Label>
               <Input
@@ -430,7 +438,7 @@ export function ProxyForm({
           </div>
 
           {/* Wave 22Y — ISP field dropped; grid collapses 3→2 columns */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="country">Quốc gia</Label>
               <Input
@@ -546,7 +554,7 @@ export function ProxyForm({
               </span>
             </summary>
             <div className="mt-3 space-y-3">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="purchase_date">Ngày mua</Label>
                   <Input
@@ -567,7 +575,7 @@ export function ProxyForm({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="purchase_price_usd">Giá mua ($)</Label>
                   <Input

@@ -162,6 +162,8 @@ export function ProxyTable({
               <div
                 key={proxy.id}
                 role="listitem"
+                aria-selected={selected}
+                aria-label={`${proxy.host}:${proxy.port}${selected ? " (đã chọn)" : ""}`}
                 className={`rounded-lg border p-3 ${selected ? "bg-muted/50 border-primary/40" : "bg-card"}`}
               >
                 <div className="flex items-start gap-2">
@@ -391,18 +393,35 @@ export function ProxyTable({
                   })()}
                 </TableCell>
                 <TableCell>
+                  {/*
+                    Wave 27 a11y/mobile [P1-6] — speed badge encoded
+                    only via colour pre-fix. Red-green colourblind
+                    admins (~8% of men) saw a number with no quality
+                    cue. Now: ●/▲/■ glyph prefix carries quality at a
+                    glance, aria-label spells it out for screen
+                    readers.
+                  */}
                   {proxy.speed_ms != null ? (
-                    <span
-                      className={`text-sm ${
-                        proxy.speed_ms < 500
-                          ? "text-emerald-500"
-                          : proxy.speed_ms < 1000
-                            ? "text-yellow-500"
-                            : "text-red-500"
-                      }`}
-                    >
-                      {proxy.speed_ms}ms
-                    </span>
+                    (() => {
+                      const fast = proxy.speed_ms < 500;
+                      const med = !fast && proxy.speed_ms < 1000;
+                      const slow = !fast && !med;
+                      const tone = fast
+                        ? "text-emerald-500"
+                        : med
+                          ? "text-yellow-500"
+                          : "text-red-500";
+                      const glyph = fast ? "●" : med ? "▲" : "■";
+                      const label = fast ? "Nhanh" : med ? "Trung bình" : "Chậm";
+                      return (
+                        <span
+                          className={`text-sm ${tone}`}
+                          aria-label={`Tốc độ ${label.toLowerCase()}: ${proxy.speed_ms} mili-giây`}
+                        >
+                          <span aria-hidden="true">{glyph}</span> {proxy.speed_ms}ms
+                        </span>
+                      );
+                    })()
                   ) : (
                     <span className="text-muted-foreground">-</span>
                   )}
