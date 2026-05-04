@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
+  requestStatusLabel,
+  REQUEST_STATUS_BADGE,
+  type RequestStatusValue,
+} from "@/lib/proxy-labels";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -136,21 +141,16 @@ export default function HistoryPage() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  // Wave 27 craft review [code-reviewer #4, HIGH] — use canonical
+  // REQUEST_STATUS_LABEL + REQUEST_STATUS_BADGE from proxy-labels.ts
+  // instead of an inline switch. Pre-fix: switch only handled 3 of 6
+  // statuses (pending/expired/cancelled fell through to raw enum
+  // string). Hardcoded `bg-emerald-600` also broke dark-mode tokens.
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge variant="default">Đã duyệt</Badge>;
-      case "auto_approved":
-        return (
-          <Badge variant="default" className="bg-emerald-600">
-            Tự động duyệt
-          </Badge>
-        );
-      case "rejected":
-        return <Badge variant="destructive">Từ chối</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
+    const label = requestStatusLabel(status);
+    const variant =
+      REQUEST_STATUS_BADGE[status as RequestStatusValue] ?? "secondary";
+    return <Badge variant={variant}>{label}</Badge>;
   };
 
   return (

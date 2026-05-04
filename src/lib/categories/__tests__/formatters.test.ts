@@ -126,7 +126,9 @@ describe("STATUS_LABEL_VI", () => {
   it("has a Vietnamese label for every status enum value", () => {
     expect(STATUS_LABEL_VI.available).toBe("Sẵn sàng");
     expect(STATUS_LABEL_VI.assigned).toBe("Đã giao");
-    expect(STATUS_LABEL_VI.reported_broken).toBe("Báo lỗi");
+    // Wave 27 craft fix — aligned to canonical "Đang báo lỗi"
+    // from proxy-labels.ts STATUS_LABEL.
+    expect(STATUS_LABEL_VI.reported_broken).toBe("Đang báo lỗi");
     expect(STATUS_LABEL_VI.expired).toBe("Hết hạn");
     expect(STATUS_LABEL_VI.banned).toBe("Đã chặn");
     expect(STATUS_LABEL_VI.maintenance).toBe("Bảo trì");

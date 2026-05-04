@@ -184,6 +184,65 @@ export function statusLabel(s: ProxyStatusValue | string): string {
 }
 
 // ============================================================
+// Request lifecycle status — proxy_requests.status enum
+//
+// Wave 27 craft review [code-reviewer #3+#4, HIGH] — single source
+// of truth for request status labels. Pre-fix the same map appeared
+// in 3+ places with drift ("Đã huỷ" vs "bị huỷ") — admins navigating
+// from history → trash for the same request saw different wording.
+// Now: every consumer imports from here.
+// ============================================================
+
+export type RequestStatusValue =
+  | "pending"
+  | "approved"
+  | "auto_approved"
+  | "rejected"
+  | "expired"
+  | "cancelled";
+
+export const REQUEST_STATUS_LABEL: Record<RequestStatusValue, string> = {
+  pending: "Chờ duyệt",
+  approved: "Đã duyệt",
+  auto_approved: "Tự động duyệt",
+  rejected: "Đã từ chối",
+  expired: "Hết hạn chờ",
+  cancelled: "Đã huỷ",
+};
+
+/**
+ * Verb form for in-sentence interpolation (e.g., "Yêu cầu được duyệt").
+ * Kept separate from the noun-form `REQUEST_STATUS_LABEL` (used in
+ * pills/chips) because Vietnamese verb conjugation differs from
+ * standalone noun phrases. Both maps share the same key set and
+ * MUST stay in sync.
+ */
+export const REQUEST_STATUS_VERB_VI: Record<RequestStatusValue, string> = {
+  pending: "đang chờ duyệt",
+  approved: "được duyệt",
+  auto_approved: "được duyệt tự động",
+  rejected: "bị từ chối",
+  expired: "hết hạn chờ",
+  cancelled: "bị huỷ",
+};
+
+export const REQUEST_STATUS_BADGE: Record<
+  RequestStatusValue,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  pending: "outline",
+  approved: "default",
+  auto_approved: "default",
+  rejected: "destructive",
+  expired: "secondary",
+  cancelled: "secondary",
+};
+
+export function requestStatusLabel(s: RequestStatusValue | string): string {
+  return REQUEST_STATUS_LABEL[s as RequestStatusValue] ?? s;
+}
+
+// ============================================================
 // Expiry status — derived from expires_at (separate from
 // lifecycle status per the user's request).
 // ============================================================

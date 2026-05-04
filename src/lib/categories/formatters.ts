@@ -105,7 +105,10 @@ export const STATUS_LABEL_VI: Record<
 > = {
   available: "Sẵn sàng",
   assigned: "Đã giao",
-  reported_broken: "Báo lỗi",
+  // Wave 27 craft review [code-reviewer LOW] — was "Báo lỗi" but
+  // canonical proxy-labels.ts uses "Đang báo lỗi". Aligned to match
+  // so the category card breakdown matches the proxy table badge.
+  reported_broken: "Đang báo lỗi",
   expired: "Hết hạn",
   banned: "Đã chặn",
   maintenance: "Bảo trì",
