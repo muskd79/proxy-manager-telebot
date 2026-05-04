@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { RequestTable } from "@/components/requests/request-table";
 import { Pagination } from "@/components/shared/pagination";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   ApproveDialog,
   RejectDialog,
@@ -376,31 +377,21 @@ export default function RequestsPage() {
         </div>
       )}
 
-      {/* Empty state — when filter returns 0 + user has filters active. */}
-      {!isLoading && requests.length === 0 && activeCount > 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <p className="text-sm font-medium">Không có yêu cầu nào khớp bộ lọc</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Thử bỏ bớt tiêu chí, hoặc đổi sang khoảng thời gian rộng hơn.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => setFilters({ ...DEFAULT_REQUEST_FILTERS })}
-          >
-            Xoá hết bộ lọc
-          </Button>
-        </div>
-      )}
-
-      {/* Empty state — no requests at all (fresh install). */}
-      {!isLoading && requests.length === 0 && activeCount === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <p className="text-sm font-medium">Chưa có yêu cầu nào</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Yêu cầu sẽ xuất hiện ở đây khi user bot dùng /getproxy.
-          </p>
+      {/* Wave 27 UX-3 — adopt canonical EmptyState (was 2 inline divs).
+          mode="filter-empty" auto-renders the "Xoá hết bộ lọc" CTA;
+          mode="zero-data" uses the requests preset (no CTA — bot
+          drives request creation, not the admin web). */}
+      {!isLoading && requests.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card">
+          <EmptyState
+            entity="requests"
+            mode={activeCount > 0 ? "filter-empty" : "zero-data"}
+            onClearFilters={
+              activeCount > 0
+                ? () => setFilters({ ...DEFAULT_REQUEST_FILTERS })
+                : undefined
+            }
+          />
         </div>
       )}
 
