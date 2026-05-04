@@ -58,3 +58,33 @@ export function safeCredentialString(
   }
   return `${cleanHost}:${port}`;
 }
+
+/**
+ * Wave 26-D bug hunt v3 [HIGH] — strip backticks from a single
+ * credential field (host / username / password) before it's
+ * interpolated into a Telegram message template.
+ *
+ * The proxy-assigned templates wrap credentials in a backtick
+ * code-span (`` `{host}:{port}:{user}:{pass}` ``). Inside a code-span
+ * legacy Markdown leaves `*` `_` `[` `]` literal — only a stray
+ * backtick can close the span early and expose the rest of the
+ * message to Markdown parsing (or trigger a Telegram 400 silent
+ * drop). This helper sanitises one field at a time so call sites
+ * can use it inline with `fillTemplate`:
+ *
+ *   fillTemplate(msg.proxyAssigned[lang], {
+ *     host: stripBackticks(proxy.host),
+ *     username: stripBackticks(proxy.username ?? ""),
+ *     password: stripBackticks(proxy.password ?? ""),
+ *     ...
+ *   })
+ *
+ * Pre-fix: an admin who created a proxy with a password containing
+ * `` ` `` (rare but legal in HTTP proxy auth) would either crash
+ * Telegram's parser (user gets nothing) or break the code-span and
+ * let the trailing copy render as Markdown.
+ */
+export function stripBackticks(input: string | null | undefined): string {
+  if (input === null || input === undefined) return "";
+  return String(input).replace(/`/g, "");
+}

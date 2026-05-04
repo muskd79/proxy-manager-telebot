@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
+import { stripBackticks } from "../format";
 import { logChatMessage, logActivity } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
 import { getFirstProxyFooter } from "../milestones";
@@ -148,12 +149,14 @@ export async function autoAssignProxy(
     expiresAtDate = (fresh as { expires_at: string | null } | null)?.expires_at ?? null;
   }
 
+  // Wave 26-D bug hunt v3 [HIGH] — strip backticks from credential
+  // fields before they're inlined into the Markdown code-span.
   const baseText = fillTemplate(t("proxyAssigned", lang), {
-    host: proxy.host,
+    host: stripBackticks(proxy.host),
     port: String(proxy.port),
     type: proxy.type.toUpperCase(),
-    username: proxy.username ?? "N/A",
-    password: proxy.password ?? "N/A",
+    username: stripBackticks(proxy.username ?? "N/A"),
+    password: stripBackticks(proxy.password ?? "N/A"),
     expires: expiresAtDate
       ? new Date(expiresAtDate).toISOString().split("T")[0]
       : "—",

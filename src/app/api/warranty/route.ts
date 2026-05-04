@@ -173,11 +173,22 @@ export async function GET(request: NextRequest) {
 // RLS and uses x-bot-secret header for additional defence (not just any
 // service-role caller can submit).
 export async function POST(request: NextRequest) {
-  const csrfErr = assertSameOrigin(request);
-  if (csrfErr) return csrfErr;
-
-  // Service-role check via header. Bot webhook adds this; admin web
-  // doesn't need to call this endpoint at all.
+  // Wave 26-D bug hunt v3 [HIGH] — order: bot-secret FIRST, CSRF SECOND.
+  //
+  // Pre-fix: `assertSameOrigin(request)` ran before the x-bot-secret
+  // check. Server-to-server calls (the Telegram bot's Node process)
+  // have NO `Origin` header, so assertSameOrigin returned 403 for every
+  // legitimate bot POST — warranty submissions over the HTTP boundary
+  // would silently fail with no audit. The in-process bot bypassed
+  // this by writing the row directly via `submitWarrantyClaim` in
+  // src/lib/telegram/commands/warranty.ts, so the bug never surfaced
+  // — but external bot deployments (future use case) would have been
+  // blocked.
+  //
+  // Now: x-bot-secret IS the credential for this path. If it's
+  // present + valid, we trust the caller and skip CSRF. If it's
+  // absent or wrong, we 401 and don't waste cycles on the same-origin
+  // check (which couldn't have helped anyway).
   //
   // Wave 26-D bug hunt [P0-1, security C2] — timing-safe comparison.
   // Pre-fix: `botSecret !== expected` allowed a timing oracle that
@@ -199,6 +210,7 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
   }
+  // Bot secret valid — bypass CSRF (server-to-server caller, no Origin).
 
   try {
     const body = await request.json();

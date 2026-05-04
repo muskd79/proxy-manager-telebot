@@ -919,10 +919,12 @@ describe("GET /api/cron/expiry-warning", () => {
     expect(body.data.warned).toBe(0);
   });
 
-  it("sends warning to user with proxy expiring within 3 days", async () => {
+  it("sends warning to user with proxy expiring within 24h bucket", async () => {
     const { sendTelegramMessage } = await import("@/lib/telegram/send");
     vi.mocked(sendTelegramMessage).mockResolvedValue({ success: true });
 
+    // Wave 26-D bug hunt v3 — bucketed thresholds. The 24h bucket
+    // covers 12–36h before expiry; tomorrow (24h) sits dead-centre.
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
     queueReturn({
@@ -938,9 +940,10 @@ describe("GET /api/cron/expiry-warning", () => {
       ],
       error: null,
     });
-    // User lookup
+    // User lookup — now batch-fetched via .in("id", [...]) so the mock
+    // returns an ARRAY of users, not a single object.
     queueReturn({
-      data: { telegram_id: 55555, language: "en" },
+      data: [{ id: "user1", telegram_id: 55555, language: "en" }],
       error: null,
     });
 
@@ -954,12 +957,13 @@ describe("GET /api/cron/expiry-warning", () => {
     );
   });
 
-  it("sends Vietnamese warning when user language is vi", async () => {
+  it("sends Vietnamese warning when user language is vi (72h bucket)", async () => {
     const { sendTelegramMessage } = await import("@/lib/telegram/send");
     vi.mocked(sendTelegramMessage).mockResolvedValue({ success: true });
 
-    const twoDaysLater = new Date(
-      Date.now() + 2 * 24 * 60 * 60 * 1000
+    // 72h bucket center — Vietnamese reminder at the 3-day mark.
+    const threeDaysLater = new Date(
+      Date.now() + 72 * 60 * 60 * 1000
     ).toISOString();
 
     queueReturn({
@@ -970,13 +974,13 @@ describe("GET /api/cron/expiry-warning", () => {
           port: 3128,
           type: "socks5",
           assigned_to: "user1",
-          expires_at: twoDaysLater,
+          expires_at: threeDaysLater,
         },
       ],
       error: null,
     });
     queueReturn({
-      data: { telegram_id: 55555, language: "vi" },
+      data: [{ id: "user1", telegram_id: 55555, language: "vi" }],
       error: null,
     });
 
@@ -1032,7 +1036,9 @@ describe("GET /api/cron/expiry-warning", () => {
       ],
       error: null,
     });
-    queueReturn({ data: null, error: { message: "not found" } });
+    // Wave 26-D bug hunt v3 — batched user lookup now returns an empty
+    // array (no rows match) instead of `null` for "user not found".
+    queueReturn({ data: [], error: null });
 
     const res = await GET(createCronRequest("test-cron-secret"));
     const body = await res.json();
@@ -1064,7 +1070,7 @@ describe("GET /api/cron/expiry-warning", () => {
       error: null,
     });
     queueReturn({
-      data: { telegram_id: 55555, language: "en" },
+      data: [{ id: "user1", telegram_id: 55555, language: "en" }],
       error: null,
     });
 
@@ -1097,7 +1103,7 @@ describe("GET /api/cron/expiry-warning", () => {
       error: null,
     });
     queueReturn({
-      data: { telegram_id: 55555, language: "en" },
+      data: [{ id: "user1", telegram_id: 55555, language: "en" }],
       error: null,
     });
 

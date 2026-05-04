@@ -233,6 +233,17 @@ async function handleApprove(args: {
 
   // Helper — revert the claim back to pending so admin can retry.
   // Used when allocator/proxy updates fail after we won the lock.
+  //
+  // Wave 26-D bug hunt v3 [HIGH] — race guard. Pre-fix the revert
+  // UPDATE had no guard on status / resolved_by, so it would
+  // unconditionally clear the claim's resolved fields. If between
+  // our lock-win (status=approved, resolved_by=admin.id) and the
+  // revert call ANY other process had touched the claim (e.g.,
+  // a webhook retry, an admin clicking approve a second time and
+  // somehow winning the new lock), we'd silently overwrite their
+  // state. Now: only revert IF the claim is still in the exact
+  // state we left it (`approved` + `resolved_by = admin.id`); if
+  // someone else now owns it, leave it alone.
   async function revertClaim(reason: string) {
     captureError(new Error(`approve revert: ${reason}`), {
       source: "api.warranty.approve.revert",
@@ -245,7 +256,9 @@ async function handleApprove(args: {
         resolved_by: null,
         resolved_at: null,
       })
-      .eq("id", claimId);
+      .eq("id", claimId)
+      .eq("status", "approved")
+      .eq("resolved_by", adminId);
   }
 
   // 2. Allocator. Tier 3 fallback to "any available". Wave 26-D bug

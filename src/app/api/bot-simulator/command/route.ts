@@ -52,6 +52,30 @@ const COMMAND_MAP: Record<string, (ctx: import("grammy").Context) => Promise<voi
 };
 
 export async function POST(request: NextRequest) {
+  // Wave 26-D bug hunt v3 [HIGH] — gate the simulator behind a
+  // non-production env. Pre-fix any admin in production could replay
+  // arbitrary bot commands as ANY tele_user (/getproxy, /revoke, /cancel)
+  // and the audit log recorded the action as if it came from the
+  // simulated user — no admin attribution. That's an accountability
+  // gap + a way to silently exhaust a user's quota.
+  //
+  // The simulator is a dev-only debugging surface. We allow it on
+  // explicit opt-in (`ENABLE_BOT_SIMULATOR=true`) for staging/preview
+  // sessions where the team needs to repro a user-facing bot bug
+  // against real data without going through Telegram.
+  const isDev = process.env.NODE_ENV !== "production";
+  const explicitOptIn = process.env.ENABLE_BOT_SIMULATOR === "true";
+  if (!isDev && !explicitOptIn) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Bot simulator is disabled in production. Set ENABLE_BOT_SIMULATOR=true on the deployment to enable temporarily.",
+      },
+      { status: 403 },
+    );
+  }
+
   const csrfErr = assertSameOrigin(request);
   if (csrfErr) return csrfErr;
 

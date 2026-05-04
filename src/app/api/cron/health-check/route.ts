@@ -20,10 +20,33 @@ export async function GET(request: NextRequest) {
 }
 
 async function runHealthCheck() {
+  // Wave 26-D bug hunt v3 [CRITICAL] — only health-check proxies in
+  // states where flipping to maintenance is the correct response to a
+  // failed TCP probe. Pre-fix the cron pulled EVERY non-deleted row and
+  // forced status='maintenance' on TCP failure, which:
+  //   - Stole `assigned` proxies from active users mid-rental (proxy
+  //     went from "Đã giao" to "Bảo trì" silently — user kept using it
+  //     but admin dashboard showed maintenance).
+  //   - Stole `reported_broken` proxies from the warranty workflow.
+  //     The warranty approve handler does
+  //     `.update(...).eq('status','reported_broken')` — once the cron
+  //     flipped status to maintenance the UPDATE matched 0 rows, so
+  //     the original proxy was never transitioned and the replacement
+  //     was given out with the original stuck in maintenance forever.
+  //   - Auto-reverted intentional `banned`/`expired` admin decisions
+  //     back into the maintenance pool.
+  //
+  // Now: only check `available` (idle inventory we want to keep healthy)
+  // and `maintenance` (already parked, idempotent re-check). Active
+  // states (`assigned`, `reported_broken`) are off-limits because the
+  // workflow owns the status transition. Terminal states (`banned`,
+  // `expired`) are off-limits because they're admin/cron decisions we
+  // shouldn't bulldoze.
   const { data: proxies, error } = await supabaseAdmin
     .from("proxies")
     .select("id, host, port, type")
     .eq("is_deleted", false)
+    .in("status", ["available", "maintenance"])
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .limit(HEALTH_CHECK_CRON_BATCH_SIZE);
 
@@ -71,12 +94,23 @@ async function runHealthCheck() {
       }
     }
 
-    // Batch update dead proxies in one query (all share same values)
+    // Batch update dead proxies in one query (all share same values).
+    //
+    // Wave 26-D bug hunt v3 [CRITICAL] — defence-in-depth race guard.
+    // Even after narrowing the SELECT to ["available","maintenance"],
+    // the row could have transitioned (admin clicked Sửa, user
+    // submitted warranty, allocator assigned) between SELECT and
+    // UPDATE. The `.in("status", ["available", "maintenance"])` on the
+    // UPDATE ensures we never overwrite a row that's now in
+    // assigned/reported_broken/banned/expired. The row count won't
+    // surface the skip but `last_checked_at` not updating is the
+    // signal — and the next cron run picks it up if it's truly dead.
     if (deadIds.length > 0) {
       await supabaseAdmin
         .from("proxies")
         .update({ speed_ms: null, last_checked_at: nowISO, status: "maintenance" })
-        .in("id", deadIds);
+        .in("id", deadIds)
+        .in("status", ["available", "maintenance"]);
     }
 
     // Update alive proxies concurrently (not sequentially)

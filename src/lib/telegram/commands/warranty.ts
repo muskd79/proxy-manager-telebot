@@ -107,14 +107,27 @@ export async function handleWarrantyClaim(
   // Pre-fetch proxy + recent claims so we can run the eligibility gate
   // client-side BEFORE prompting the reason picker. Saves a round trip
   // and gives a clean Vietnamese error if something doesn't pass.
+  //
+  // Wave 26-D bug hunt v3 [HIGH] — match Step 4 (`submitWarrantyClaim`)
+  // by scoping the claims query to the trailing 30-day window instead
+  // of the legacy `.limit(50)`. Pre-fix a power-user with 50+ historical
+  // claims older than 30 days had the oldest ones truncated, making the
+  // 30d cap + pending-count + cooldown checks see a falsely low number.
+  // The picker would render → user picks reason → step 4's correct-window
+  // gate fires → re-runs the same checks against the FULL 30d window
+  // and (sometimes) rejects, causing a confusing "click button → click
+  // reason → reason rejected" UX.
+  const sinceIso30d = new Date(
+    Date.now() - 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const [proxyRes, claimsRes, settings] = await Promise.all([
     supabaseAdmin.from("proxies").select("*").eq("id", proxyId).single(),
     supabaseAdmin
       .from("warranty_claims")
       .select("id, proxy_id, status, created_at")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50),
+      .gte("created_at", sinceIso30d)
+      .order("created_at", { ascending: false }),
     loadWarrantySettings(),
   ]);
 
