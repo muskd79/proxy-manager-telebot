@@ -117,7 +117,16 @@ async function runExpiryWarning() {
   let skipped = expiringProxies.length - dueProxies.length;
 
   // Build the per-proxy send tasks, then fire in concurrency-bounded batches.
-  const tasks: Array<() => Promise<void>> = [];
+  //
+  // Wave 27 bug hunt v9 [debugger #2, MEDIUM] — return success per task
+  // and tally from `Promise.allSettled` results instead of mutating a
+  // shared closure-captured `warned`. Pre-fix: rapid microtask
+  // interleaving could read-modify-write `warned` non-atomically inside
+  // the same event-loop tick (read 5 / read 5 / write 6 / write 6 →
+  // counter says 6 when 7 sent successfully). Effect: monitoring
+  // counters were silently under-reported. Same pattern is already used
+  // in expire-proxies/route.ts:155-159; copying for consistency.
+  const tasks: Array<() => Promise<boolean>> = [];
   for (const proxy of dueProxies) {
     if (!proxy.assigned_to) {
       skipped++;
@@ -170,19 +179,24 @@ async function runExpiryWarning() {
     tasks.push(async () => {
       try {
         const result = await sendTelegramMessage(user.telegram_id, text);
-        if (result.success) warned++;
+        return result.success === true;
       } catch (err) {
         captureError(err, {
           source: "cron.expiry-warning",
           extra: { proxyId: proxy.id, telegramId: user.telegram_id },
         });
+        return false;
       }
     });
   }
 
   for (let i = 0; i < tasks.length; i += NOTIFY_CONCURRENCY) {
     const batch = tasks.slice(i, i + NOTIFY_CONCURRENCY);
-    await Promise.allSettled(batch.map((fn) => fn()));
+    const results = await Promise.allSettled(batch.map((fn) => fn()));
+    warned += results.filter(
+      (r): r is PromiseFulfilledResult<boolean> =>
+        r.status === "fulfilled" && r.value === true,
+    ).length;
   }
 
   return { warned, skipped };

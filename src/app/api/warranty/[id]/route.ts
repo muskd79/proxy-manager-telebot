@@ -231,6 +231,28 @@ async function handleApprove(args: {
     );
   }
 
+  // Wave 27 bug hunt v9 [debugger #3, MEDIUM] — refuse to auto-pick a
+  // replacement when the original has no expires_at. Pre-fix the
+  // replacement was assigned with `expires_at: null`, silently
+  // promoting the user to a perpetual lease whenever the original
+  // proxy was imported without a duration (CSV import oversight, free
+  // pool, etc.). The schema legitimately allows null = no expiry, but
+  // there's no way to tell "intentional perpetual" from "import
+  // forgot to set duration", so the safe default is to make admin
+  // assign the replacement manually with an explicit expiry. Admins
+  // can still revoke and re-issue via the manual assign flow.
+  if (original.expires_at === null) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "original_proxy_has_no_expiry",
+        message:
+          "Proxy gốc không có thời hạn (expires_at = null). Auto-pick replacement sẽ kế thừa thời hạn → cấp vĩnh viễn ngoài ý muốn. Hãy reject claim hoặc revoke proxy gốc và assign thủ công cho user với thời hạn cụ thể.",
+      } satisfies ApiResponse<never> & { message: string },
+      { status: 422 },
+    );
+  }
+
   // 1. ATOMIC CLAIM LOCK — flip claim to approved with replacement
   // still null. The .eq("status","pending") + .select().maybeSingle()
   // is the lock; if another admin won, this returns null.
