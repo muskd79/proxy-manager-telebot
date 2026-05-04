@@ -3,7 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendTelegramMessage } from "../send";
 import { getAdminByTelegramId, notifyOtherAdmins } from "../notify-admins";
-import { safeCredentialString } from "../format";
+import { safeCredentialString, escapeMarkdown } from "../format";
 import { CB } from "../callbacks";
 import { getFirstProxyFooter } from "../milestones";
 // DEFAULT_PROXY_EXPIRY_MS no longer needed: safe_assign_proxy RPC
@@ -60,15 +60,23 @@ export async function handleAdminRequests(ctx: Context) {
   for (const req of requests) {
     // Supabase returns the joined relation as array for one-to-many FKs.
     const user = (req.tele_users as unknown) as JoinedTeleUser;
-    const name = user?.username
+    // Wave 27 bug hunt v8 [debugger #1, HIGH] — escapeMarkdown the
+    // user-supplied name. Pre-fix: Telegram username with `_` (legal
+    // char) like `@john_doe` rendered as italic via Markdown — Telegram
+    // returned 400 "can't parse entities" → /requests reply silently
+    // dropped, admin saw nothing.
+    const rawName = user?.username
       ? `@${user.username}`
       : user?.first_name || "Unknown";
+    const name = escapeMarkdown(rawName);
     const type = req.proxy_type?.toUpperCase() || "ANY";
     const date = new Date(req.created_at).toISOString().split("T")[0];
 
     lines.push(`${name} - ${type} - ${date}`);
     keyboard
-      .text(`Approve ${name}`, CB.admin("approve", req.id))
+      // Inline keyboard button labels are NOT parsed as Markdown by
+      // Telegram, so we use the raw name here for readability.
+      .text(`Approve ${rawName}`, CB.admin("approve", req.id))
       .text(`Reject`, CB.admin("reject", req.id))
       .row();
   }

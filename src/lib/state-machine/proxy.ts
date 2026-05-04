@@ -68,6 +68,13 @@ export const proxyMachine = createMachine<ProxyStatus>({
     ProxyStatus.Banned,
     // Admin rejects warranty: revert to assigned (user keeps proxy).
     ProxyStatus.Assigned,
+    // Wave 27 bug hunt v8 [debugger #2, HIGH] — mirror mig 063
+    // safe_expire_proxies which now handles reported_broken rows
+    // with past expires_at. Without this edge, admin couldn't
+    // manually force-expire a stuck warranty-pending proxy via
+    // PATCH /api/proxies/[id] — the only path was waiting for the
+    // hourly cron.
+    ProxyStatus.Expired,
   ],
   [ProxyStatus.Expired]: [ProxyStatus.Available, ProxyStatus.Maintenance],
   [ProxyStatus.Banned]: [ProxyStatus.Maintenance],

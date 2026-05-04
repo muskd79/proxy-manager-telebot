@@ -151,13 +151,18 @@ describe("proxyMachine", () => {
       ).toBe(false);
     });
 
-    it("blocks reported_broken -> expired (cron expire path stays out of this branch)", () => {
+    it("allows reported_broken -> expired (mig 063 cron expire path covers this branch)", () => {
+      // Wave 27 bug hunt v8 [debugger #2, HIGH] — mig 063 extended
+      // safe_expire_proxies to handle `reported_broken` rows so a
+      // proxy whose lease ends mid-warranty isn't pinned forever.
+      // The state machine MUST mirror the SQL transition or the JS
+      // status-update guard rejects what the cron just wrote.
       expect(
         proxyMachine.canTransition(
           ProxyStatus.ReportedBroken,
           ProxyStatus.Expired,
         ),
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it("blocks available -> reported_broken (only assigned proxy can be reported)", () => {
