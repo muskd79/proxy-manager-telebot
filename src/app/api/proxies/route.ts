@@ -55,9 +55,25 @@ export async function GET(request: NextRequest) {
         ? "estimated"
         : "exact";
 
+    // Wave 27 perf [perf #3, HIGH] — project the column list explicitly,
+    // including `password` ONLY for trusted roles. Pre-fix `select("*")`
+    // serialized + transferred the password column for every request even
+    // when the JS code stripped it post-fetch (lines below). At pageSize=500
+    // with 10k+ proxies this is wasted bandwidth + Postgres serialization
+    // work on every list page load.
+    //
+    // Trusted-role allowlist mirrors the JS strip logic so the two stay
+    // in sync (one constant, used in two places).
+    const TRUSTED_ROLES_FOR_PASSWORDS = new Set(["super_admin", "admin"]);
+    const PROXY_LIST_COLS_BASE =
+      "id,host,port,type,network_type,status,country,city,isp,username,category_id,vendor_label,import_batch_id,expires_at,last_checked_at,speed_ms,notes,hidden,is_deleted,deleted_at,created_at,updated_at,assigned_to,assigned_at,created_by,sale_price_usd,cost_usd,purchase_date,reliability_score,distribute_count";
+    const projection = TRUSTED_ROLES_FOR_PASSWORDS.has(admin.role)
+      ? `${PROXY_LIST_COLS_BASE},password`
+      : PROXY_LIST_COLS_BASE;
+
     let query = supabase
       .from("proxies")
-      .select("*", countMode ? { count: countMode } : {})
+      .select(projection, countMode ? { count: countMode } : {})
       .eq("is_deleted", filters.isDeleted ?? false);
 
     if (filters.search) {
@@ -214,19 +230,26 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Strip sensitive fields for any role NOT in the trusted allowlist.
+    // Wave 27 perf [perf #3] — password column is excluded at the
+    // SELECT level via `projection` above for non-trusted roles, so
+    // the wire payload doesn't carry passwords for viewers (real perf
+    // win at pageSize=500).
     //
-    // Wave 26-D bug hunt v3 [HIGH] — pre-fix this gated on
-    // `admin.role === "viewer"`. If a future role lands (e.g.
-    // `read_only`, `auditor`, `support`) that the gate misses, that
-    // role gets passwords by default — fail-open. Now: explicit
-    // allowlist of roles that ARE trusted with passwords; anything
-    // else is stripped. New roles default to safe.
-    const TRUSTED_ROLES_FOR_PASSWORDS = new Set(["super_admin", "admin"]);
-    let responseData = (data as Proxy[]) ?? [];
+    // We KEEP the post-fetch JS strip as defence-in-depth: if the
+    // projection string is ever bypassed (e.g., a future code path
+    // forgets to apply it, or Supabase returns extra columns from a
+    // join), the JS strip still guarantees viewers never see
+    // passwords. Two layers don't conflict — projection = perf,
+    // strip = security.
+    //
+    // The `as unknown as Proxy[]` cast is required because Supabase JS
+    // infers a parser-error tuple type for dynamic projection strings.
+    // Runtime shape is the projected columns as plain objects.
+    let responseData = (data as unknown as Proxy[]) ?? [];
     if (!TRUSTED_ROLES_FOR_PASSWORDS.has(admin.role)) {
       responseData = responseData.map((p) => {
-        const { password, ...rest } = p;
+        const { password: _password, ...rest } = p;
+        void _password;
         return rest;
       }) as Proxy[];
     }
