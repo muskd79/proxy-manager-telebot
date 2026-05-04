@@ -58,6 +58,15 @@ interface ApproveResult {
   allocator_tier: 1 | 2 | 3 | null;
   /** True if admin chose to mark proxy banned instead of maintenance. */
   banned: boolean;
+  /**
+   * Wave 26-D bug hunt v4 [HIGH] — true when steps 2-4 succeeded
+   * (replacement assigned, original transitioned, audit logged) but
+   * the final claim FK update returned 0 rows because the claim row
+   * was hard-deleted between lock and finalise. The replacement is
+   * already in the user's hands — admin should fix the warranty_claims
+   * row manually via /warranty.
+   */
+  partial_success?: boolean;
 }
 
 interface RejectResult {
@@ -360,26 +369,87 @@ async function handleApprove(args: {
   }
 
   // 5. UPDATE claim with final replacement_proxy_id.
+  //
+  // Wave 26-D bug hunt v4 [HIGH] — switch to `.maybeSingle()` and
+  // treat 0-row updates as a partial-success.
+  //
+  // Pre-fix this used `.single()` which throws PGRST116 on 0 rows AND
+  // doesn't distinguish that case from a real DB error. If anything
+  // failed here (e.g., another process hard-deleted the claim row
+  // between step 1 lock and now), we returned 500 — telling admin
+  // "approval failed" — even though steps 2-4 had already succeeded:
+  //   * proxy assigned to the user (replacement now in user's hands)
+  //   * original proxy status flipped (no longer in pool)
+  //   * notification fired
+  //
+  // Rolling those back is hard (replacement is "live" — user could
+  // already be using it). The honest response is "partial success":
+  // 200 with `partial_success: true` + a clear message. Admin sees
+  // the claim row is missing the FK and can fix manually via the
+  // warranty page.
   const { data: updatedClaim, error: claimErr } = await supabaseAdmin
     .from("warranty_claims")
     .update({ replacement_proxy_id: replacement.id })
     .eq("id", claimId)
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (claimErr || !updatedClaim) {
-    // Should never happen — claim row exists (we just locked it).
-    captureError(claimErr ?? new Error("Claim final update returned no row"), {
-      source: "api.warranty.approve.update_claim_final",
+  if (claimErr) {
+    captureError(claimErr, {
+      source: "api.warranty.approve.update_claim_final.db_error",
       extra: { claim_id: claimId },
     });
     return NextResponse.json(
       {
         success: false,
         error: "Failed to finalise claim",
-        message: "Đã cấp proxy thay thế nhưng không cập nhật được claim. Liên hệ admin.",
+        message:
+          "Đã cấp proxy thay thế nhưng không cập nhật được claim do lỗi DB. Vui lòng kiểm tra warranty_claims thủ công.",
       } satisfies ApiResponse<never>,
       { status: 500 },
+    );
+  }
+  if (!updatedClaim) {
+    // 0-row update — claim was hard-deleted between our lock and now.
+    // Replacement is already in user's hands; report partial success.
+    captureError(new Error("Claim row missing at final FK update"), {
+      source: "api.warranty.approve.update_claim_final.0rows",
+      extra: { claim_id: claimId, replacement_id: replacement.id },
+    });
+    // Fire audit + notify even on partial success — they don't depend
+    // on the FK being persisted.
+    await Promise.allSettled([
+      logProxyEvent({
+        proxy_id: original.id,
+        event_type: "warranty_approved",
+        actor_type: "admin",
+        actor_id: adminId,
+        related_user_id: userId,
+        related_proxy_id: replacement.id,
+        details: {
+          claim_id: claimId,
+          partial_success: true,
+          reason: "claim_row_missing_at_final_fk_update",
+        },
+      }),
+    ]);
+    void notifyUserApproved(userId, original, replacement).catch((err) => {
+      captureError(err, {
+        source: "api.warranty.approve.notify_user",
+        extra: { claim_id: claimId, user_id: userId },
+      });
+    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          claim: lockedClaim as WarrantyClaim,
+          replacement,
+          allocator_tier: tier,
+          banned: alsoMarkBanned,
+          partial_success: true,
+        },
+      } satisfies ApiResponse<ApproveResult>,
     );
   }
 
