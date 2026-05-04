@@ -124,18 +124,32 @@ export async function pickReplacementProxy({
     return data && data.length > 0 ? (data[0] as Proxy) : null;
   }
 
-  // Tier 1: same category + same network_type
-  if (category_id !== undefined && network_type !== undefined) {
-    const tier1 = await tryTier({
-      category_id: category_id ?? null,
-      network_type: network_type ?? null,
-    });
+  // Wave 26-D bug hunt v3 [HIGH] — tier guards must reject NULL, not
+  // `undefined`. Pre-fix `category_id !== undefined` was always true
+  // (after the `?? null` coercion above). For an "uncategorised"
+  // proxy (`category_id = null`) Tier 2 ran `tryTier({ category_id: null })`
+  // → `q.is("category_id", null)` — that matches every uncategorised
+  // proxy in the inventory, NOT "same category as the original." A
+  // user with a broken Vendor X mobile proxy could get back a Vendor
+  // Y datacenter proxy as "Tier 2 replacement" because both happened
+  // to have no category set — surprising + wrong.
+  //
+  // Now: only run Tier 1/2 when the relevant column is meaningfully
+  // set. NULL category/network_type means "no category to match on" —
+  // skip to Tier 3 which only enforces the protocol guarantee. The
+  // brainstorm decision A5=f explicitly said "same category" → the
+  // tier should NOT trigger when there is no category.
+
+  // Tier 1: same category + same network_type (both meaningful)
+  if (category_id !== null && network_type !== null) {
+    const tier1 = await tryTier({ category_id, network_type });
     if (tier1) return { proxy: tier1, tier: 1 };
   }
 
-  // Tier 2: same category (any network_type)
-  if (category_id !== undefined) {
-    const tier2 = await tryTier({ category_id: category_id ?? null });
+  // Tier 2: same category (any network_type) — only meaningful if
+  // category is actually set on the original.
+  if (category_id !== null) {
+    const tier2 = await tryTier({ category_id });
     if (tier2) return { proxy: tier2, tier: 2 };
   }
 

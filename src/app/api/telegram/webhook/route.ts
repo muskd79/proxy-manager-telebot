@@ -82,7 +82,13 @@ async function cleanupOldDedupEntries(): Promise<void> {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "ok", webhook: "active" });
+  // Wave 26-D bug hunt v3 [MEDIUM] — minimise GET disclosure.
+  // Pre-fix returned `{ status: "ok", webhook: "active" }` to any
+  // unauthenticated caller, confirming the bot is wired up. That's
+  // useful recon for an attacker mapping infrastructure (and any
+  // future diagnostic field added here would leak too). Trim to
+  // a generic 200 + minimal body.
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: NextRequest) {

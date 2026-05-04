@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/types/api";
 import type { ChatMessage, TeleUser } from "@/types/database";
 import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { sendTelegramMessage } from "@/lib/telegram/send";
+import { escapeMarkdown } from "@/lib/telegram/format";
 import { SendChatMessageSchema } from "@/lib/validations";
 import { assertSameOrigin } from "@/lib/csrf";
 
@@ -182,8 +183,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
   }
 
-  // Send via Telegram Bot API
-  const result = await sendTelegramMessage(teleUser.telegram_id, message);
+  // Send via Telegram Bot API.
+  //
+  // Wave 26-D bug hunt v3 [HIGH] — escapeMarkdown the admin-typed
+  // message before sending. sendTelegramMessage defaults to
+  // parse_mode='Markdown', so any unescaped `*`, `_`, `[`, `` ` ``
+  // in admin's message either:
+  //   (a) silently corrupts the formatting (admin types an IP
+  //       "192.168.1.1" — the dots are fine, but `_` in a username
+  //       would be parsed as italic);
+  //   (b) returns Telegram 400 "can't parse entities" → message
+  //       silently dropped, user never receives it (chat_messages
+  //       still inserts the row so the dashboard shows it as sent);
+  //   (c) lets a hostile/compromised admin craft fake formatting
+  //       (bold scam text, fake "official" markers).
+  // escapeMarkdown is the same helper bot user-typed text already
+  // uses (warranty.ts reason_text path).
+  const safeMessage = escapeMarkdown(message);
+  const result = await sendTelegramMessage(teleUser.telegram_id, safeMessage);
   if (!result.success) {
     return NextResponse.json({ success: false, error: result.error || "Failed to send" }, { status: 500 });
   }

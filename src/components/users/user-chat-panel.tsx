@@ -26,6 +26,22 @@ export function UserChatPanel({ userId }: UserChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
+  // Wave 26-D bug hunt v3 [HIGH] — guard against setState after unmount.
+  // Pre-fix `fetchMessages` did `setMessages` / `setHasMore` / `setPage`
+  // / `setIsLoading` / `setIsLoadingMore` after an `await fetch(...)`.
+  // When the parent unmounts (admin navigates between users) before the
+  // fetch resolves, the setState calls land on a dead component. React 18
+  // silently swallows these but `isLoadingMore` can leak into the NEXT
+  // mount as `true`, leaving the "Load more" button stuck spinning. The
+  // ref pattern is the standard fix.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const fetchMessages = useCallback(
     async (pageNum: number) => {
       try {
@@ -38,6 +54,8 @@ export function UserChatPanel({ userId }: UserChatPanelProps) {
         if (!res.ok) return;
         const json: ApiResponse<{ messages: ChatMessage[]; hasMore: boolean }> =
           await res.json();
+        // After every await, bail out if the component unmounted.
+        if (!isMountedRef.current) return;
         if (json.success && json.data) {
           if (pageNum === 1) {
             setMessages(json.data.messages);
@@ -48,8 +66,10 @@ export function UserChatPanel({ userId }: UserChatPanelProps) {
           setPage(pageNum);
         }
       } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     },
     [userId]

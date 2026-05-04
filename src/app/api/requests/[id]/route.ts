@@ -6,6 +6,7 @@ import { requireAnyRole, requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
 import { sendTelegramMessage, sendTelegramDocument } from "@/lib/telegram/send";
 import { msg, fillTemplate } from "@/lib/telegram/messages";
+import { stripBackticks } from "@/lib/telegram/format";
 import { formatProxiesAsText, formatProxiesAsBuffer } from "@/lib/telegram/format-proxies";
 import type { SupportedLanguage } from "@/types/telegram";
 import { UpdateRequestSchema } from "@/lib/validations";
@@ -387,11 +388,15 @@ export async function PUT(
             .single();
           const lang = ((teleUserFull?.language as string) || "en") as SupportedLanguage;
 
+          // Wave 26-D bug hunt v3 [HIGH] — strip backticks from credential
+          // fields. They're interpolated inside a Markdown code-span; a
+          // stray `` ` `` would close the span early and let trailing
+          // copy render as Markdown (or trigger a 400 silent drop).
           const notifyText = fillTemplate(msg.proxyAssigned[lang], {
-            host: proxy.host,
+            host: stripBackticks(proxy.host),
             port: String(proxy.port),
-            username: proxy.username ?? "",
-            password: proxy.password ?? "",
+            username: stripBackticks(proxy.username ?? ""),
+            password: stripBackticks(proxy.password ?? ""),
             type: proxy.type.toUpperCase(),
             expires: "",
           });

@@ -214,9 +214,17 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Strip sensitive fields for viewer role
+    // Strip sensitive fields for any role NOT in the trusted allowlist.
+    //
+    // Wave 26-D bug hunt v3 [HIGH] — pre-fix this gated on
+    // `admin.role === "viewer"`. If a future role lands (e.g.
+    // `read_only`, `auditor`, `support`) that the gate misses, that
+    // role gets passwords by default — fail-open. Now: explicit
+    // allowlist of roles that ARE trusted with passwords; anything
+    // else is stripped. New roles default to safe.
+    const TRUSTED_ROLES_FOR_PASSWORDS = new Set(["super_admin", "admin"]);
     let responseData = (data as Proxy[]) ?? [];
-    if (admin.role === "viewer") {
+    if (!TRUSTED_ROLES_FOR_PASSWORDS.has(admin.role)) {
       responseData = responseData.map((p) => {
         const { password, ...rest } = p;
         return rest;

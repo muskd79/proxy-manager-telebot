@@ -31,8 +31,11 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Proxy not found" }, { status: 404 });
     }
 
-    // Strip sensitive fields for viewer role
-    if (admin.role === "viewer") {
+    // Strip sensitive fields for any role NOT in the trusted allowlist.
+    // Wave 26-D bug hunt v3 [HIGH] — fail-safe role check (mirror of
+    // /api/proxies list endpoint). New roles default to no-password.
+    const TRUSTED_ROLES_FOR_PASSWORDS = new Set(["super_admin", "admin"]);
+    if (!TRUSTED_ROLES_FOR_PASSWORDS.has(admin.role)) {
       const { password, ...sanitized } = data;
       return NextResponse.json({ success: true, data: sanitized });
     }
