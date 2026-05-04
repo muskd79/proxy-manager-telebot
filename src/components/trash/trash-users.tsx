@@ -31,6 +31,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
+// Wave 27 UX-4 — adopt shared BulkActionBar shell (see trash-proxies header).
+import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { cn } from "@/lib/utils";
 import {
   computeTrashCountdown,
@@ -233,30 +235,34 @@ export function TrashUsers({ canWrite }: TrashUsersProps) {
         </Button>
       </div>
 
-      {selectedIds.length > 0 && canWrite && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
-          <span className="text-sm font-medium">Đã chọn {selectedIds.length} user</span>
-          <div className="ml-auto flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBulkRestoreOpen(true)}
-              disabled={pendingAction}
-            >
-              <RotateCcw className="mr-1 size-3.5" />
-              Khôi phục đã chọn
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setBulkDeleteOpen(true)}
-              disabled={pendingAction}
-            >
-              <Trash2 className="mr-1 size-3.5" />
-              Xoá vĩnh viễn
-            </Button>
-          </div>
-        </div>
+      {canWrite && (
+        <BulkActionBar
+          selectedCount={selectedIds.length}
+          itemNoun="user"
+          onClearSelection={() => setSelectedIds([])}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setBulkRestoreOpen(true)}
+                disabled={pendingAction}
+              >
+                <RotateCcw className="mr-1 size-3.5" />
+                Khôi phục đã chọn
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkDeleteOpen(true)}
+                disabled={pendingAction}
+              >
+                <Trash2 className="mr-1 size-3.5" />
+                Xoá vĩnh viễn
+              </Button>
+            </>
+          }
+        />
       )}
 
       <Card>

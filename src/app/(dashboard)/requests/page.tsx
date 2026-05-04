@@ -36,6 +36,8 @@ import { toast } from "sonner";
 import { RequestTable } from "@/components/requests/request-table";
 import { Pagination } from "@/components/shared/pagination";
 import { EmptyState } from "@/components/shared/empty-state";
+// Wave 27 UX-4 — adopt shared BulkActionBar shell.
+import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import {
   ApproveDialog,
   RejectDialog,
@@ -349,32 +351,37 @@ export default function RequestsPage() {
         activeCount={activeCount}
       />
 
-      {/* Bulk actions bar — only shows when admin has at least 1 pending
-          row selected. Decoupled from the (now removed) tab guard so
-          admin can bulk-act on any selection in any filter view. */}
-      {pendingSelected.length > 0 && canWrite && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
-          <span className="text-sm font-medium">
-            {t("requests.pendingSelected").replace(
-              "{count}",
-              String(pendingSelected.length),
-            )}
-          </span>
-          <div className="ml-auto flex gap-2">
-            <Button size="sm" onClick={() => setBatchApproveOpen(true)}>
-              <Zap className="mr-1 h-3.5 w-3.5" />
-              {t("requests.batchApprove")}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleBatchReject}
-            >
-              <XCircle className="mr-1 h-3.5 w-3.5" />
-              {t("requests.batchReject")}
-            </Button>
-          </div>
-        </div>
+      {/* Bulk actions bar — shared BulkActionBar shell. Only shows when
+          admin has at least 1 PENDING row in selection (other statuses
+          are not approvable / rejectable in bulk). Decoupled from the
+          (now removed) tab guard so admin can bulk-act on any selection
+          in any filter view. */}
+      {canWrite && (
+        <BulkActionBar
+          selectedCount={pendingSelected.length}
+          itemNoun="yêu cầu chờ xử lý"
+          onClearSelection={() => setSelectedIds([])}
+          actions={
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setBatchApproveOpen(true)}
+              >
+                <Zap className="mr-1 h-3.5 w-3.5" />
+                {t("requests.batchApprove")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBatchReject}
+              >
+                <XCircle className="mr-1 h-3.5 w-3.5" />
+                {t("requests.batchReject")}
+              </Button>
+            </>
+          }
+        />
       )}
 
       {/* Wave 27 UX-3 — adopt canonical EmptyState (was 2 inline divs).

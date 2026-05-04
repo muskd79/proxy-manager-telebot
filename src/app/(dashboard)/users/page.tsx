@@ -37,6 +37,8 @@ import { useI18n } from "@/lib/i18n";
 import { UserTable } from "@/components/users/user-table";
 import { UserSubTabs } from "@/components/users/user-sub-tabs";
 import { Pagination } from "@/components/shared/pagination";
+// Wave 27 UX-4 — adopt shared BulkActionBar shell.
+import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 import { useUsers } from "@/hooks/use-users";
 import type { TeleUserStatus } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
@@ -293,16 +295,16 @@ export default function UsersPage() {
         <Button onClick={handleSearch}>{t("common.search")}</Button>
       </div>
 
-      {/* Bulk Actions */}
-      {selectedIds.length > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3">
-          <span className="text-sm font-medium">
-            {t("users.usersSelected").replace("{count}", String(selectedIds.length))}
-          </span>
-          {canWrite && (
-            <div className="ml-auto flex gap-2">
+      {/* Bulk Actions — shared BulkActionBar shell */}
+      {canWrite && (
+        <BulkActionBar
+          selectedCount={selectedIds.length}
+          itemNoun="user"
+          onClearSelection={() => setSelectedIds([])}
+          actions={
+            <>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setBulkAction("block")}
               >
@@ -310,7 +312,7 @@ export default function UsersPage() {
                 {t("users.blockUser")}
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setBulkAction("unblock")}
               >
@@ -325,9 +327,9 @@ export default function UsersPage() {
                 <Trash2 className="mr-1 h-3.5 w-3.5" />
                 {t("common.delete")}
               </Button>
-            </div>
-          )}
-        </div>
+            </>
+          }
+        />
       )}
 
       {/* User Table */}
