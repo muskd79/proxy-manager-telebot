@@ -64,6 +64,21 @@ export function computeTrashCountdown(
 }
 
 /**
+ * Wave 27 UX [ui-ux #3] — single source of truth for the trash
+ * countdown badge palette. Pre-fix the same 3-line map appeared
+ * verbatim in trash-users.tsx, trash-requests.tsx, trash-proxies.tsx
+ * (3 copies, drift risk on next palette tweak). Now imported.
+ *
+ * Palette aligned with the project's emerald/amber/red convention
+ * (no inline `green-*` — see proxy-labels.ts for the wider rule).
+ */
+export const TRASH_TONE_CLASSES: Record<TrashCountdown["tone"], string> = {
+  ok: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+  warn: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
+  danger: "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200",
+};
+
+/**
  * Format an ISO timestamp to a vi-VN absolute string suitable for
  * the "Xoá lúc" column. Returns "—" when null.
  */
