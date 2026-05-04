@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAnyRole } from "@/lib/auth";
 
@@ -33,7 +32,12 @@ export async function GET(
 
   const { id } = await params;
 
-  const { data, error } = await supabaseAdmin
+  // Wave 27 security v3 [#5, HIGH] — use the user-scoped client
+  // (already authed via requireAnyRole). Pre-fix used supabaseAdmin
+  // which bypasses RLS entirely — fine today but a foot-gun if
+  // proxy_categories ever gets row-scoped policies (e.g., hidden
+  // categories visible only to super_admin).
+  const { data, error } = await supabase
     .from("proxy_categories")
     .select(
       "id, name, default_price_usd, default_country, default_proxy_type, default_isp, is_hidden",
