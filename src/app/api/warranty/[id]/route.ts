@@ -207,6 +207,30 @@ async function handleApprove(args: {
   const settings = await loadWarrantySettings();
   const resolvedAtIso = new Date().toISOString();
 
+  // Wave 27 bug hunt v7 [debugger #2, HIGH] — refuse to approve a
+  // claim whose original proxy is already past its expires_at.
+  // Pre-fix: handleApprove copied `original.expires_at` to the
+  // replacement (line ~310). If admin opened the claim hours after
+  // submit, original may already be expired — replacement was
+  // assigned with an already-past expiry, immediately collected by
+  // the next expire-proxies cron run. User saw "proxy assigned"
+  // followed by "proxy expired" within minutes.
+  //
+  // Now: bail early with 422; admin can `reject` the claim with a
+  // helpful reason ("hết hạn — không bảo hành được") and re-issue
+  // a fresh proxy via the manual flow if appropriate.
+  if (original.expires_at && new Date(original.expires_at) < new Date()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "original_proxy_expired",
+        message:
+          "Proxy gốc đã hết hạn. Hãy reject claim với lý do tương ứng — không thể duyệt bảo hành cho proxy đã hết hạn.",
+      } satisfies ApiResponse<never> & { message: string },
+      { status: 422 },
+    );
+  }
+
   // 1. ATOMIC CLAIM LOCK — flip claim to approved with replacement
   // still null. The .eq("status","pending") + .select().maybeSingle()
   // is the lock; if another admin won, this returns null.

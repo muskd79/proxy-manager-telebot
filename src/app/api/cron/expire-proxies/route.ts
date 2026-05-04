@@ -63,10 +63,17 @@ async function runExpireProxies(): Promise<NextResponse> {
   const now = new Date().toISOString();
 
   // 1. Find all expired-assigned proxies in one query.
+  //
+  // Wave 27 bug hunt v7 [debugger #2, HIGH] — also pick up
+  // `reported_broken` rows whose expires_at is past. Pre-fix the
+  // SELECT was `.eq("status", "assigned")` only; reported_broken
+  // proxies (warranty pending) silently never expired. Mig 063
+  // updated safe_expire_proxies to also handle reported_broken;
+  // the SELECT here mirrors the widening.
   const { data: expiredProxies, error: selectErr } = await supabaseAdmin
     .from("proxies")
     .select("id, assigned_to, host, port, type, expires_at")
-    .eq("status", "assigned")
+    .in("status", ["assigned", "reported_broken"])
     .eq("is_deleted", false)
     .lt("expires_at", now)
     .not("expires_at", "is", null);

@@ -80,7 +80,12 @@ const ImportProxyRowSchema = z.object({
   country: z.string().max(100).optional(),
   isp: z.string().max(255).optional(),
   line: z.number().int().optional(),
-  raw: z.string().optional(),
+  // Wave 27 bug hunt v7 [debugger #5, MEDIUM] — cap raw line at 500
+  // chars. Pre-fix: no .max() → admin (or direct API caller) could
+  // submit 10,000 rows × 100KB raw = ~1GB JSON body that bloated
+  // memory before Next.js's 4MB body limit kicked in. 500 chars
+  // covers a typical CSV line with 10x safety margin.
+  raw: z.string().max(500).optional(),
 });
 
 export const ImportProxiesSchema = z.object({

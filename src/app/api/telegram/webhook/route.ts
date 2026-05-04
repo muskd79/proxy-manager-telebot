@@ -174,15 +174,24 @@ export async function POST(req: NextRequest) {
           const first = processedUpdates.values().next().value;
           if (first !== undefined) processedUpdates.delete(first);
         }
-        // Fire-and-forget DB record: don't block the response
-        recordProcessedUpdate(updateId);
+        // Fire-and-forget DB record: don't block the response.
+        //
+        // Wave 27 bug hunt v7 [debugger #4, MEDIUM] — explicit .catch.
+        // Pre-fix: bare promise → DB hiccup throws unhandledRejection
+        // which Vercel may surface as a function error in logs (noise)
+        // and on Node 16+ may terminate the function entirely.
+        recordProcessedUpdate(updateId).catch((e) =>
+          captureError(e, { source: "webhook.dedup.record" }),
+        );
       }
 
       // Periodic cleanup of old dedup entries
       dedupCleanupCounter++;
       if (dedupCleanupCounter >= DEDUP_CLEANUP_INTERVAL) {
         dedupCleanupCounter = 0;
-        cleanupOldDedupEntries();
+        cleanupOldDedupEntries().catch((e) =>
+          captureError(e, { source: "webhook.dedup.cleanup" }),
+        );
       }
 
       return response;
