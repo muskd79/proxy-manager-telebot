@@ -106,7 +106,7 @@ export function ApproveDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-500" />
+            <CheckCircle className="h-5 w-5 text-emerald-500" />
             Approve Request
           </DialogTitle>
           <DialogDescription>

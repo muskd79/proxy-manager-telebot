@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import {
   computeTrashCountdown,
   formatDeletedAt,
+  TRASH_TONE_CLASSES,
 } from "./trash-utils";
 
 interface DeletedRequest {
@@ -50,11 +51,7 @@ interface TrashRequestsProps {
   canWrite: boolean;
 }
 
-const TONE_CLASS = {
-  ok: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
-  warn: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
-  danger: "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200",
-} as const;
+// Wave 27 UX [ui-ux #3] — moved to trash-utils.ts as TRASH_TONE_CLASSES.
 
 // Vietnamese label map for ProxyRequest.status — mirrors what's in
 // /requests filter so trash status pills don't drift from main view.
@@ -379,7 +376,7 @@ export function TrashRequests({ canWrite }: TrashRequestsProps) {
                           variant="outline"
                           className={cn(
                             "text-xs whitespace-nowrap",
-                            TONE_CLASS[countdown.tone],
+                            TRASH_TONE_CLASSES[countdown.tone],
                           )}
                         >
                           {countdown.tone === "danger" && (
