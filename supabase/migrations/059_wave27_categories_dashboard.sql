@@ -73,29 +73,54 @@ RETURNS TABLE (
   cnt_maintenance INT,
   -- aggregate footer
   total_hidden INT,
-  -- money
-  stock_value_usd NUMERIC,        -- point-in-time list price of currently assigned
-  revenue_usd_cumulative NUMERIC, -- all-time sum from proxy_events.assigned
-  cost_usd_total NUMERIC          -- sum of cost across all non-deleted proxies in category
+  -- money — null when caller is non-admin (debugger v5 #8 finding)
+  stock_value_usd NUMERIC,
+  revenue_usd_cumulative NUMERIC,
+  cost_usd_total NUMERIC
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_show_money BOOLEAN;
+BEGIN
+  -- Wave 27 v2 [debugger #8] — viewer role MUST NOT see financial
+  -- aggregates. Pre-fix the RPC blanket-granted authenticated role
+  -- which let any logged-in admin (including viewer) read cost +
+  -- revenue + sale price for ALL categories. Now the RPC checks
+  -- is_admin() (super_admin or admin) and zeroes out the money
+  -- triplet for viewers. Counts + names stay visible since those
+  -- aren't sensitive.
+  v_show_money := is_admin();
+
+  -- Wave 27 v2 [debugger #2] — revenue must be attributed to the
+  -- category the proxy was IN at the moment of the assigned event,
+  -- not its current category. We snapshot category_id into
+  -- proxy_events.details JSONB at event-time (see logProxyEvent
+  -- adoption in this PR). For older events without the snapshot,
+  -- fall back to p.category_id (best effort — shows up as drift
+  -- in newer events).
+  --
+  -- The CTE produces 1 row per category with the all-time sum.
+  RETURN QUERY
   WITH cumulative_revenue AS (
-    -- All-time revenue per category, queried from immutable proxy_events.
-    -- We use proxy_events's category snapshot at event-time if we add
-    -- one later; for now we attribute to the proxy's CURRENT category
-    -- (acceptable since proxies rarely change category — Wave 27 will
-    -- track category-change events explicitly).
     SELECT
-      p.category_id,
-      COALESCE(SUM(p.sale_price_usd), 0) AS revenue_at_event
+      COALESCE(
+        (e.details->>'category_id_at_event')::UUID,
+        p.category_id
+      ) AS category_id,
+      COALESCE(SUM(
+        COALESCE(
+          (e.details->>'sale_price_usd_at_event')::NUMERIC,
+          p.sale_price_usd
+        )
+      ), 0) AS revenue_at_event
     FROM proxy_events e
     JOIN proxies p ON p.id = e.proxy_id
     WHERE e.event_type = 'assigned'
-    GROUP BY p.category_id
+    GROUP BY 1
   )
   SELECT
     c.id,
@@ -108,7 +133,11 @@ AS $$
     c.default_sale_price_usd,
     c.default_purchase_price_usd,
     c.min_stock_alert,
-    c.proxy_count,
+    -- Wave 27 v2 [debugger #5] — derive proxy_count from the JOIN
+    -- itself, not from the materialized c.proxy_count column. The
+    -- counter can drift if a proxy is hard-deleted bypassing the
+    -- counter trigger; recomputing is one extra COUNT but safer.
+    COUNT(p.id)::INT AS proxy_count,
     -- status counts
     COUNT(*) FILTER (WHERE p.status = 'available')::INT,
     COUNT(*) FILTER (WHERE p.status = 'assigned')::INT,
@@ -118,10 +147,19 @@ AS $$
     COUNT(*) FILTER (WHERE p.status = 'maintenance')::INT,
     -- footer: hidden count
     COUNT(*) FILTER (WHERE p.hidden = true)::INT,
-    -- money
-    COALESCE(SUM(p.sale_price_usd) FILTER (WHERE p.status = 'assigned'), 0)::NUMERIC,
-    COALESCE(MAX(cr.revenue_at_event), 0)::NUMERIC, -- MAX since cumulative_revenue is 1 row per category
-    COALESCE(SUM(p.cost_usd), 0)::NUMERIC
+    -- money — gated on is_admin (zeros for viewer)
+    CASE WHEN v_show_money
+      THEN COALESCE(SUM(p.sale_price_usd) FILTER (WHERE p.status = 'assigned'), 0)::NUMERIC
+      ELSE 0::NUMERIC
+    END,
+    CASE WHEN v_show_money
+      THEN COALESCE(MAX(cr.revenue_at_event), 0)::NUMERIC
+      ELSE 0::NUMERIC
+    END,
+    CASE WHEN v_show_money
+      THEN COALESCE(SUM(p.cost_usd), 0)::NUMERIC
+      ELSE 0::NUMERIC
+    END
   FROM proxy_categories c
   LEFT JOIN proxies p
     ON p.category_id = c.id
@@ -130,6 +168,7 @@ AS $$
     ON cr.category_id = c.id
   GROUP BY c.id
   ORDER BY c.sort_order ASC NULLS LAST, c.name ASC;
+END;
 $$;
 
 REVOKE ALL ON FUNCTION get_category_dashboard() FROM PUBLIC;
@@ -205,6 +244,67 @@ CREATE TRIGGER trg_proxies_snapshot_category_defaults
 
 COMMENT ON FUNCTION fn_proxy_snapshot_category_defaults() IS
   'Wave 27 — fills NEW row with category defaults if its fields are NULL/empty. Source of truth for "proxy follows category" rule. Fires on INSERT only (snapshot semantics — edits to category defaults do NOT cascade retroactively).';
+
+
+-- ─── 3b. Snapshot category_id + sale_price into proxy_events ─
+-- Wave 27 v2 [debugger #2 fix] — Pre-fix the cumulative_revenue
+-- CTE attributed all-time revenue to the proxy's CURRENT category.
+-- If admin moved proxy P from category A to B AFTER the assignment
+-- event, all P's historical revenue silently moved to B and A
+-- showed 0. Now: at the moment a proxy_events.assigned row is
+-- inserted, we snapshot the proxy's then-current category_id +
+-- sale_price_usd into details JSONB. The dashboard RPC reads from
+-- this snapshot if present, falling back to current values for
+-- pre-Wave 27 events (best-effort backfill).
+--
+-- This trigger fires for ALL assigned event paths automatically —
+-- web/bot/RPC don't need to remember to pass the snapshot in
+-- details. Callers can still pass explicit values to override.
+
+CREATE OR REPLACE FUNCTION fn_proxy_event_snapshot_assigned_context()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_category_id UUID;
+  v_sale_price NUMERIC;
+BEGIN
+  -- Only snapshot for 'assigned' events.
+  IF NEW.event_type <> 'assigned' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Skip if caller already provided both fields.
+  IF (NEW.details ? 'category_id_at_event')
+     AND (NEW.details ? 'sale_price_usd_at_event') THEN
+    RETURN NEW;
+  END IF;
+
+  -- Look up current values on the proxy.
+  SELECT category_id, sale_price_usd
+    INTO v_category_id, v_sale_price
+  FROM proxies
+  WHERE id = NEW.proxy_id;
+
+  -- Inject into details. jsonb_build_object handles null cleanly.
+  NEW.details := COALESCE(NEW.details, '{}'::jsonb)
+    || jsonb_build_object(
+         'category_id_at_event',  v_category_id,
+         'sale_price_usd_at_event', v_sale_price
+       );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_proxy_events_snapshot_assigned ON proxy_events;
+CREATE TRIGGER trg_proxy_events_snapshot_assigned
+  BEFORE INSERT ON proxy_events
+  FOR EACH ROW EXECUTE FUNCTION fn_proxy_event_snapshot_assigned_context();
+
+COMMENT ON FUNCTION fn_proxy_event_snapshot_assigned_context() IS
+  'Wave 27 v2 — snapshots proxy.category_id + sale_price_usd into proxy_events.details for assigned events. Lets revenue analytics correctly attribute past assignments even after a proxy moves to a different category.';
 
 
 -- ─── 4. Retroactive backfill RPC ─────────────────────────────
