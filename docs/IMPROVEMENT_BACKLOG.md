@@ -6,6 +6,74 @@
 
 ---
 
+## Wave 27 status (snapshot 2026-05-04)
+
+Wave 27 đã ship qua PR #19–#38 với pattern bug-hunt + UX consistency + perf
+xen kẽ. Sau đây là các backlog items đã đóng vs còn mở.
+
+### ✅ Đóng trong Wave 27
+
+| ID | Issue | Đóng tại |
+|----|-------|----------|
+| P0-1 | Open Redirect `auth/callback?next=` | mig + route fix (Wave 23) |
+| P0-2 | RLS InitPlan — `is_admin()` per-row | mig 042 |
+| P0-3 | anon role REVOKE | mig 044 |
+| P0-4 | search_path SECURITY DEFINER | mig 043 + 062 + 066 |
+| P0-5 | Index trùng proxies(created_at, id) | mig 045 (Wave 23A) |
+| P0-6 | withCronLock chưa wire | PR #32 (v8 #3) — upsert error capture |
+| P1-1 | CSRF gap 13 endpoints | Wave 23 + PR #25 (CSRF assertSameOrigin) |
+| P1-3 | Supabase error.message leak | Wave 23 message-fence |
+| P1-4 | Cron expiry-warning N+1 + race counter | PR #34 (v9 #2) |
+| P1-6 | FK indexes thiếu | mig 045 |
+| P1-10 | React SortableHead define trong render | Wave 26-D-v3 |
+| P2-8 | useRealtimeChannel hook extract (factory) | PR #36 (useRealtimeCount factory) |
+| P2-9 | stats/analytics Cache-Control: public leak | route already scoped (Wave 22Y+) |
+| P2-14 | users/route.ts filter SQL injection | Wave 24 sanitization |
+| P2-13 | chat_messages trigram | mig 060 |
+
+### Wave 27 các add-on từ deep audit (không có trong backlog gốc)
+
+- **Soft-delete leaks active leases** (PR #34 v9 #1) — status guard
+- **Markdown injection** trên Telegram username với `_` (PR #32 v8 #1)
+- **State machine — reported_broken → expired** mismatch với mig 063 (PR #32 v8 #2)
+- **toLocaleDateString locale drift** trên Vercel runtime (PR #32 v8 #5)
+- **useUrlFilters hook deps reactivity** — parse ref pin (PR #32 v8 #4)
+- **Warranty approve null expires_at** — perpetual lease silent grant (PR #34 v9 #3)
+- **a11y/mobile sweep 8 fixes** — `/users` filter row + page header + bulk
+  ConfirmDialog + bulk progress + proxy-table aria-selected + speed
+  glyph + proxy-form 2-col + ConfirmDialog VI defaults (PR #35)
+- **BulkActionBar shared shell** — adopted /categories + /proxies +
+  /requests + /users + /trash/{proxies,requests,users} (PR #21, #31, #33)
+- **EmptyState canonical preset** — adopted /requests, /warranty,
+  /proxies, /users (PR #30, #31)
+- **Categories card grid + RPC dashboard + apply-defaults flow** (PR #21, #22)
+- **Perf v10 — 3 partial indexes (chat_messages, proxy_events, proxies
+  expiry) + lower health-check batch cap 2000→500** (PR #37)
+- **Perf v10 — get_analytics RPC rewrite (correlated → CTE) +
+  /dashboard channel scope** (PR #38)
+
+### Còn mở (rút gọn)
+
+| ID | Issue | Ghi chú |
+|----|-------|---------|
+| P1-2 | CASCADE DELETE proxy_requests + chat_messages | mig 046 đổi sang RESTRICT cho proxies; chat_messages còn open |
+| P1-5 | Apply pgsodium cho username/password | mig 020 đã prep, chờ deploy decision |
+| P1-7 | `/api/health` public expose DB | chưa fix |
+| P1-8 | recover-2fa rate limit thiếu IP-based | chưa fix |
+| P1-9 | Import error.message leak | chưa fix |
+| P1-11 | i18n.tsx setState trong useEffect | chưa fix |
+| P1-12 | recharts static import ~200KB | chưa `dynamic()` |
+| P2-1 | Service layer port từ VIA | refactor lớn, defer |
+| P2-2 | OpenAPI auto-gen từ Zod | chưa start |
+| P2-3 | Audit module port từ VIA | chưa start |
+| P2-5 | 27 chỗ `.catch(console.error)` | partial — một số đã fix qua các PR bug-hunt |
+| P2-6 | 163 console.* → logger.ts | chưa thay |
+| P2-7 | Drop 17 `any` types | partial — bug-hunt PRs đã đụng vài chỗ |
+| P3-1..4 | Dead file cleanup | chưa làm; src/proxy.ts còn nghi vấn middleware |
+| P3-10 | Playwright E2E setup + 3 critical flow | chưa start |
+
+---
+
 ## P0 — CRITICAL (làm ngay, blocker)
 
 | ID | Issue | Impact | Conf | Ease | ICE | Source | Effort |
