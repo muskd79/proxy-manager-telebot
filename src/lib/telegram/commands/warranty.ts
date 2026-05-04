@@ -193,16 +193,25 @@ export async function handleWarrantyReason(
   await ctx.answerCallbackQuery();
 
   // Reason "other" → state machine prompts for free-text input.
+  //
+  // Wave 26-D bug hunt v5 [debugger #4, HIGH] — REPLY FIRST, then
+  // SET STATE. Pre-fix the order was setBotState → reply; if reply
+  // threw (Telegram 5xx), state was already
+  // `awaiting_warranty_reason_text` but the user never saw the
+  // prompt. Every subsequent text message was silently consumed by
+  // handleWarrantyReasonText with no visible acknowledgment until
+  // the 30-min state TTL cleared. Now: send the prompt first; only
+  // commit state if the prompt landed.
   if (reasonCode === "other") {
-    await setBotState(user.id, {
-      step: "awaiting_warranty_reason_text",
-      proxyId,
-    });
     const text =
       lang === "vi"
         ? "Vui lòng *gõ mô tả lý do* (tối thiểu 5 ký tự, tối đa 2000):"
         : "Please *type the reason* (min 5, max 2000 chars):";
     await ctx.reply(text, { parse_mode: "Markdown" });
+    await setBotState(user.id, {
+      step: "awaiting_warranty_reason_text",
+      proxyId,
+    });
     return;
   }
 

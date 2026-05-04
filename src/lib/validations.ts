@@ -28,8 +28,8 @@ export const CreateProxySchema = z.object({
   category_id: z.string().uuid().nullable().optional(),
   // Wave 22K — per-proxy purchase metadata (denorm from purchase_lots).
   purchase_date: z.string().nullable().optional(),
-  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
-  sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
+  sale_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
   vendor_source: z.string().max(200).nullable().optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
   notes: z.string().max(1000).nullable().optional(),
@@ -53,8 +53,8 @@ export const UpdateProxySchema = z.object({
   category_id: z.string().uuid().nullable().optional(),
   // Wave 22K — purchase metadata mutable.
   purchase_date: z.string().nullable().optional(),
-  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
-  sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
+  sale_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
   vendor_source: z.string().max(200).nullable().optional(),
   status: z.enum(["available", "assigned", "maintenance"]).optional(),
   // Wave 22C: tags removed in favour of category_id (Wave 22A).
@@ -96,8 +96,8 @@ export const ImportProxiesSchema = z.object({
   vendor_source: z.string().max(200).optional(),
   purchase_date: z.string().optional(),
   expires_at: z.string().optional(),
-  purchase_price_usd: z.coerce.number().min(0).max(1_000_000).optional(),
-  sale_price_usd: z.coerce.number().min(0).max(1_000_000).optional(),
+  purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).optional(),
+  sale_price_usd: z.coerce.number().finite().min(0).max(1_000_000).optional(),
 });
 
 // ─── Proxy health check ─────────────────────────────────────────
@@ -207,7 +207,7 @@ export const CreateCategorySchema = z.object({
   color: z.string().min(1).max(30).default("purple"),
   icon: z.string().min(1).max(50).default("folder"),
   sort_order: z.coerce.number().int().min(0).max(999_999).optional(),
-  default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
   min_stock_alert: z.coerce.number().int().min(0).optional(),
   // Wave 22G — rich-category defaults snapshot to new proxies in this group.
   default_country: z.string().min(2).max(64).nullable().optional(),
@@ -217,8 +217,8 @@ export const CreateCategorySchema = z.object({
   default_network_type: NetworkTypeText.nullable().optional(),
   // Wave 22K — purchase metadata defaults.
   default_vendor_source: z.string().min(1).max(200).nullable().optional(),
-  default_purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
-  default_sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
+  default_sale_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
 });
 
 export const UpdateCategorySchema = z.object({
@@ -228,7 +228,7 @@ export const UpdateCategorySchema = z.object({
   icon: z.string().min(1).max(50).optional(),
   sort_order: z.coerce.number().int().min(0).max(999_999).optional(),
   is_hidden: z.boolean().optional(),
-  default_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
   min_stock_alert: z.coerce.number().int().min(0).optional(),
   // Wave 22G — admin can edit defaults; only NEW proxies pick them up
   // (snapshot semantics — existing proxies untouched).
@@ -238,8 +238,8 @@ export const UpdateCategorySchema = z.object({
   default_network_type: NetworkTypeText.nullable().optional(),
   // Wave 22K — purchase metadata defaults.
   default_vendor_source: z.string().min(1).max(200).nullable().optional(),
-  default_purchase_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
-  default_sale_price_usd: z.coerce.number().min(0).max(1_000_000).nullable().optional(),
+  default_purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
+  default_sale_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
 });
 
 export const ReorderCategoriesSchema = z.object({

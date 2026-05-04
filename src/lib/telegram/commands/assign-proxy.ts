@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { t, fillTemplate } from "../messages";
 import { sendTelegramMessage } from "../send";
+import { notifyAllAdmins } from "../notify-admins";
 import { stripBackticks } from "../format";
 import { logChatMessage, logActivity } from "../logging";
 import { checkRateLimit, loadGlobalCaps } from "../rate-limit";
@@ -259,34 +260,22 @@ export async function createManualRequest(
     user_agent: null,
   });
 
-  // Notify admins about the new pending request
-  notifyAdminsNewRequest(user, proxyType).catch(console.error);
-
-  return { success: true, text };
-}
-
-/**
- * Notify all admin Telegram IDs about a new pending proxy request.
- */
-async function notifyAdminsNewRequest(
-  user: Record<string, unknown>,
-  proxyType: string
-) {
-  const { data: setting } = await supabaseAdmin
-    .from("settings")
-    .select("value")
-    .eq("key", "admin_telegram_ids")
-    .single();
-
-  if (!setting?.value?.value) return;
-  const adminIds: number[] = setting.value.value;
-
+  // Notify admins about the new pending request.
+  //
+  // Wave 26-D bug hunt v5 [debugger #1, CRITICAL] — pre-fix this used
+  // a private `notifyAdminsNewRequest` helper that read ONLY
+  // `settings.admin_telegram_ids` (a denormalized list), missing
+  // admins registered solely via the `admins` table with their
+  // telegram_id set. Same function also used a bare `for` loop with
+  // fire-and-forget `.catch()`, no Promise.allSettled tracking. Now
+  // delegates to the shared `notifyAllAdmins` (notify-admins.ts)
+  // which queries BOTH sources, uses Promise.allSettled, and surfaces
+  // structured failures (lessons from earlier rounds preserved).
   const username = user.username
     ? "@" + user.username
     : (user.first_name as string) || "Unknown";
-  const text = `[!] New proxy request\n\nUser: ${username}\nType: ${proxyType.toUpperCase()}\n\nUse /requests to approve/reject.`;
+  const adminText = `[!] New proxy request\n\nUser: ${username}\nType: ${proxyType.toUpperCase()}\n\nUse /requests to approve/reject.`;
+  notifyAllAdmins(adminText).catch(console.error);
 
-  for (const adminId of adminIds) {
-    sendTelegramMessage(adminId, text).catch(console.error);
-  }
+  return { success: true, text };
 }
