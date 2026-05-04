@@ -180,6 +180,20 @@ export default function WarrantyPage() {
   }, []);
 
   // ─── Per-status counts (badge) ─────────────────────────────────
+  //
+  // Wave 26-D bug hunt v4 [MEDIUM] — decouple from `claims`.
+  //
+  // Pre-fix: `[claims]` as dep meant every realtime update on
+  // warranty_claims fired:
+  //   1. fetchClaims() (1 HTTP request)
+  //   2. -> setClaims() bumps the array
+  //   3. -> this effect fires
+  //   4. -> 3 parallel HTTP requests for status counts
+  // = 4 HTTP requests per single DB write. Under moderate admin
+  // activity this fanned out continuously and turned the page into
+  // a request-spam machine. The /requests page already does it right
+  // (deps = []) — load once on mount, accept eventual staleness for
+  // the badge counts.
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   useEffect(() => {
     let cancelled = false;
@@ -211,7 +225,19 @@ export default function WarrantyPage() {
     return () => {
       cancelled = true;
     };
-  }, [claims]); // refresh counts when list changes too
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Wave 26-D bug hunt v4 [MEDIUM] — clear dialog state on filter
+  // change. Pre-fix if admin opened the approve dialog and then
+  // changed the filter tab (e.g., Pending → All), `activeClaim`
+  // held a stale row from the previous list. The dialog stayed
+  // open with possibly-out-of-scope data.
+  useEffect(() => {
+    setActiveClaim(null);
+    setApproveOpen(false);
+    setRejectOpen(false);
+  }, [filters]);
 
   const activeCount = useMemo(() => countActiveWarrantyFilters(filters), [filters]);
 

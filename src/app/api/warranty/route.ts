@@ -21,20 +21,15 @@ import { requireAnyRole } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { captureError } from "@/lib/error-tracking";
 import { CreateWarrantyClaimSchema } from "@/lib/validations/warranty";
-import { checkWarrantyEligibility, WARRANTY_REJECT_LABEL_VI } from "@/lib/warranty/eligibility";
-import { loadWarrantySettings } from "@/lib/warranty/settings";
-import { logProxyEvent } from "@/lib/warranty/events";
+import { WARRANTY_REJECT_LABEL_VI } from "@/lib/warranty/eligibility";
+// Wave 26-D bug hunt v4 [HIGH] — submit pipeline is now shared with bot.
+import { submitWarrantyClaimCore } from "@/lib/warranty/submit";
 import { isUuid } from "@/lib/uuid";
 import type {
   ApiResponse,
   PaginatedResponse,
 } from "@/types/api";
-import type {
-  Proxy,
-  WarrantyClaim,
-  WarrantyClaimStatus,
-  WarrantyReasonCode,
-} from "@/types/database";
+import type { Proxy, WarrantyClaim } from "@/types/database";
 
 const PAGE_MAX = 100;
 
@@ -52,6 +47,101 @@ interface WarrantyClaimWithJoins extends WarrantyClaim {
     email: string;
     full_name: string | null;
   } | null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Wave 26-D bug hunt v4 [HIGH] — explicit row→typed mapper to replace
+ * the unsafe `as unknown as WarrantyClaimWithJoins[]` cast.
+ *
+ * Supabase JS infers JOIN results with a `GenericStringError | T`
+ * union per relation. The previous double-cast hid all type errors;
+ * if a join shape ever drifted (e.g. different FK alias, FK ambiguity
+ * causing array-of-rows instead of single-row), the cast still
+ * compiled and the consumer crashed at runtime on the missing field.
+ *
+ * Now: extract each expected field by name, defaulting to null on
+ * unexpected shapes. If a future schema change breaks an alias, the
+ * worst case is the joined object is `null` (the table renders "—")
+ * rather than an unhandled exception.
+ */
+function pickProxy(
+  raw: unknown,
+): WarrantyClaimWithJoins["proxy"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  // If the row has a Supabase `error` field, treat as null.
+  if ("error" in r && r.error !== null && r.error !== undefined) return null;
+  if (typeof r.id !== "string") return null;
+  return {
+    id: r.id,
+    host: typeof r.host === "string" ? r.host : "",
+    port: typeof r.port === "number" ? r.port : 0,
+    type: r.type as Proxy["type"],
+    status: r.status as Proxy["status"],
+    category_id: typeof r.category_id === "string" ? r.category_id : null,
+    network_type: typeof r.network_type === "string" ? (r.network_type as Proxy["network_type"]) : null,
+    country: typeof r.country === "string" ? r.country : null,
+  };
+}
+
+function pickReplacement(
+  raw: unknown,
+): WarrantyClaimWithJoins["replacement"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if ("error" in r && r.error !== null && r.error !== undefined) return null;
+  if (typeof r.id !== "string") return null;
+  return {
+    id: r.id,
+    host: typeof r.host === "string" ? r.host : "",
+    port: typeof r.port === "number" ? r.port : 0,
+    type: r.type as Proxy["type"],
+  };
+}
+
+function pickUser(raw: unknown): WarrantyClaimWithJoins["user"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if ("error" in r && r.error !== null && r.error !== undefined) return null;
+  if (typeof r.id !== "string") return null;
+  return {
+    id: r.id,
+    telegram_id: typeof r.telegram_id === "number" ? r.telegram_id : 0,
+    username: typeof r.username === "string" ? r.username : null,
+    first_name: typeof r.first_name === "string" ? r.first_name : null,
+  };
+}
+
+function pickAdmin(
+  raw: unknown,
+): WarrantyClaimWithJoins["resolved_by_admin"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if ("error" in r && r.error !== null && r.error !== undefined) return null;
+  if (typeof r.id !== "string") return null;
+  return {
+    id: r.id,
+    email: typeof r.email === "string" ? r.email : "",
+    full_name: typeof r.full_name === "string" ? r.full_name : null,
+  };
+}
+
+function mapJoinedRow(raw: unknown): WarrantyClaimWithJoins {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  // The base WarrantyClaim columns come straight off the row — Supabase
+  // returns them as native JS values that match our generated types.
+  // We trust them but extract only the fields we use to keep the cast
+  // narrow.
+  const base = r as unknown as WarrantyClaim;
+  return {
+    ...base,
+    proxy: pickProxy(r.proxy),
+    user: pickUser(r.user),
+    replacement: pickReplacement(r.replacement),
+    resolved_by_admin: pickAdmin(r.resolved_by_admin),
+  };
 }
 
 // ─── GET /api/warranty (admin list with filters) ──────────────────────
@@ -142,14 +232,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Wave 26-D bug hunt v4 [HIGH] — replace blanket `as unknown as`
+    // cast with row-level field extraction.
+    //
+    // Pre-fix `data as unknown as WarrantyClaimWithJoins[]` was a
+    // double-cast that bypassed TypeScript entirely. If Supabase ever
+    // returned a row whose joined `proxy` was actually an error object
+    // or an array (FK ambiguity), the cast still compiled and runtime
+    // crashed at `claim.proxy?.host` in the table cell.
+    //
+    // Now: `mapJoinedRow` is the single point of trust. It reads each
+    // expected field by name, falls back to null on missing/unexpected
+    // shapes, and returns a strongly-typed `WarrantyClaimWithJoins`.
+    // If the join shape changes, it's a single-place fix instead of
+    // an opaque cast bug.
     const total = count ?? 0;
     const response: ApiResponse<PaginatedResponse<WarrantyClaimWithJoins>> = {
       success: true,
       data: {
-        // Supabase JS infers union with GenericStringError on JOIN
-        // queries. Double-cast keeps the public API contract clean
-        // without polluting the join chain with type guards.
-        data: (data as unknown as WarrantyClaimWithJoins[]) ?? [],
+        data: (data ?? []).map(mapJoinedRow),
         total,
         page,
         pageSize,
@@ -246,81 +347,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch the proxy + user's claims (full set within 30 days) +
-    // settings for the eligibility gate.
-    //
-    // Wave 26-D bug hunt [HIGH-3, security H3] — drop the .limit(50)
-    // that pre-fix truncated the eligibility gate's view. With a
-    // raised max_per_30d, a user with 50+ historical claims could
-    // bypass the cap silently. Scope query to last 30 days only —
-    // older claims don't matter for any of the 3 caps (pending,
-    // 30d cap, cooldown all live in the trailing 30d window).
-    const sinceIso = new Date(
-      Date.now() - 30 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const [proxyRes, claimsRes, settings] = await Promise.all([
-      supabaseAdmin.from("proxies").select("*").eq("id", proxy_id).single(),
-      supabaseAdmin
-        .from("warranty_claims")
-        .select("id, proxy_id, status, created_at")
-        .eq("user_id", userId)
-        .gte("created_at", sinceIso)
-        .order("created_at", { ascending: false }),
-      loadWarrantySettings(),
-    ]);
-
-    if (proxyRes.error || !proxyRes.data) {
-      return NextResponse.json(
-        { success: false, error: "Proxy not found" } satisfies ApiResponse<never>,
-        { status: 404 },
-      );
-    }
-
-    // Run the eligibility gate.
-    const eligibility = checkWarrantyEligibility({
-      proxy: proxyRes.data as Proxy,
+    // Wave 26-D bug hunt v4 [HIGH] — delegate the 4-step submit pipeline
+    // (eligibility gate + insert + status transition + audit) to the
+    // shared `submitWarrantyClaimCore` so the bot path and HTTP path
+    // can never drift again. The pre-fix duplication had ALREADY caused
+    // a divergence (bot path missed `proxyRes.error` check).
+    const result = await submitWarrantyClaimCore({
       userId,
-      userClaims: claimsRes.data ?? [],
-      settings,
+      proxyId: proxy_id,
+      reasonCode: reason_code,
+      reasonText: reason_text ?? null,
     });
-    if (!eligibility.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: eligibility.code,
-          message: WARRANTY_REJECT_LABEL_VI[eligibility.code],
-        } satisfies ApiResponse<never>,
-        { status: 422 },
-      );
-    }
 
-    // Insert claim + atomic state transition on the proxy.
-    // Wave 26-D — transaction would be ideal but Supabase JS doesn't
-    // expose a transaction primitive directly. We do the 2 writes
-    // sequentially and roll back the proxy update if claim insert
-    // fails. The reverse (claim succeeded but proxy update failed)
-    // is rare (FK constraint already passed) and would leave a
-    // pending claim with status_changed event — admin can resolve.
-    const { data: claim, error: claimErr } = await supabaseAdmin
-      .from("warranty_claims")
-      .insert({
-        proxy_id,
-        user_id: userId,
-        reason_code,
-        reason_text: reason_text ?? null,
-        status: "pending" as WarrantyClaimStatus,
-      })
-      .select("*")
-      .single();
-
-    if (claimErr || !claim) {
-      // Wave 26-D bug hunt [HIGH-1, debugger #1] — partial UNIQUE
-      // index in mig 058 raises 23505 (unique_violation) when two
-      // simultaneous taps both try to insert pending claims for the
-      // same (user, proxy). Translate to 409 with a friendly message
-      // instead of a generic 500.
-      const code = (claimErr as { code?: string } | null)?.code;
-      if (code === "23505") {
+    switch (result.kind) {
+      case "ok":
+        return NextResponse.json(
+          {
+            success: true,
+            data: result.claim,
+          } satisfies ApiResponse<WarrantyClaim>,
+          { status: 201 },
+        );
+      case "proxy_not_found":
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Proxy not found",
+          } satisfies ApiResponse<never>,
+          { status: 404 },
+        );
+      case "ineligible":
+        return NextResponse.json(
+          {
+            success: false,
+            error: result.code,
+            message: WARRANTY_REJECT_LABEL_VI[result.code],
+          } satisfies ApiResponse<never>,
+          { status: 422 },
+        );
+      case "duplicate_pending":
         return NextResponse.json(
           {
             success: false,
@@ -329,50 +394,25 @@ export async function POST(request: NextRequest) {
           } satisfies ApiResponse<never>,
           { status: 409 },
         );
+      case "internal_error":
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to create claim",
+          } satisfies ApiResponse<never>,
+          { status: 500 },
+        );
+      default: {
+        // Exhaustiveness — TS yells if a new kind is added without
+        // a matching arm here.
+        const _exhaustive: never = result;
+        void _exhaustive;
+        return NextResponse.json(
+          { success: false, error: "Unknown result" } satisfies ApiResponse<never>,
+          { status: 500 },
+        );
       }
-      captureError(claimErr ?? new Error("Claim insert returned no row"), {
-        source: "api.warranty.create.insert",
-        extra: { proxy_id, userId, reason_code },
-      });
-      return NextResponse.json(
-        { success: false, error: "Failed to create claim" } satisfies ApiResponse<never>,
-        { status: 500 },
-      );
     }
-
-    // Transition proxy.status assigned → reported_broken.
-    const { error: statusErr } = await supabaseAdmin
-      .from("proxies")
-      .update({ status: "reported_broken" })
-      .eq("id", proxy_id)
-      .eq("status", "assigned"); // optimistic guard
-
-    if (statusErr) {
-      captureError(statusErr, {
-        source: "api.warranty.create.status_transition",
-        extra: { proxy_id, claim_id: claim.id },
-      });
-      // Don't fail the request — claim is in. Admin can resolve.
-    }
-
-    // Audit event — reported_broken. Best-effort.
-    await logProxyEvent({
-      proxy_id,
-      event_type: "reported_broken",
-      actor_type: "tele_user",
-      actor_id: userId,
-      related_user_id: userId,
-      details: {
-        reason_code,
-        reason_text: reason_text ?? null,
-        claim_id: claim.id,
-      },
-    });
-
-    return NextResponse.json(
-      { success: true, data: claim as WarrantyClaim } satisfies ApiResponse<WarrantyClaim>,
-      { status: 201 },
-    );
   } catch (err) {
     captureError(err, { source: "api.warranty.create.unexpected" });
     return NextResponse.json(

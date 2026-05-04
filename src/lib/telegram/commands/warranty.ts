@@ -23,7 +23,12 @@ import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logChatMessage } from "../logging";
-import { ChatDirection, MessageType, type Proxy } from "@/types/database";
+import {
+  ChatDirection,
+  MessageType,
+  type Proxy,
+  type TeleUser,
+} from "@/types/database";
 import { getOrCreateUser, getUserLanguage } from "../user";
 import { CB } from "../callbacks";
 import type { WarrantyReasonCode } from "../callbacks";
@@ -32,9 +37,9 @@ import {
   WARRANTY_REJECT_LABEL_VI,
 } from "@/lib/warranty/eligibility";
 import { loadWarrantySettings } from "@/lib/warranty/settings";
-import { logProxyEvent } from "@/lib/warranty/events";
+// Wave 26-D bug hunt v4 [HIGH] — shared submit core (was duplicated here).
+import { submitWarrantyClaimCore } from "@/lib/warranty/submit";
 import { setBotState, clearBotState } from "../state";
-import { captureError } from "@/lib/error-tracking";
 import { escapeMarkdown } from "../format";
 // Wave 26-D bug hunt v2 [MEDIUM] — single source of truth for warranty
 // labels (was duplicated across this file, the admin table, and the
@@ -202,7 +207,7 @@ export async function handleWarrantyReason(
   }
 
   // Other 5 reasons → submit immediately.
-  await submitWarrantyClaim(ctx, user.id, proxyId, reasonCode, null);
+  await submitWarrantyClaim(ctx, user, proxyId, reasonCode, null);
 }
 
 // ─── Step 3 (only when reason="other"): user types text ───────────
@@ -235,7 +240,7 @@ export async function handleWarrantyReasonText(
 
   // Clear state BEFORE submit so a slow API doesn't trap user.
   await clearBotState(user.id);
-  await submitWarrantyClaim(ctx, user.id, proxyId, "other", trimmed);
+  await submitWarrantyClaim(ctx, user, proxyId, "other", trimmed);
 }
 
 // ─── Step 4 (cancel button): clear state + dismiss ────────────────
@@ -249,98 +254,63 @@ export async function handleWarrantyCancel(ctx: Context): Promise<void> {
   await ctx.reply(lang === "vi" ? "Đã huỷ báo lỗi." : "Cancelled.");
 }
 
-// ─── Submit helper — actually POST to /api/warranty ──────────────
+// ─── Submit helper — calls the shared submit core then formats reply ──
+//
+// Wave 26-D bug hunt v4 [HIGH] — pre-fix this function duplicated the
+// entire 4-step submit pipeline (re-fetch + gate + insert + status
+// transition + audit) from /api/warranty POST. The two paths had ALREADY
+// drifted: the bot path's `if (!proxyRes.data)` missed `proxyRes.error`,
+// so a Supabase network error fell through to a `proxy: null` eligibility
+// call and crashed. The HTTP path was correct.
+//
+// Now both paths invoke `submitWarrantyClaimCore` from
+// `src/lib/warranty/submit.ts`. This file is reduced to: call the core,
+// translate the discriminated-union result into a Telegram reply (lang-
+// aware), and log the chat message.
+//
+// Pre-conditions: `user` MUST exist in tele_users with is_deleted=false.
+// `handleWarrantyReason` already confirmed via getOrCreateUser before
+// dispatching here, so we don't re-verify.
 async function submitWarrantyClaim(
   ctx: Context,
-  userId: string,
+  user: TeleUser,
   proxyId: string,
   reasonCode: WarrantyReasonCode,
   reasonText: string | null,
 ): Promise<void> {
-  const user = await getOrCreateUser(ctx);
-  if (!user) return;
   const lang = getUserLanguage(user);
 
-  // Direct DB insert via admin client — equivalent to POST /api/warranty
-  // but skips the HTTP round-trip + x-bot-secret dance. The API route
-  // is for external bot callers; the in-process bot has admin access
-  // already.
-  //
-  // Wave 26-D bug hunt [P0-4, code-reviewer P0-2] — re-run eligibility
-  // gate IMMEDIATELY before insert. Pre-fix the gate ran in
-  // handleWarrantyClaim (step 1) but there was a 30-min state TTL
-  // window during which a settings change / proxy expiry / concurrent
-  // admin action could invalidate the original eligibility. Now we
-  // re-fetch fresh proxy + claims + settings, re-run gate, on reject
-  // bail with a friendly message. Cheap (3 small queries) — worth the
-  // safety.
-  try {
-    const sinceIso = new Date(
-      Date.now() - 30 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const [proxyRes, claimsRes, settings] = await Promise.all([
-      supabaseAdmin.from("proxies").select("*").eq("id", proxyId).maybeSingle(),
-      supabaseAdmin
-        .from("warranty_claims")
-        .select("id, proxy_id, status, created_at")
-        .eq("user_id", userId)
-        .gte("created_at", sinceIso)
-        .order("created_at", { ascending: false }),
-      loadWarrantySettings(),
-    ]);
+  const result = await submitWarrantyClaimCore({
+    userId: user.id,
+    proxyId,
+    reasonCode,
+    reasonText,
+  });
 
-    if (!proxyRes.data) {
+  switch (result.kind) {
+    case "proxy_not_found": {
       await ctx.reply(
         lang === "vi" ? "Không tìm thấy proxy này." : "Proxy not found.",
       );
       return;
     }
-
-    const eligibility = checkWarrantyEligibility({
-      proxy: proxyRes.data,
-      userId,
-      userClaims: claimsRes.data ?? [],
-      settings,
-    });
-    if (!eligibility.allowed) {
+    case "ineligible": {
       const errMsg =
         lang === "vi"
-          ? WARRANTY_REJECT_LABEL_VI[eligibility.code]
-          : eligibility.code; // English fallback
+          ? WARRANTY_REJECT_LABEL_VI[result.code]
+          : result.code; // English fallback (codes are stable identifiers)
       await ctx.reply(`[!] ${errMsg}`);
       return;
     }
-
-    const { data: claim, error } = await supabaseAdmin
-      .from("warranty_claims")
-      .insert({
-        proxy_id: proxyId,
-        user_id: userId,
-        reason_code: reasonCode,
-        reason_text: reasonText,
-        status: "pending",
-      })
-      .select("id")
-      .single();
-
-    if (error || !claim) {
-      // Wave 26-D bug hunt [HIGH-1] — partial UNIQUE index in mig 058
-      // raises 23505 unique_violation when two simultaneous bot taps
-      // both try to insert pending claims for the same (user, proxy).
-      // Show a friendly message instead of a generic error.
-      const code = (error as { code?: string } | null)?.code;
-      if (code === "23505") {
-        await ctx.reply(
-          lang === "vi"
-            ? "[!] Bạn đã báo lỗi proxy này — đang chờ admin xử lý."
-            : "[!] You already reported this proxy — admin is reviewing.",
-        );
-        return;
-      }
-      captureError(error ?? new Error("Claim insert returned no row"), {
-        source: "bot.warranty.submit",
-        extra: { userId, proxyId, reasonCode },
-      });
+    case "duplicate_pending": {
+      await ctx.reply(
+        lang === "vi"
+          ? "[!] Bạn đã báo lỗi proxy này — đang chờ admin xử lý."
+          : "[!] You already reported this proxy — admin is reviewing.",
+      );
+      return;
+    }
+    case "internal_error": {
       await ctx.reply(
         lang === "vi"
           ? "[!] Có lỗi xảy ra. Vui lòng thử lại sau."
@@ -348,84 +318,64 @@ async function submitWarrantyClaim(
       );
       return;
     }
+    case "ok": {
+      // Build a friendly success message with the (escaped) reason text.
+      const reasonLabel =
+        lang === "vi"
+          ? REASON_LABEL_VI[reasonCode]
+          : translateReasonEn(reasonCode);
+      // User-typed reason_text may contain Markdown chars — escape so
+      // a `*` doesn't break the parse_mode rendering.
+      const safeReasonText = reasonText ? escapeMarkdown(reasonText) : null;
 
-    // Transition proxy.status assigned → reported_broken (atomic guard).
-    const { error: statusErr } = await supabaseAdmin
-      .from("proxies")
-      .update({ status: "reported_broken" })
-      .eq("id", proxyId)
-      .eq("status", "assigned");
-    if (statusErr) {
-      captureError(statusErr, {
-        source: "bot.warranty.submit.status_transition",
-        extra: { userId, proxyId, claim_id: claim.id },
-      });
+      const successText =
+        lang === "vi"
+          ? [
+              "*Đã ghi nhận báo lỗi*",
+              "",
+              `Lý do: ${reasonLabel}`,
+              safeReasonText ? `Mô tả: ${safeReasonText}` : null,
+              "",
+              "Admin sẽ kiểm tra và phản hồi sớm. Bạn có thể tiếp tục dùng các proxy khác bình thường.",
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              "*Warranty claim submitted*",
+              "",
+              `Reason: ${reasonLabel}`,
+              safeReasonText ? `Description: ${safeReasonText}` : null,
+              "",
+              "Admin will review and respond soon. You can continue using other proxies normally.",
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+      await ctx.reply(successText, { parse_mode: "Markdown" });
+
+      await logChatMessage(
+        user.id,
+        null,
+        ChatDirection.Outgoing,
+        `[Warranty submitted] claim_id=${result.claim.id}`,
+        MessageType.Text,
+      );
+      return;
     }
-
-    // Audit event.
-    await logProxyEvent({
-      proxy_id: proxyId,
-      event_type: "reported_broken",
-      actor_type: "tele_user",
-      actor_id: userId,
-      related_user_id: userId,
-      details: { reason_code: reasonCode, reason_text: reasonText, claim_id: claim.id },
-    });
-
-    const reasonLabel =
-      lang === "vi"
-        ? REASON_LABEL_VI[reasonCode]
-        : translateReasonEn(reasonCode);
-    // User-typed reason_text may contain Markdown chars — escape so
-    // a `*` doesn't break the parse_mode rendering.
-    const safeReasonText = reasonText ? escapeMarkdown(reasonText) : null;
-
-    const successText =
-      lang === "vi"
-        ? [
-            "*Đã ghi nhận báo lỗi*",
-            "",
-            `Lý do: ${reasonLabel}`,
-            safeReasonText ? `Mô tả: ${safeReasonText}` : null,
-            "",
-            "Admin sẽ kiểm tra và phản hồi sớm. Bạn có thể tiếp tục dùng các proxy khác bình thường.",
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : [
-            "*Warranty claim submitted*",
-            "",
-            `Reason: ${reasonLabel}`,
-            safeReasonText ? `Description: ${safeReasonText}` : null,
-            "",
-            "Admin will review and respond soon. You can continue using other proxies normally.",
-          ]
-            .filter(Boolean)
-            .join("\n");
-
-    await ctx.reply(successText, { parse_mode: "Markdown" });
-
-    await logChatMessage(
-      userId,
-      null,
-      ChatDirection.Outgoing,
-      `[Warranty submitted] claim_id=${claim.id}`,
-      MessageType.Text,
-    );
-  } catch (err) {
-    captureError(err, {
-      source: "bot.warranty.submit.unexpected",
-      extra: { userId, proxyId, reasonCode },
-    });
-    await ctx.reply(
-      lang === "vi"
-        ? "[!] Có lỗi xảy ra. Vui lòng thử lại sau."
-        : "[!] An error occurred. Please try again.",
-    );
+    default: {
+      // Exhaustiveness — TypeScript flags any new kind we forget to handle.
+      const _exhaustive: never = result;
+      void _exhaustive;
+    }
   }
 }
 
 // ─── i18n helpers ───────────────────────────────────────────────
+//
+// Wave 26-D bug hunt v4 [LOW] — exhaustiveness guards. Pre-fix these
+// switch statements had no `default` so adding a new code to either
+// `WarrantyRejectCode` or `WarrantyReasonCode` would compile silently
+// and the bot would send `[!] undefined` to users.
 function translateRejectEn(
   code: keyof typeof WARRANTY_REJECT_LABEL_VI,
 ): string {
@@ -446,6 +396,15 @@ function translateRejectEn(
       return "You've used all warranty submissions for the past 30 days.";
     case "cooldown_active":
       return "Please wait a few minutes before submitting another claim.";
+    default: {
+      // If you see this at compile-time, add a case for the new code
+      // above. If you see it at runtime, the database returned a code
+      // not in our enum — return a safe fallback that won't render
+      // `undefined`.
+      const _exhaustive: never = code;
+      void _exhaustive;
+      return "Unable to submit warranty claim. Please try again.";
+    }
   }
 }
 
@@ -463,5 +422,10 @@ function translateReasonEn(code: WarrantyReasonCode): string {
       return "Auth failed";
     case "other":
       return "Other";
+    default: {
+      const _exhaustive: never = code;
+      void _exhaustive;
+      return String(code);
+    }
   }
 }
