@@ -18,6 +18,7 @@ import { ShieldAlert, RefreshCw } from "lucide-react";
 import { useRole } from "@/lib/role-context";
 import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/shared/pagination";
+import { EmptyState } from "@/components/shared/empty-state";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useSharedQuery } from "@/lib/shared-cache";
@@ -274,30 +275,18 @@ export default function WarrantyPage() {
         activeCount={activeCount}
       />
 
-      {/* Empty states */}
-      {!isLoading && claims.length === 0 && activeCount > 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <p className="text-sm font-medium">Không có claim nào khớp bộ lọc</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Thử bỏ bớt tiêu chí, hoặc đổi sang khoảng thời gian rộng hơn.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => setFilters({ ...DEFAULT_WARRANTY_FILTERS })}
-          >
-            Xoá hết bộ lọc
-          </Button>
-        </div>
-      )}
-
-      {!isLoading && claims.length === 0 && activeCount === 0 && (
-        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <p className="text-sm font-medium">Chưa có claim bảo hành nào</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Claim sẽ xuất hiện ở đây khi user báo lỗi proxy qua bot.
-          </p>
+      {/* Wave 27 UX-3 — adopt canonical EmptyState (was 2 inline divs). */}
+      {!isLoading && claims.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border bg-card">
+          <EmptyState
+            entity="warranty"
+            mode={activeCount > 0 ? "filter-empty" : "zero-data"}
+            onClearFilters={
+              activeCount > 0
+                ? () => setFilters({ ...DEFAULT_WARRANTY_FILTERS })
+                : undefined
+            }
+          />
         </div>
       )}
 
