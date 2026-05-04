@@ -160,6 +160,20 @@ export interface DashboardSummary {
   totalCostUsd: number;
 }
 
+/**
+ * Wave 27 bug hunt v7 [debugger #6, MEDIUM] — round money sums to 4
+ * decimal places to absorb IEEE 754 float drift. Postgres stores
+ * money as NUMERIC(10,4) — exact decimal — but Supabase JS
+ * deserialises it as a JS `number` (float). Accumulating 50+
+ * float values introduces sub-cent errors (`0.1 + 0.2 = 0.30000…04`)
+ * that show up in admin totals as bogus precision. Rounding to 4
+ * decimals matches the SQL column scale and keeps the dashboard
+ * aligned with `SELECT SUM(...)` queries.
+ */
+function roundMoney(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
+}
+
 export function summariseDashboard(
   rows: ReadonlyArray<CategoryDashboardRow>,
 ): DashboardSummary {
@@ -169,10 +183,11 @@ export function summariseDashboard(
     totalProxies: rows.reduce((acc, r) => acc + r.proxy_count, 0),
     totalAvailable: rows.reduce((acc, r) => acc + r.cnt_available, 0),
     totalAssigned: rows.reduce((acc, r) => acc + r.cnt_assigned, 0),
-    totalRevenueUsd: rows.reduce(
-      (acc, r) => acc + (r.revenue_usd_cumulative || 0),
-      0,
+    totalRevenueUsd: roundMoney(
+      rows.reduce((acc, r) => acc + (r.revenue_usd_cumulative || 0), 0),
     ),
-    totalCostUsd: rows.reduce((acc, r) => acc + (r.cost_usd_total || 0), 0),
+    totalCostUsd: roundMoney(
+      rows.reduce((acc, r) => acc + (r.cost_usd_total || 0), 0),
+    ),
   };
 }

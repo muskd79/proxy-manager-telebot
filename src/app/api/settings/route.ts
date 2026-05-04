@@ -265,8 +265,14 @@ export async function PUT(request: NextRequest) {
           });
         }
 
+        // Wave 27 bug hunt v7 [debugger #7, MEDIUM] — explicit
+        // AbortSignal timeout. Pre-fix: no timeout on the test-bot
+        // fetch; if Telegram unreachable, admin's browser request
+        // hung for Node's default socket timeout (~2 min). 5s is
+        // plenty for /getMe.
         const res = await fetch(
-          `https://api.telegram.org/bot${token}/getMe`
+          `https://api.telegram.org/bot${token}/getMe`,
+          { signal: AbortSignal.timeout(5_000) },
         );
         const result = await res.json();
 

@@ -76,12 +76,20 @@ async function runExpiryWarning() {
   // This is the dedup gate — proxies between buckets are skipped this
   // run and will be picked up in a later cron when they roll into a
   // bucket window.
+  //
+  // Wave 27 bug hunt v7 [debugger #3, MEDIUM] — tighten tolerance to
+  // ±6h so adjacent buckets don't overlap across a 24h cron interval.
+  // Pre-fix used ±12h on the 24h bucket, range [12h, 36h]. A proxy
+  // at 36h hit it on day 1; 24h later at 12h still hit (both endpoints
+  // inclusive) → user got two "Sắp hết hạn (24h)" DMs. New range
+  // [18h, 30h] eliminates that overlap. Long-term: ship an
+  // expiry_warning_sent_at idempotency column for true dedup.
   const dueProxies = expiringProxies.filter((p) => {
     const t = new Date(p.expires_at!).getTime();
     return (
-      isWithinBucket(t, nowMs, 72, 12) || // 3-day notice
-      isWithinBucket(t, nowMs, 24, 12) || // 1-day notice
-      isWithinBucket(t, nowMs, 6, 3) //   6h notice
+      isWithinBucket(t, nowMs, 72, 6) || // 3-day notice ±6h
+      isWithinBucket(t, nowMs, 24, 6) || // 1-day notice ±6h
+      isWithinBucket(t, nowMs, 6, 3) //   6h notice ±3h
     );
   });
 

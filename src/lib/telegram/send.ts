@@ -44,10 +44,20 @@ export async function sendTelegramMessage(
         bodyObj.reply_markup = inlineKeyboard;
       }
 
+      // Wave 27 bug hunt v7 [debugger #1, HIGH] — explicit AbortSignal
+      // timeout. Pre-fix: Node's undici fetch has no default timeout;
+      // a stalled `api.telegram.org` (BGP outage, partial TCP hang)
+      // would never reject the await, and the cron just sat there
+      // until Vercel killed the function at 10s — the remaining
+      // notifications in that batch were silently dropped (state
+      // already committed to DB). 8s ceiling sits below Vercel's 10s
+      // function limit so we always get a clean rejection + can
+      // continue the batch.
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyObj),
+        signal: AbortSignal.timeout(8_000),
       });
 
       if (res.ok) return { success: true };
@@ -120,9 +130,14 @@ export async function sendTelegramDocument(
   if (caption) formData.append("caption", caption);
 
   try {
+    // Wave 27 bug hunt v7 — same explicit timeout as sendTelegramMessage.
+    // Bigger ceiling (15s) because document upload is slower; still
+    // under Vercel's 10s default but ok for Pro plans (60s) where
+    // document delivery typically runs.
     const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
       method: "POST",
       body: formData,
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (res.ok) return { success: true };
