@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useRealtimeCount } from "./use-realtime-count";
 
 /**
  * Wave 22O — Realtime hook đếm số `proxy_requests` đang `pending`.
@@ -11,95 +10,42 @@ import { createClient } from "@/lib/supabase/client";
  *   "/admins page: no realtime sync — admin phải vào /requests
  *    để biết có pending. Miss request = user wait = user complain."
  *
+ * Wave 27 craft v3 — extracted shared subscribe/debounce/notification
+ * logic into useRealtimeCount. The strategy below is preserved as-is:
+ *
  * Strategy:
  *   1. Initial fetch của count khi mount.
  *   2. Realtime subscribe `proxy_requests` postgres_changes (INSERT
- *      + UPDATE) — refetch count on each event.
+ *      + UPDATE) — refetch count on each event (debounced ~300ms).
  *   3. Khi count tăng từ N → N+1 (request mới đến), trigger
- *      `Notification` API + sound.
+ *      `Notification` API.
  *   4. Cleanup subscription on unmount.
  *
  * Browser notification:
- *   - Yêu cầu permission lần đầu user mount component.
+ *   - Yêu cầu permission lần đầu user mount component (qua helper
+ *     `requestNotificationPermission`).
  *   - Hiển thị "Có yêu cầu proxy mới" với click → navigate /requests.
  *   - Tab inactive → vẫn show (browser-level).
- *   - Sound: bell.mp3 trong public/ (admin có thể disable trong /settings).
+ *   - Admin có thể disable trong /settings.
  */
 
 const NOTIF_KEY = "proxy_manager_notifications_enabled";
 
 export function usePendingRequests() {
-  const [count, setCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-    let prevCount = 0;
-
-    async function fetchCount() {
-      const { count: c, error } = await supabase
-        .from("proxy_requests")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
-        .eq("is_deleted", false);
-
-      if (error) {
-        console.error("usePendingRequests fetch error:", error.message);
-        setLoading(false);
-        return;
-      }
-      const newCount = c ?? 0;
-      // Browser notification khi count tăng (không trigger lúc initial load).
-      if (
-        prevCount !== 0 &&
-        newCount > prevCount &&
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        Notification.permission === "granted" &&
-        localStorage.getItem(NOTIF_KEY) !== "false"
-      ) {
-        try {
-          const n = new Notification("Yêu cầu proxy mới", {
-            body: `Có ${newCount - prevCount} yêu cầu mới đang chờ duyệt`,
-            icon: "/favicon.ico",
-            tag: "proxy-pending-request",
-          });
-          n.onclick = () => {
-            window.focus();
-            window.location.href = "/requests";
-            n.close();
-          };
-        } catch (e) {
-          console.error("Notification failed:", e);
-        }
-      }
-      prevCount = newCount;
-      setCount(newCount);
-      setLoading(false);
-    }
-
-    fetchCount();
-
-    // Realtime channel
-    const channel = supabase
-      .channel("pending-requests-count")
-      .on(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        "postgres_changes" as any,
-        { event: "*", schema: "public", table: "proxy_requests" },
-        () => {
-          // Debounce by ~300ms — multiple events in quick burst → 1 fetch
-          setTimeout(fetchCount, 300);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  return { count, loading };
+  return useRealtimeCount({
+    table: "proxy_requests",
+    // is_deleted=false ensures soft-deleted (trash) rows don't bump
+    // the badge — they're not actionable from the queue view.
+    filters: { status: "pending", is_deleted: false },
+    channelName: "pending-requests-count",
+    notification: {
+      storageKey: NOTIF_KEY,
+      title: "Yêu cầu proxy mới",
+      body: (delta) => `Có ${delta} yêu cầu mới đang chờ duyệt`,
+      tag: "proxy-pending-request",
+      href: "/requests",
+    },
+  });
 }
 
 /**
