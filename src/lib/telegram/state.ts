@@ -130,6 +130,32 @@ function serializeContext(state: BotState): Record<string, unknown> {
   }
 }
 
+/**
+ * Wave 27 bug hunt v6 [debugger #5, MEDIUM] — shared TTL-expiry resolver.
+ *
+ * Pre-fix: getBotState and getBotStateWithExpiry duplicated identical
+ * expiry handling, AND swallowed clearBotState errors. If the DELETE
+ * failed (transient DB hiccup), the row stayed but the function still
+ * returned `{ step: "idle" }` — correct for the user but the next bot
+ * message hits the same expired row and tries to clear again. High-
+ * frequency users could generate dozens of failed DELETE attempts/sec.
+ *
+ * Now: extracted helper logs the failure (so ops sees DB hiccups in
+ * error tracking) but still returns idle to the caller (the expired
+ * state is semantically gone whether or not the DB row got deleted).
+ */
+async function resolveExpiredState(teleUserId: string): Promise<BotState> {
+  try {
+    await clearBotState(teleUserId);
+  } catch (err) {
+    console.error(
+      `[bot-state] clearBotState failed during TTL expiry for tele_user_id=${teleUserId}:`,
+      err,
+    );
+  }
+  return { step: "idle" };
+}
+
 export async function getBotState(teleUserId: string): Promise<BotState> {
   const { data } = await supabaseAdmin
     .from("bot_conversation_state")
@@ -142,8 +168,7 @@ export async function getBotState(teleUserId: string): Promise<BotState> {
   if (data.updated_at) {
     const age = Date.now() - new Date(data.updated_at).getTime();
     if (age > STATE_TTL_MS && data.step !== "idle") {
-      await clearBotState(teleUserId);
-      return { step: "idle" };
+      return resolveExpiredState(teleUserId);
     }
   }
 
@@ -151,8 +176,7 @@ export async function getBotState(teleUserId: string): Promise<BotState> {
   const state = reconstructState(String(data.step), ctx);
   if (!state) {
     // Unknown step or missing required context (older deploy / corruption).
-    await clearBotState(teleUserId);
-    return { step: "idle" };
+    return resolveExpiredState(teleUserId);
   }
   return state;
 }
@@ -177,16 +201,16 @@ export async function getBotStateWithExpiry(
   if (data.updated_at) {
     const age = Date.now() - new Date(data.updated_at).getTime();
     if (age > STATE_TTL_MS && data.step !== "idle") {
-      await clearBotState(teleUserId);
-      return { state: { step: "idle" }, expired: true };
+      const cleared = await resolveExpiredState(teleUserId);
+      return { state: cleared, expired: true };
     }
   }
 
   const ctx = (data.context as Record<string, unknown>) || {};
   const state = reconstructState(String(data.step), ctx);
   if (!state) {
-    await clearBotState(teleUserId);
-    return { state: { step: "idle" }, expired: false };
+    const cleared = await resolveExpiredState(teleUserId);
+    return { state: cleared, expired: false };
   }
   return { state, expired: false };
 }

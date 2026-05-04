@@ -134,13 +134,24 @@ export function CategoryFormDialog({
   async function save() {
     setSubmitting(true);
     try {
+      // Wave 27 bug hunt v6 [debugger #4, MEDIUM] — write both legacy
+      // `default_price_usd` AND the new `default_sale_price_usd`
+      // simultaneously. The Wave 27 snapshot trigger
+      // (`fn_proxy_snapshot_category_defaults`, mig 059) reads from
+      // `default_sale_price_usd` only. Pre-fix the form sent only the
+      // legacy field — admins who set the "Giá mặc định" expected new
+      // proxies to inherit it but the trigger silently saw NULL.
+      // We keep the legacy field in sync for any older code that may
+      // still read it (defaults endpoint, future migrations).
+      const numericPrice = defaultPrice ? Number(defaultPrice) : null;
       const body: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim() || null,
         color,
         icon,
         sort_order: sortOrder,
-        default_price_usd: defaultPrice ? Number(defaultPrice) : null,
+        default_price_usd: numericPrice,
+        default_sale_price_usd: numericPrice,
         // Wave 22G snapshot defaults — null when blank so the
         // backend treats them as absent rather than empty strings.
         default_country: defaultCountry.trim() || null,

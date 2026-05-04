@@ -150,25 +150,63 @@ export default function CategoriesPage() {
   // partial success, retain failed IDs in selection so admin can
   // retry without rebuilding the selection.
 
+  /**
+   * Wave 27 bug hunt v6 [debugger #8, MEDIUM] — fan out bulk PATCH/DELETE
+   * via Promise.allSettled instead of awaiting each in a sequential
+   * for-loop. Pre-fix: 20 categories × ~200ms RTT = 4s blocked UI.
+   * Now: dominated by slowest single request (~500ms typical). Same
+   * partial-success handling preserved.
+   */
+  async function runBulk(
+    ids: string[],
+    perItem: (id: string) => Promise<Response>,
+  ): Promise<{ successCount: number; failedIds: string[] }> {
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        const res = await perItem(id);
+        return { id, ok: res.ok };
+      }),
+    );
+    const failedIds: string[] = [];
+    let successCount = 0;
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.ok) {
+        successCount++;
+      } else if (r.status === "fulfilled") {
+        failedIds.push(r.value.id);
+      } else {
+        // Promise rejected (network throw) — we don't have the id back,
+        // so we mark all otherwise-unaccounted ids as failed at end.
+        // In practice this branch is rare since fetch() resolves on
+        // HTTP errors instead of rejecting; rejection means transport.
+      }
+    }
+    // Backfill: any id whose Promise.allSettled entry rejected without
+    // a fulfilled value gets marked failed. This is a defensive safety
+    // net for runtime-only rejections (DNS, abort, etc).
+    const seenIds = new Set<string>();
+    results.forEach((r) => {
+      if (r.status === "fulfilled") seenIds.add(r.value.id);
+    });
+    for (const id of ids) {
+      if (!seenIds.has(id) && !failedIds.includes(id)) {
+        failedIds.push(id);
+      }
+    }
+    return { successCount, failedIds };
+  }
+
   async function bulkSetHidden(targetHidden: boolean) {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(true);
-    const failedIds: string[] = [];
-    let successCount = 0;
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/categories/${id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ is_hidden: targetHidden }),
-        });
-        if (res.ok) successCount++;
-        else failedIds.push(id);
-      } catch {
-        failedIds.push(id);
-      }
-    }
+    const { successCount, failedIds } = await runBulk(ids, (id) =>
+      fetch(`/api/categories/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ is_hidden: targetHidden }),
+      }),
+    );
     setBulkBusy(false);
     setSelectedIds(new Set(failedIds));
     if (successCount > 0 && failedIds.length === 0) {
@@ -191,17 +229,9 @@ export default function CategoriesPage() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(true);
-    const failedIds: string[] = [];
-    let successCount = 0;
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
-        if (res.ok) successCount++;
-        else failedIds.push(id);
-      } catch {
-        failedIds.push(id);
-      }
-    }
+    const { successCount, failedIds } = await runBulk(ids, (id) =>
+      fetch(`/api/categories/${id}`, { method: "DELETE" }),
+    );
     setBulkBusy(false);
     setSelectedIds(new Set(failedIds));
     setBulkDeleteOpen(false);

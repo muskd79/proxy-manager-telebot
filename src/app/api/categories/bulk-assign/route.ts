@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrAbove, actorLabel } from "@/lib/auth";
 import { logActivity } from "@/lib/logger";
@@ -38,7 +37,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabaseAdmin.rpc(
+    // Wave 27 bug hunt v6 [debugger #2, HIGH] — use the user-scoped
+    // `supabase` client (already authed via requireAdminOrAbove) so any
+    // RLS policy on `proxies` or the RPC's own `is_admin()` checks
+    // continue to apply. Pre-fix used `supabaseAdmin` which bypasses
+    // RLS entirely — fine today but a silent foot-gun if RLS is
+    // tightened later.
+    const { data, error } = await supabase.rpc(
       "assign_proxies_to_category",
       {
         p_proxy_ids: parsed.data.proxy_ids,
