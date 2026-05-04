@@ -59,9 +59,34 @@ export async function sendTelegramMessage(
         return { success: false, error: `Telegram API ${res.status}: ${data.description || "Unknown"}` };
       }
 
-      // Retry on temporary errors (429, 500, 502, 503)
+      // Retry on temporary errors (429, 500, 502, 503).
+      //
+      // Wave 26-D bug hunt v5 [debugger #3, HIGH] — honor Telegram's
+      // Retry-After header on 429. Pre-fix used the fixed
+      // RETRY_DELAYS array regardless; Telegram rate-limit retries
+      // could stall the cron fan-out for up to 7s/message and
+      // chain into Vercel function timeouts.
+      // Telegram's Retry-After is in seconds. Cap at 30s so a misbehaving
+      // header value (or an unusually long backoff) doesn't pin the
+      // cron worker.
       if (attempt < MAX_RETRIES - 1) {
-        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+        let delayMs = RETRY_DELAYS[attempt];
+        if (res.status === 429) {
+          const retryAfterRaw =
+            res.headers.get("retry-after") ??
+            (data as { parameters?: { retry_after?: number } }).parameters
+              ?.retry_after;
+          const retryAfterSec =
+            typeof retryAfterRaw === "string"
+              ? parseInt(retryAfterRaw, 10)
+              : typeof retryAfterRaw === "number"
+                ? retryAfterRaw
+                : NaN;
+          if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+            delayMs = Math.min(retryAfterSec * 1000, 30_000);
+          }
+        }
+        await new Promise(r => setTimeout(r, delayMs));
         continue;
       }
 
