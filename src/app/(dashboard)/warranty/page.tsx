@@ -307,18 +307,31 @@ export default function WarrantyPage() {
 
       <ApproveWarrantyDialog
         open={approveOpen}
-        onOpenChange={setApproveOpen}
+        // Wave 26-D bug hunt [MED, code-reviewer P1-4] — clear
+        // activeClaim when dialog closes so the next click on a
+        // different row in the table doesn't see stale data.
+        // Pre-fix: open A → close → realtime updates list → click B →
+        // dialog briefly shows A's reason_text before re-render.
+        onOpenChange={(open) => {
+          setApproveOpen(open);
+          if (!open) setActiveClaim(null);
+        }}
         claim={activeClaim}
         onApproved={() => {
           void fetchClaims();
+          setActiveClaim(null);
         }}
       />
       <RejectWarrantyDialog
         open={rejectOpen}
-        onOpenChange={setRejectOpen}
+        onOpenChange={(open) => {
+          setRejectOpen(open);
+          if (!open) setActiveClaim(null);
+        }}
         claim={activeClaim}
         onRejected={() => {
           void fetchClaims();
+          setActiveClaim(null);
         }}
       />
     </div>

@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireAnyRole } from "@/lib/auth";
@@ -110,9 +111,22 @@ export async function GET(request: NextRequest) {
       q = q.eq("user_id", userIdFilter);
     }
     if (search) {
-      // Best-effort search across reason_text + rejection_reason. Both
-      // free text up to 2000 chars; tsvector overkill for the volume.
-      q = q.or(`reason_text.ilike.%${search}%,rejection_reason.ilike.%${search}%`);
+      // Wave 26-D bug hunt [HIGH-1] — sanitize before string-interpolating
+      // into PostgREST .or() filter. PostgREST treats `,`, `(`, `)`, `.`
+      // as filter syntax separators; admin-typed garbage could escape
+      // and either bypass other filters or trip a server-side parse
+      // error. Pre-fix: search="x," allowed manipulating the filter
+      // tree.
+      // Strategy: strip every PostgREST-meaningful char + cap length.
+      const safeSearch = search
+        .replace(/[,()*%\\]/g, " ")
+        .trim()
+        .slice(0, 100);
+      if (safeSearch.length >= 2) {
+        q = q.or(
+          `reason_text.ilike.%${safeSearch}%,rejection_reason.ilike.%${safeSearch}%`,
+        );
+      }
     }
 
     const { data, error, count } = await q
@@ -163,9 +177,22 @@ export async function POST(request: NextRequest) {
 
   // Service-role check via header. Bot webhook adds this; admin web
   // doesn't need to call this endpoint at all.
+  //
+  // Wave 26-D bug hunt [P0-1, security C2] — timing-safe comparison.
+  // Pre-fix: `botSecret !== expected` allowed a timing oracle that
+  // could leak the secret one char at a time. Now use Node's
+  // crypto.timingSafeEqual which runs in constant time.
   const botSecret = request.headers.get("x-bot-secret");
   const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (!botSecret || !expected || botSecret !== expected) {
+  if (!botSecret || !expected) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" } satisfies ApiResponse<never>,
+      { status: 401 },
+    );
+  }
+  const a = Buffer.from(botSecret);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" } satisfies ApiResponse<never>,
       { status: 401 },
@@ -188,26 +215,52 @@ export async function POST(request: NextRequest) {
 
     const { proxy_id, reason_code, reason_text } = parsed.data;
 
-    // Bot supplies user_id directly (it knows the tele_user from the
-    // session). Service-role caller, so trust the supplied id but
-    // sanity-check shape.
-    const userId = (body as { user_id?: unknown }).user_id;
-    if (typeof userId !== "string" || !/^[0-9a-f-]{36}$/i.test(userId)) {
+    // Wave 26-D bug hunt [P0-2, security C3] — verify user_id is a
+    // real tele_users row before trusting it. Pre-fix: a leaked bot
+    // secret could submit claims for any UUID; now we resolve to the
+    // tele_users table first, returning 404 for unknown id.
+    const rawUserId = (body as { user_id?: unknown }).user_id;
+    if (typeof rawUserId !== "string" || !/^[0-9a-f-]{36}$/i.test(rawUserId)) {
       return NextResponse.json(
         { success: false, error: "user_id is required and must be a UUID" } satisfies ApiResponse<never>,
         { status: 400 },
       );
     }
+    const userId = rawUserId;
 
-    // Fetch the proxy + user's recent claims for the eligibility gate.
+    const userRes = await supabaseAdmin
+      .from("tele_users")
+      .select("id")
+      .eq("id", userId)
+      .eq("is_deleted", false)
+      .maybeSingle();
+    if (userRes.error || !userRes.data) {
+      return NextResponse.json(
+        { success: false, error: "User not found" } satisfies ApiResponse<never>,
+        { status: 404 },
+      );
+    }
+
+    // Fetch the proxy + user's claims (full set within 30 days) +
+    // settings for the eligibility gate.
+    //
+    // Wave 26-D bug hunt [HIGH-3, security H3] — drop the .limit(50)
+    // that pre-fix truncated the eligibility gate's view. With a
+    // raised max_per_30d, a user with 50+ historical claims could
+    // bypass the cap silently. Scope query to last 30 days only —
+    // older claims don't matter for any of the 3 caps (pending,
+    // 30d cap, cooldown all live in the trailing 30d window).
+    const sinceIso = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const [proxyRes, claimsRes, settings] = await Promise.all([
       supabaseAdmin.from("proxies").select("*").eq("id", proxy_id).single(),
       supabaseAdmin
         .from("warranty_claims")
         .select("id, proxy_id, status, created_at")
         .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(50),
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false }),
       loadWarrantySettings(),
     ]);
 
@@ -256,6 +309,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (claimErr || !claim) {
+      // Wave 26-D bug hunt [HIGH-1, debugger #1] — partial UNIQUE
+      // index in mig 058 raises 23505 (unique_violation) when two
+      // simultaneous taps both try to insert pending claims for the
+      // same (user, proxy). Translate to 409 with a friendly message
+      // instead of a generic 500.
+      const code = (claimErr as { code?: string } | null)?.code;
+      if (code === "23505") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "duplicate_pending_claim",
+            message: WARRANTY_REJECT_LABEL_VI.duplicate_pending_claim,
+          } satisfies ApiResponse<never>,
+          { status: 409 },
+        );
+      }
       captureError(claimErr ?? new Error("Claim insert returned no row"), {
         source: "api.warranty.create.insert",
         extra: { proxy_id, userId, reason_code },

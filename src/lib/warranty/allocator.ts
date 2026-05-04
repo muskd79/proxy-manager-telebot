@@ -58,7 +58,18 @@ export async function pickReplacementProxy({
   originalProxy,
   supabase,
 }: AllocatorArgs): Promise<AllocatorResult> {
-  const { id: originalId, category_id, network_type, type } = originalProxy;
+  // Wave 26-D bug hunt [MED, code-reviewer P1-3] — normalise NULL vs
+  // undefined. Supabase JS returns NULL columns as `null` but
+  // TypeScript types allow `undefined`. The tier guards below check
+  // `!== undefined` which would ALSO trigger for `null`. Pre-fix the
+  // Tier 1 guard `category_id !== undefined && network_type !== undefined`
+  // would skip Tier 1 if EITHER was undefined (fragile across SDK
+  // versions). Now we coerce both to explicit `null` so the guards
+  // are deterministic.
+  const originalId = originalProxy.id;
+  const type = originalProxy.type;
+  const category_id = originalProxy.category_id ?? null;
+  const network_type = originalProxy.network_type ?? null;
 
   // Helper — single-tier query. Uses select() then SLICE 1 instead of
   // .single() so we can detect "0 rows" cleanly (single() throws on 0).
