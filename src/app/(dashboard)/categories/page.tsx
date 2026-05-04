@@ -26,6 +26,7 @@ import { ProxySubTabs } from "@/components/proxies/proxy-sub-tabs";
 import { CategoryGrid } from "@/components/categories/category-grid";
 import { BulkActionToolbar } from "@/components/categories/bulk-action-toolbar";
 import { createClient } from "@/lib/supabase/client";
+import { useUrlFilters } from "@/lib/hooks/use-url-filters";
 import type {
   CategoryDashboardRow,
   CategoryRow,
@@ -37,10 +38,39 @@ interface DashboardResponse {
   error?: string;
 }
 
+// Wave 27 UX-2 — URL-bound filter codec for /categories.
+// Only `includeHidden` today; will grow when filter chips ship.
+interface CategoryPageFilters {
+  includeHidden: boolean;
+}
+const DEFAULT_CATEGORY_FILTERS: CategoryPageFilters = { includeHidden: false };
+
+function parseCategoryFilters(p: URLSearchParams): CategoryPageFilters {
+  return {
+    includeHidden: p.get("includeHidden") === "1",
+  };
+}
+function formatCategoryFilters(f: CategoryPageFilters): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.includeHidden) p.set("includeHidden", "1");
+  return p;
+}
+
 export default function CategoriesPage() {
   const [rows, setRows] = useState<CategoryDashboardRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [includeHidden, setIncludeHidden] = useState(false);
+  // Wave 27 UX-2 — filter state mirrored to URL so admins can
+  // bookmark/share filtered views and reload preserves intent.
+  const [filters, setFilters] = useUrlFilters({
+    parse: parseCategoryFilters,
+    format: formatCategoryFilters,
+    defaults: DEFAULT_CATEGORY_FILTERS,
+  });
+  const includeHidden = filters.includeHidden;
+  const setIncludeHidden = useCallback(
+    (next: boolean) => setFilters((prev) => ({ ...prev, includeHidden: next })),
+    [setFilters],
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryRow | null>(null);
