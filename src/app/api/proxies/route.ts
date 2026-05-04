@@ -9,6 +9,7 @@ import { captureError } from "@/lib/error-tracking";
 import { PROXIES_SORT, safeSort } from "@/lib/sort-allowlist";
 import { assertSameOrigin } from "@/lib/csrf";
 import { normalizeNetworkType } from "@/lib/proxy-labels";
+import { isUuid } from "@/lib/uuid";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
     // strings into the WHERE clause as `eq` errors.
     const rawBatchId =
       searchParams.get("import_batch_id") || searchParams.get("importBatchId");
-    if (rawBatchId && /^[0-9a-f-]{36}$/i.test(rawBatchId)) {
+    if (rawBatchId && isUuid(rawBatchId)) {
       query = query.eq("import_batch_id", rawBatchId);
     }
 
@@ -268,6 +269,24 @@ export async function POST(request: NextRequest) {
     // Wave 22C: tags removed. Wave 23B: persist category_id from single-add form.
     const { host, port, type, network_type, username, password, country, city, isp, category_id, notes, expires_at } = parsed.data;
 
+    // Wave 26-D bug hunt v2 [HIGH] — reject unknown network_type on
+    // create instead of silently storing NULL. Mirrors the import +
+    // PATCH guards. Empty/null still means "leave unclassified" (the
+    // form may legitimately omit the field for proxies whose vendor
+    // hasn't been categorised yet).
+    const canonicalNetworkType = normalizeNetworkType(network_type);
+    const networkTypeProvided =
+      typeof network_type === "string" && network_type.trim().length > 0;
+    if (networkTypeProvided && !canonicalNetworkType) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unrecognised network_type: ${network_type}. Use one of: isp, datacenter_ipv4, datacenter_ipv6, residential, mobile, static_residential.`,
+        },
+        { status: 400 },
+      );
+    }
+
     const insertData = {
       host,
       port,
@@ -276,7 +295,7 @@ export async function POST(request: NextRequest) {
       // the client sends a legacy alias (`IPv4`, `dân cư`), the DB only
       // ever stores the canonical enum so the `/proxies` filter and
       // category-default propagation stay consistent.
-      network_type: normalizeNetworkType(network_type),
+      network_type: canonicalNetworkType,
       username: username || null,
       password: password || null,
       country: country || null,

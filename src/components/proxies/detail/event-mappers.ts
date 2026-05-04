@@ -74,6 +74,13 @@ export function mapRequestToEvents(req: ProxyRequest): TimelineEvent[] {
 
   // 2. terminal event — only if processed_at exists (i.e., request was
   // resolved one way or another).
+  //
+  // Wave 26-D bug hunt v2 [P1-2] — pre-fix `cancelled` rows with a
+  // processed_at fell into the default branch and silently disappeared
+  // from the timeline, leaving the user-facing story incomplete (admin
+  // saw "Yêu cầu proxy" with no terminal event, even though the user
+  // had explicitly cancelled). Now: emit request_cancelled at the
+  // processed_at moment so the storyteller layout shows the full arc.
   if (req.processed_at) {
     let kind: TimelineEvent["kind"];
     switch (req.status) {
@@ -89,8 +96,12 @@ export function mapRequestToEvents(req: ProxyRequest): TimelineEvent[] {
       case "expired":
         kind = "request_expired";
         break;
+      case "cancelled":
+        kind = "request_cancelled";
+        break;
       default:
-        // Cancelled / pending → no terminal event yet.
+        // pending → no terminal event yet (impossible if processed_at
+        // is set, but the type system doesn't know that).
         return events;
     }
 
@@ -104,12 +115,26 @@ export function mapRequestToEvents(req: ProxyRequest): TimelineEvent[] {
       ? `${summaryBase} (lý do: ${req.rejected_reason})`
       : summaryBase;
 
+    // For cancelled events the actor is the user (self-cancel), not an
+    // admin. We don't have approved_by because cancellation is bot-side.
+    const isUserAction = req.status === "cancelled";
+    const finalActorLabel = req.status === "auto_approved"
+      ? "Tự động"
+      : isUserAction
+        ? userActorLabel
+        : adminActorLabel;
+    const finalActorHref = req.status === "auto_approved"
+      ? null
+      : isUserAction
+        ? userActorHref
+        : adminActorHref;
+
     events.push({
       id: `req-${req.id}-${req.status}`,
       kind,
       at: req.processed_at,
-      actorLabel: req.status === "auto_approved" ? "Tự động" : adminActorLabel,
-      actorHref: req.status === "auto_approved" ? null : adminActorHref,
+      actorLabel: finalActorLabel,
+      actorHref: finalActorHref,
       summary,
       details: {
         approval_mode: req.approval_mode,

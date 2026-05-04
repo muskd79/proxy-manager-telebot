@@ -145,9 +145,15 @@ export function networkTypeLabel(
 // Lifecycle status — proxies.status enum + hidden boolean
 // ============================================================
 
+// Wave 26-D bug hunt v2 [TS#5] — pre-fix `reported_broken` was missing
+// from this union, so any proxy in that status fell through to the
+// raw enum string in statusLabel() and was rendered as "Sẵn sàng" in
+// proxyStatusBadges() (debugger flagged: warranty-pending proxies
+// looked available). Now: full coverage.
 export type ProxyStatusValue =
   | "available"
   | "assigned"
+  | "reported_broken"
   | "expired"
   | "banned"
   | "maintenance";
@@ -155,6 +161,7 @@ export type ProxyStatusValue =
 export const STATUS_LABEL: Record<ProxyStatusValue, string> = {
   available: "Sẵn sàng",
   assigned: "Đã giao",
+  reported_broken: "Đang báo lỗi",
   expired: "Hết hạn",
   banned: "Báo lỗi",
   maintenance: "Bảo trì",
@@ -166,6 +173,7 @@ export const STATUS_BADGE: Record<
 > = {
   available: "default",
   assigned: "secondary",
+  reported_broken: "destructive",
   expired: "outline",
   banned: "destructive",
   maintenance: "outline",
@@ -272,6 +280,15 @@ export function proxyStatusBadges(
   }
   if (p.status === "banned") {
     return [{ label: "Báo lỗi", variant: "destructive" }];
+  }
+  // Wave 26-D bug hunt v2 [TS#5] — `reported_broken` is the
+  // warranty-pending state. Pre-fix it fell through to "Sẵn sàng"
+  // here, which is wrong (proxy is NOT distributable). Render it as
+  // a distinct destructive-tone "Đang báo lỗi" badge before the
+  // expiring_soon / assigned checks so admin sees warranty queue at
+  // a glance.
+  if (p.status === "reported_broken") {
+    return [{ label: "Đang báo lỗi", variant: "destructive" }];
   }
   // expiring_soon overrides assigned/available so admin sees the
   // urgency BEFORE the lifecycle status.

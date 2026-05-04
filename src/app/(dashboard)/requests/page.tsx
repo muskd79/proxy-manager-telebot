@@ -104,6 +104,17 @@ export default function RequestsPage() {
     setPage(1);
   }, [filters]);
 
+  // Wave 26-D bug hunt v2 [P0-1] — clear stale selection when filter
+  // changes. Pre-fix admin selected 5 rows, switched filter, the new
+  // table view didn't have those IDs (so bulk bar hid via
+  // pendingSelected.length === 0) but selectedIds still held the old
+  // refs. handleBatchReject iterated selectedIds directly → PUT'd
+  // against rows that may no longer be pending → admin saw "Đã từ
+  // chối N/N" toast despite zero actual effect.
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [filters]);
+
   // ─── Data state ────────────────────────────────────────────────
   const [requests, setRequests] = useState<RequestWithUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -262,8 +273,17 @@ export default function RequestsPage() {
   }
 
   async function handleBatchReject() {
+    // Wave 26-D bug hunt v2 [P0-1] — iterate ONLY pendingSelected
+    // (the pre-filtered subset whose status === "pending"). Pre-fix
+    // iterated selectedIds directly which could include approved /
+    // rejected rows from a previous filter view.
+    const targetIds = pendingSelected;
+    if (targetIds.length === 0) {
+      toast.error("Không có yêu cầu pending nào trong selection");
+      return;
+    }
     let successCount = 0;
-    for (const id of selectedIds) {
+    for (const id of targetIds) {
       try {
         const res = await fetch(`/api/requests/${id}`, {
           method: "PUT",
@@ -275,11 +295,15 @@ export default function RequestsPage() {
         console.error(`Failed to reject request ${id}:`, err);
       }
     }
-    toast.success(
-      t("requests.batchRejectResult")
-        .replace("{success}", String(successCount))
-        .replace("{total}", String(selectedIds.length)),
-    );
+    if (successCount > 0) {
+      toast.success(
+        t("requests.batchRejectResult")
+          .replace("{success}", String(successCount))
+          .replace("{total}", String(targetIds.length)),
+      );
+    } else {
+      toast.error("Không từ chối được yêu cầu nào");
+    }
     setSelectedIds([]);
     void fetchRequests();
   }

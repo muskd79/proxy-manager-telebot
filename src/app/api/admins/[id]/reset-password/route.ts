@@ -80,6 +80,39 @@ export async function POST(
     );
   }
 
+  // Wave 26-D bug hunt v2 [HIGH] — rate limit reset-password.
+  //
+  // Pre-fix this endpoint had ZERO throttle. A super_admin (or someone
+  // who hijacked one) could spam reset-password against another admin
+  // — every call rotates the password + force-revokes all sessions of
+  // the target. Effect: targeted lockout DoS on a colleague + flood of
+  // admin_login_logs noise that hides the real attack.
+  //
+  // We use activity_logs as the rate-limit source of truth: count
+  // admin.password_reset entries by this actor in the last hour and
+  // hard-cap at 10. This survives cold starts (DB-backed), is per-actor
+  // (not per-IP — IP rotation doesn't help an attacker), and uses the
+  // same audit trail ops already monitor.
+  const ONE_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count: recentResets } = await supabaseAdmin
+    .from("activity_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("actor_id", admin.id)
+    .eq("actor_type", "admin")
+    .eq("action", "admin.password_reset")
+    .gte("created_at", ONE_HOUR_AGO);
+
+  if ((recentResets ?? 0) >= 10) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Vượt quá giới hạn reset password (10/giờ). Đợi 60 phút rồi thử lại — nếu thấy bất thường, kiểm tra admin_login_logs ngay.",
+      },
+      { status: 429 },
+    );
+  }
+
   const { data: target } = await supabaseAdmin
     .from("admins")
     .select("id, email")

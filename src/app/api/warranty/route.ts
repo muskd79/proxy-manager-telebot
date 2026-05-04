@@ -24,6 +24,7 @@ import { CreateWarrantyClaimSchema } from "@/lib/validations/warranty";
 import { checkWarrantyEligibility, WARRANTY_REJECT_LABEL_VI } from "@/lib/warranty/eligibility";
 import { loadWarrantySettings } from "@/lib/warranty/settings";
 import { logProxyEvent } from "@/lib/warranty/events";
+import { isUuid } from "@/lib/uuid";
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -101,13 +102,13 @@ export async function GET(request: NextRequest) {
     if (reasonCode) q = q.eq("reason_code", reasonCode);
     if (hasReplacement === "true") q = q.not("replacement_proxy_id", "is", null);
     if (hasReplacement === "false") q = q.is("replacement_proxy_id", null);
-    if (resolvedBy && /^[0-9a-f-]{36}$/i.test(resolvedBy)) {
+    if (resolvedBy && isUuid(resolvedBy)) {
       q = q.eq("resolved_by", resolvedBy);
     }
-    if (proxyIdFilter && /^[0-9a-f-]{36}$/i.test(proxyIdFilter)) {
+    if (proxyIdFilter && isUuid(proxyIdFilter)) {
       q = q.eq("proxy_id", proxyIdFilter);
     }
-    if (userIdFilter && /^[0-9a-f-]{36}$/i.test(userIdFilter)) {
+    if (userIdFilter && isUuid(userIdFilter)) {
       q = q.eq("user_id", userIdFilter);
     }
     if (search) {
@@ -213,20 +214,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { proxy_id, reason_code, reason_text } = parsed.data;
-
-    // Wave 26-D bug hunt [P0-2, security C3] — verify user_id is a
-    // real tele_users row before trusting it. Pre-fix: a leaked bot
-    // secret could submit claims for any UUID; now we resolve to the
-    // tele_users table first, returning 404 for unknown id.
-    const rawUserId = (body as { user_id?: unknown }).user_id;
-    if (typeof rawUserId !== "string" || !/^[0-9a-f-]{36}$/i.test(rawUserId)) {
-      return NextResponse.json(
-        { success: false, error: "user_id is required and must be a UUID" } satisfies ApiResponse<never>,
-        { status: 400 },
-      );
-    }
-    const userId = rawUserId;
+    // Wave 26-D bug hunt v2 [MEDIUM] — `user_id` is now part of the
+    // schema (was previously pulled out of raw body separately). Schema
+    // already enforced UUID shape; the tele_users existence check below
+    // remains as defence-in-depth (a leaked bot secret could still
+    // submit claims for any well-formed but unknown UUID).
+    const { proxy_id, user_id: userId, reason_code, reason_text } = parsed.data;
 
     const userRes = await supabaseAdmin
       .from("tele_users")

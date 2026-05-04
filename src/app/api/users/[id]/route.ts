@@ -223,13 +223,92 @@ export async function DELETE(
     const permanent = request.nextUrl.searchParams.get("permanent") === "true";
 
     if (permanent) {
-      // Hard delete
+      // Wave 26-D bug hunt v2 [HIGH] — reclaim orphan assignments and
+      // surface FK violations as a friendly 409.
+      //
+      // Pre-fix:
+      //   - proxies.assigned_to FK is `ON DELETE SET NULL` (mig 001),
+      //     so a permanent user delete left every assigned proxy with
+      //     status='assigned' but assigned_to=NULL — orphaned and
+      //     undistributable. /proxies dashboard showed them as "Đã giao"
+      //     forever with no user attached.
+      //   - proxy_requests.tele_user_id FK is `ON DELETE RESTRICT`
+      //     (mig 046), so deleting a user with ANY request history
+      //     errored with a generic 500 + Postgres error message leaking
+      //     to the admin UI ("violates foreign key constraint…").
+      //
+      // Now:
+      //   1. First reclaim every proxy assigned to this user — flip
+      //      status=available + clear assigned_to/assigned_at so the
+      //      inventory comes back to the pool for redistribution.
+      //   2. Cancel any PENDING requests by this user so they don't
+      //      block the delete (FK on proxy_requests is RESTRICT and
+      //      pending requests are not historically meaningful).
+      //   3. Attempt the delete. If it still fails with FK 23503,
+      //      that's a historical (non-pending) request or chat_message
+      //      — preserved by design. Return 409 explaining that hard
+      //      delete isn't possible while audit history exists, and
+      //      recommend soft-delete instead.
+
+      // Step 1: reclaim assigned proxies (status SET available, clear
+      // assigned_to). The FK ON DELETE SET NULL would clear assigned_to
+      // for us, but it would NOT flip status — leaving orphans.
+      const { data: reclaimed } = await supabase
+        .from("proxies")
+        .update({
+          status: "available",
+          assigned_to: null,
+          assigned_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("assigned_to", id)
+        .eq("status", "assigned")
+        .select("id");
+
+      const reclaimedCount = reclaimed?.length ?? 0;
+
+      // Step 2: cancel pending requests (not historical — those are kept).
+      // Use the existing `cancelled` status so the request lifecycle stays
+      // consistent with the bot's own self-cancel flow.
+      const { data: cancelledRequests } = await supabase
+        .from("proxy_requests")
+        .update({
+          status: "cancelled",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("tele_user_id", id)
+        .eq("status", "pending")
+        .select("id");
+
+      const cancelledCount = cancelledRequests?.length ?? 0;
+
+      // Step 3: attempt the hard delete.
       const { error } = await supabase
         .from("tele_users")
         .delete()
         .eq("id", id);
 
       if (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "23503") {
+          // FK violation — typically chat_messages or historical
+          // (non-pending) proxy_requests with the RESTRICT FK from
+          // mig 046. Preserve the audit trail; tell the admin to
+          // soft-delete.
+          return NextResponse.json(
+            {
+              success: false,
+              error: "fk_violation_user_history",
+              message:
+                "User này có lịch sử (yêu cầu/chat) cần được giữ lại để audit. Hãy dùng \"xoá mềm\" (chuyển vào thùng rác) thay vì xoá vĩnh viễn — soft-delete giữ nguyên lịch sử và vẫn vô hiệu hoá user.",
+              details: {
+                reclaimed_proxies: reclaimedCount,
+                cancelled_requests: cancelledCount,
+              },
+            } satisfies ApiResponse<never> & { details: unknown; message: string },
+            { status: 409 },
+          );
+        }
         return NextResponse.json(
           { success: false, error: error.message } satisfies ApiResponse<never>,
           { status: 500 }
@@ -243,14 +322,21 @@ export async function DELETE(
         action: "user.delete",
         resourceType: "user",
         resourceId: id,
-        details: { permanent: true },
+        details: {
+          permanent: true,
+          reclaimed_proxies: reclaimedCount,
+          cancelled_requests: cancelledCount,
+        },
         ipAddress: request.headers.get("x-forwarded-for") || undefined,
         userAgent: request.headers.get("user-agent") || undefined,
       }).catch(console.error);
 
       return NextResponse.json({
         success: true,
-        message: "User permanently deleted",
+        message:
+          reclaimedCount > 0 || cancelledCount > 0
+            ? `User permanently deleted. Reclaimed ${reclaimedCount} proxy${reclaimedCount === 1 ? "" : "s"}, cancelled ${cancelledCount} pending request${cancelledCount === 1 ? "" : "s"}.`
+            : "User permanently deleted",
       } satisfies ApiResponse<never>);
     }
 

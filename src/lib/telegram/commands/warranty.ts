@@ -36,17 +36,28 @@ import { logProxyEvent } from "@/lib/warranty/events";
 import { setBotState, clearBotState } from "../state";
 import { captureError } from "@/lib/error-tracking";
 import { escapeMarkdown } from "../format";
+// Wave 26-D bug hunt v2 [MEDIUM] — single source of truth for warranty
+// labels (was duplicated across this file, the admin table, and the
+// /api/warranty notifier).
+import {
+  WARRANTY_REASON_LABEL_VI,
+  WARRANTY_REASON_LABEL_EN,
+} from "@/lib/warranty-labels";
 
-// ─── Vietnamese reason labels for the picker keyboard ─────────────
+// ─── Reason picker keyboard (one button per row, mobile-friendly) ──
+// Built off WARRANTY_REASON_LABEL_* + a synthetic "other" suffix
+// nudging the user to type the description. The order is preserved
+// from the original WARRANTY_REASON_CODES tuple so user muscle memory
+// holds across the 26-D-2B refactor.
 const REASON_BUTTONS_VI: ReadonlyArray<{
   code: WarrantyReasonCode;
   label: string;
 }> = [
-  { code: "no_connect", label: "Không kết nối được" },
-  { code: "slow", label: "Chậm" },
-  { code: "ip_blocked", label: "IP bị block" },
-  { code: "wrong_country", label: "Sai quốc gia" },
-  { code: "auth_fail", label: "Sai user/pass" },
+  { code: "no_connect", label: WARRANTY_REASON_LABEL_VI.no_connect },
+  { code: "slow", label: WARRANTY_REASON_LABEL_VI.slow },
+  { code: "ip_blocked", label: WARRANTY_REASON_LABEL_VI.ip_blocked },
+  { code: "wrong_country", label: WARRANTY_REASON_LABEL_VI.wrong_country },
+  { code: "auth_fail", label: WARRANTY_REASON_LABEL_VI.auth_fail },
   { code: "other", label: "Lý do khác (gõ tay)" },
 ];
 
@@ -54,17 +65,15 @@ const REASON_BUTTONS_EN: ReadonlyArray<{
   code: WarrantyReasonCode;
   label: string;
 }> = [
-  { code: "no_connect", label: "Cannot connect" },
-  { code: "slow", label: "Too slow" },
-  { code: "ip_blocked", label: "IP blocked" },
-  { code: "wrong_country", label: "Wrong country" },
-  { code: "auth_fail", label: "Auth failed" },
+  { code: "no_connect", label: WARRANTY_REASON_LABEL_EN.no_connect },
+  { code: "slow", label: WARRANTY_REASON_LABEL_EN.slow },
+  { code: "ip_blocked", label: WARRANTY_REASON_LABEL_EN.ip_blocked },
+  { code: "wrong_country", label: WARRANTY_REASON_LABEL_EN.wrong_country },
+  { code: "auth_fail", label: WARRANTY_REASON_LABEL_EN.auth_fail },
   { code: "other", label: "Other (type description)" },
 ];
 
-const REASON_LABEL_VI: Record<WarrantyReasonCode, string> = Object.fromEntries(
-  REASON_BUTTONS_VI.map((b) => [b.code, b.label]),
-) as Record<WarrantyReasonCode, string>;
+const REASON_LABEL_VI: Record<WarrantyReasonCode, string> = WARRANTY_REASON_LABEL_VI;
 
 /**
  * Build the reason picker inline keyboard. 6 buttons, 1 per row for

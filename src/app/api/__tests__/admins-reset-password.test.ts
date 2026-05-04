@@ -21,6 +21,10 @@ const mockAdminSignOut = vi.fn();
 const mockFindAuthUserByEmail = vi.fn();
 const mockLogActivity = vi.fn().mockResolvedValue(undefined);
 const mockLoginLogsInsert = vi.fn().mockResolvedValue({ error: null });
+// Wave 26-D bug hunt v2 — activity_logs count for the reset-password
+// rate limit. Tests can call .mockReturnValueOnce(N) to simulate N
+// prior resets in the trailing 60 minutes.
+const mockActivityLogsCount = vi.fn(() => 0);
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({})),
@@ -48,6 +52,23 @@ vi.mock("@/lib/supabase/admin", () => ({
     from: (table: string) => {
       if (table === "admin_login_logs") {
         return { insert: (...args: unknown[]) => mockLoginLogsInsert(...args) };
+      }
+      if (table === "activity_logs") {
+        // Wave 26-D bug hunt v2 — reset-password now rate-limits via
+        // activity_logs count. Default mock: 0 prior resets so the
+        // limit (10/hour) is never hit; individual tests can override
+        // mockActivityLogsCount before invoking POST.
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  gte: () => Promise.resolve({ count: mockActivityLogsCount() }),
+                }),
+              }),
+            }),
+          }),
+        };
       }
       // admins table
       return mockFromAdmins(table);

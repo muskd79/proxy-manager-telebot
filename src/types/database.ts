@@ -614,7 +614,18 @@ export interface Database {
     Enums: {
       admin_role: "super_admin" | "admin" | "viewer";
       proxy_type: "http" | "https" | "socks5";
-      proxy_status: "available" | "assigned" | "expired" | "banned" | "maintenance";
+      // Wave 26-D + bug-hunt-v2 — keep this Database.Enums entry in
+      // lock-step with the ProxyStatus enum + Proxy.status union above.
+      // Pre-fix this entry was stale (no `reported_broken`) which made
+      // any typed Supabase `.eq("status", "reported_broken")` call fail
+      // strict TS compile.
+      proxy_status:
+        | "available"
+        | "assigned"
+        | "reported_broken"
+        | "expired"
+        | "banned"
+        | "maintenance";
       tele_user_status: "active" | "blocked" | "pending" | "banned";
       approval_mode: "auto" | "manual";
       request_status: "pending" | "approved" | "rejected" | "auto_approved" | "expired" | "cancelled";

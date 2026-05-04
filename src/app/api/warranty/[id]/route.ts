@@ -44,6 +44,7 @@ import { loadWarrantySettings } from "@/lib/warranty/settings";
 import { logProxyEvent } from "@/lib/warranty/events";
 import { sendTelegramMessage } from "@/lib/telegram/send";
 import { safeCredentialString, escapeMarkdown } from "@/lib/telegram/format";
+import { isUuid } from "@/lib/uuid";
 import type { ApiResponse } from "@/types/api";
 import type {
   Proxy,
@@ -75,7 +76,7 @@ export async function PATCH(
   if (authError) return authError;
 
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!isUuid(id)) {
     return NextResponse.json(
       { success: false, error: "Invalid claim id" } satisfies ApiResponse<never>,
       { status: 400 },
@@ -118,6 +119,23 @@ export async function PATCH(
           message: `Hiện trạng thái: ${claim.status}`,
         } satisfies ApiResponse<never>,
         { status: 409 },
+      );
+    }
+
+    // Wave 26-D bug hunt v2 [TS#2] — guard against dangling FK row.
+    // claim.proxy could be null if the proxy got deleted between the
+    // claim being created and admin opening the dialog. Pre-fix
+    // `original: claim.proxy as Proxy` would silently let downstream
+    // code crash on `original.id` etc.
+    if (!claim.proxy) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Original proxy not found (FK dangling)",
+          message:
+            "Proxy gốc của claim này đã bị xoá. Hãy reject claim với lý do tương ứng để xử lý.",
+        } satisfies ApiResponse<never>,
+        { status: 404 },
       );
     }
 

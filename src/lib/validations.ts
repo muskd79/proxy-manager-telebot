@@ -256,9 +256,66 @@ export const AssignProxiesToCategorySchema = z.object({
 
 // ─── Settings schemas ────────────────────────────────────────────
 
+/**
+ * Wave 26-D bug hunt v2 [HIGH] — settings DoS hardening.
+ *
+ * Pre-fix: SettingsPutSchema accepted `settings: Record<string, unknown>`
+ * with NO per-key bounds. A super_admin (or anyone who hijacked a
+ * super_admin cookie via XSS) could PUT
+ *   { global_max_total_requests: 999_999_999 }
+ * which the route then mass-applied to every non-deleted tele_user
+ * row (line 141-151 of /api/settings). That UPDATE on a 50k-user
+ * table is a textbook DoS: minutes of write lock + WAL pressure +
+ * realtime fanout to every subscribed dashboard.
+ *
+ * Defence-in-depth: bound every KNOWN integer setting at parse time.
+ * Unknown keys still pass through as `unknown` (admins occasionally
+ * stash one-off feature flags here), but the four mass-update keys
+ * are now hard-capped at 100k each — a number high enough for any
+ * legitimate operator and low enough that the worst-case mass UPDATE
+ * touches at most that count of rows.
+ *
+ * Floor is 0 (zero is a legitimate "disable" sentinel — many code
+ * paths treat 0 as unlimited or off; we don't impose a stricter
+ * minimum to avoid breaking those).
+ */
+const KNOWN_INT_SETTING_BOUNDS: Record<string, { max: number }> = {
+  global_max_proxies: { max: 100_000 },
+  global_max_total_requests: { max: 100_000 },
+  default_rate_limit_hourly: { max: 100_000 },
+  default_rate_limit_daily: { max: 100_000 },
+  default_rate_limit_total: { max: 100_000 },
+  default_max_proxies: { max: 100_000 },
+  warranty_window_hours: { max: 24 * 30 }, // max 30-day warranty window
+  warranty_max_claims_per_24h: { max: 1_000 },
+  warranty_min_account_age_days: { max: 365 },
+};
+
 export const UpdateSettingsSchema = z.object({
   action: z.literal("update_settings"),
-  settings: z.record(z.string(), z.unknown()).refine((s) => Object.keys(s).length > 0, "settings must not be empty"),
+  settings: z
+    .record(z.string(), z.unknown())
+    .refine((s) => Object.keys(s).length > 0, "settings must not be empty")
+    .refine(
+      (s) => {
+        // Validate known integer settings have safe bounds.
+        for (const [key, bounds] of Object.entries(KNOWN_INT_SETTING_BOUNDS)) {
+          if (s[key] === undefined || s[key] === null) continue;
+          const raw = s[key];
+          // Coerce to number — accept "42" too (the form serialises
+          // numeric inputs as strings sometimes).
+          const n = typeof raw === "number" ? raw : Number(raw);
+          if (!Number.isFinite(n)) return false;
+          if (!Number.isInteger(n)) return false;
+          if (n < 0) return false;
+          if (n > bounds.max) return false;
+        }
+        return true;
+      },
+      {
+        message: `One or more numeric settings are out of bounds. Valid range: 0..${100_000} for limits / counts.`,
+      },
+    ),
   applyToExisting: z.boolean().optional(),
 });
 
