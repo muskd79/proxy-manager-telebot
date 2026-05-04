@@ -11,6 +11,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -148,7 +149,11 @@ export function ProxyTable({
           the same dropdown actions. */}
       <div className="md:hidden space-y-2" role="list" aria-label="Danh sách proxy">
         {proxies.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">Chưa có proxy nào</p>
+          // Wave 27 UX-3 — adopt canonical EmptyState (was a bare <p>).
+          // Mode = "zero-data" since the table doesn't know about
+          // page-level filter state; for the filter-empty case the
+          // page wraps the table with its own EmptyState.
+          <EmptyState entity="proxies" mode="zero-data" />
         ) : (
           proxies.map((proxy) => {
             const statusList = proxyStatusBadges(proxy);
@@ -286,7 +291,8 @@ export function ProxyTable({
         {proxies.length === 0 ? (
           <TableRow>
             <TableCell colSpan={DESKTOP_COLUMN_COUNT} className="text-center py-8">
-              <p className="text-muted-foreground">Chưa có proxy nào</p>
+              {/* Wave 27 UX-3 — adopt canonical EmptyState. */}
+              <EmptyState entity="proxies" mode="zero-data" />
             </TableCell>
           </TableRow>
         ) : (
