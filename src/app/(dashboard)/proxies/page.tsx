@@ -55,6 +55,12 @@ import type { Proxy } from "@/types/database";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
+// Wave 27 UX-4 — adopt shared BulkActionBar shell. Local copy had
+// drift around clear-button styling (variant="ghost" vs unset) and
+// kept its own Esc/Ctrl-A hint inline. Hint moved to a tooltip on
+// the count label so the visual surface matches /categories +
+// /trash/*.
+import { BulkActionBar } from "@/components/shared/bulk-action-bar";
 
 export default function ProxiesPage() {
   const { t } = useI18n();
@@ -728,45 +734,47 @@ export default function ProxiesPage() {
         categories={categories}
       />
 
-      {/* Bulk actions */}
-      {selectedIds.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2">
-          <span className="text-sm text-muted-foreground">
-            {t("proxies.selected").replace("{count}", String(selectedIds.length))}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleHealthCheck(selectedIds)}
-          >
-            <Activity className="size-4 mr-1" />
-            {t("proxies.healthCheck")}
-          </Button>
-          {canWrite && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setBulkEditOpen(true)}>
-                <Pencil className="size-4 mr-1" />
-                {t("common.edit")} ({selectedIds.length})
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} title="Delete selected (Delete)">
-                <Trash2 className="size-4 mr-1" />
-                {t("common.delete")}
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedIds([])}
-            title="Deselect all (Esc)"
-          >
-            {t("proxies.clear")}
-          </Button>
-          <span className="text-xs text-muted-foreground ml-2">
-            Ctrl+A: Select all | Esc: Deselect | Del: Delete
-          </span>
-        </div>
-      )}
+      {/* Bulk actions — shared BulkActionBar shell.
+          Keyboard shortcuts (Ctrl+A select-all, Esc deselect, Del delete)
+          stay wired in the page-level keydown handler above; hint moved
+          to a tooltip via title=… on the bar so the visual surface
+          matches /categories + /trash/*. */}
+      <BulkActionBar
+        selectedCount={selectedIds.length}
+        itemNoun="proxy"
+        onClearSelection={() => setSelectedIds([])}
+        ariaLabel="Thao tác hàng loạt cho proxy đã chọn (Ctrl+A: chọn tất cả · Esc: bỏ chọn · Del: xoá)"
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleHealthCheck(selectedIds)}
+            >
+              <Activity className="size-4 mr-1" />
+              {t("proxies.healthCheck")}
+            </Button>
+            {canWrite && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setBulkEditOpen(true)}>
+                  <Pencil className="size-4 mr-1" />
+                  {t("common.edit")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  title="Xoá đã chọn (Del)"
+                >
+                  <Trash2 className="size-4 mr-1" />
+                  {t("common.delete")}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+
 
       <div className="overflow-x-auto rounded-lg border border-border">
         {loading ? (
