@@ -77,6 +77,7 @@ export interface TimelineEvent {
     | "request_rejected"     // admin clicked Từ chối
     | "request_auto_approved" // auto-approve mode
     | "request_expired"      // cron expired the pending request
+    | "request_cancelled"    // user /cancel'd or admin marked cancelled
     | "assigned"             // proxy distributed (proxy_auto_assigned + admin_assign)
     | "unassigned"           // proxy revoked (user /return + admin unassign)
     | "edited"               // admin edited the proxy fields
@@ -186,6 +187,7 @@ const ICON_BY_KIND: Record<TimelineEvent["kind"], IconStyle> = {
   request_rejected: { Icon: XCircle, tone: "text-red-600 dark:text-red-400", dotBg: "bg-red-100 dark:bg-red-900/40" },
   request_auto_approved: { Icon: Sparkles, tone: "text-emerald-600 dark:text-emerald-400", dotBg: "bg-emerald-100 dark:bg-emerald-900/40" },
   request_expired: { Icon: XCircle, tone: "text-muted-foreground", dotBg: "bg-muted" },
+  request_cancelled: { Icon: XCircle, tone: "text-muted-foreground", dotBg: "bg-muted" },
   assigned: { Icon: UserPlus, tone: "text-blue-600 dark:text-blue-400", dotBg: "bg-blue-100 dark:bg-blue-900/40" },
   unassigned: { Icon: UserMinus, tone: "text-amber-600 dark:text-amber-400", dotBg: "bg-amber-100 dark:bg-amber-900/40" },
   edited: { Icon: Pencil, tone: "text-purple-600 dark:text-purple-400", dotBg: "bg-purple-100 dark:bg-purple-900/40" },

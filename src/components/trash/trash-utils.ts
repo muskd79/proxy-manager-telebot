@@ -5,10 +5,19 @@
  * absolute deleted_at timestamp without a countdown.
  *
  * 30-day retention rule lives in the cleanup cron (api/cron/cleanup).
- * If that retention ever changes, ONLY this constant needs editing.
+ *
+ * Wave 26-D bug hunt v2 [Debugger #2] — re-export
+ * TRASH_AUTO_CLEAN_DAYS from lib/constants instead of duplicating it.
+ * Pre-fix: this file had its own `TRASH_RETENTION_DAYS = 30` and the
+ * cron read TRASH_AUTO_CLEAN_DAYS from constants — drift on the next
+ * edit was guaranteed (admin changes one but not the other → UI
+ * countdown disagrees with cron purge time).
  */
 
-export const TRASH_RETENTION_DAYS = 30;
+import { TRASH_AUTO_CLEAN_DAYS } from "@/lib/constants";
+
+// Single source of truth. UI uses the same value the cron uses.
+export const TRASH_RETENTION_DAYS = TRASH_AUTO_CLEAN_DAYS;
 
 export interface TrashCountdown {
   /** Days remaining until permanent deletion. Floor at 0. */

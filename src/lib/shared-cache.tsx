@@ -46,7 +46,17 @@ import {
 } from "react";
 
 interface CacheEntry<T> {
-  data: T;
+  /**
+   * The cached value. `undefined` means "fetch in progress, no prior
+   * value yet" — this happens on the very first call for a cache key.
+   *
+   * Wave 26-D bug hunt v2 [MEDIUM] — pre-fix this was typed as `T`,
+   * which forced `data: stale?.data as T` (a lie when stale was
+   * undefined) at runFetch line ~222. Typing it as `T | undefined`
+   * makes the inflight-without-stale state explicit and removes the
+   * unsafe `as T` cast.
+   */
+  data: T | undefined;
   fetchedAt: number;
   /** In-flight promise — set while a fetch is running so others can subscribe. */
   inflight?: Promise<T>;
@@ -216,10 +226,13 @@ export function useSharedQuery<T>(
           setLoading(false);
         });
       // Mark inflight on the cache entry — preserves any stale data
-      // while the new fetch is in progress.
+      // while the new fetch is in progress. When there's no stale
+      // entry yet (first call for this key), data stays undefined and
+      // consumers fall back via `loading: true` until the promise
+      // resolves and we replace the entry with the fresh data.
       const stale = cache.get<T>(key);
       cache.set<T>(key, {
-        data: stale?.data as T,
+        data: stale?.data,
         fetchedAt: stale?.fetchedAt ?? 0,
         inflight: promise,
       });

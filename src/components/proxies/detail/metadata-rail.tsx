@@ -139,8 +139,18 @@ export function MetadataRail({
   const profitPct = profit != null && cost != null && cost > 0
     ? Math.round((profit / cost) * 100)
     : null;
-  const profitTone: "ok" | "warn" | "fail" =
-    profit == null ? "ok" : profit > 0 ? "ok" : profit === 0 ? "warn" : "fail";
+  // Wave 26-D bug hunt v2 [code-reviewer P1-1] — when profit is null
+  // (no cost or no sale data), don't apply ANY emphasis tone — the
+  // "—" placeholder rendered as emerald-green incorrectly suggested
+  // positive profit.
+  const profitTone: "ok" | "warn" | "fail" | undefined =
+    profit == null
+      ? undefined
+      : profit > 0
+        ? "ok"
+        : profit === 0
+          ? "warn"
+          : "fail";
 
   const expiresMeta = formatRelativeWithTitle(proxy.expires_at);
   const lastDistributedMeta = formatRelativeWithTitle(proxy.last_distributed_at);
@@ -305,6 +315,37 @@ export function MetadataRail({
             <span title={assignedAtMeta.absolute}>{assignedAtMeta.relative}</span>
           ) : (
             <span className="text-muted-foreground">—</span>
+          )}
+        </Field>
+        {/* Wave 26-D bug hunt v2 [code-reviewer P1-4] — surface
+            reliability_score (0-100). Decremented every time a
+            warranty claim is approved against this proxy
+            (warranty_reliability_decrement setting). Wave 26-E will
+            auto-ban when score reaches 0. Pre-fix admins couldn't see
+            why a proxy was queued lower in distribution. */}
+        <Field
+          label="Độ tin cậy"
+          emphasis={
+            proxy.reliability_score == null
+              ? undefined
+              : proxy.reliability_score >= 75
+                ? "ok"
+                : proxy.reliability_score >= 50
+                  ? "warn"
+                  : "fail"
+          }
+        >
+          {proxy.reliability_score != null ? (
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              {proxy.reliability_score}/100
+              {proxy.reliability_score < 100 && (
+                <span className="text-[10px] text-muted-foreground">
+                  (đã bảo hành)
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">100/100</span>
           )}
         </Field>
       </Section>

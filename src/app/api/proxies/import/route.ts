@@ -62,7 +62,24 @@ export async function POST(request: NextRequest) {
     // already lowercased client-side, but we keep server-side
     // canonicalisation as defence-in-depth so direct API callers /
     // future bulk paths can't write `IPv4` straight into DB.
+    //
+    // Wave 26-D bug hunt v2 [HIGH] — pre-fix this silently fell back
+    // to null when the input was unrecognised (e.g., `IPv7`, typo
+    // `Datacentre IPv4`, future enum value not yet aliased). Admin
+    // saw "Đã import N proxy" with no warning, but every row had
+    // network_type=NULL → broken filters, broken pricing analytics.
+    // Now: reject the import with a clear 400 listing the recognised
+    // canonical values so admin can fix the wizard input or aliases.
     const canonicalNetworkType = normalizeNetworkType(network_type);
+    if (network_type && !canonicalNetworkType) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unrecognised network_type: ${network_type}. Use one of: isp, datacenter_ipv4, datacenter_ipv6, residential, mobile, static_residential.`,
+        },
+        { status: 400 },
+      );
+    }
 
     const importId = crypto.randomUUID();
 

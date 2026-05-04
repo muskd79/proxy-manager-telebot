@@ -39,9 +39,11 @@ import { formatRelativeWithTitle } from "@/lib/format-time";
 import type {
   WarrantyClaim,
   WarrantyClaimStatus,
-  WarrantyReasonCode,
   Proxy,
 } from "@/types/database";
+// Wave 26-D bug hunt v2 [MEDIUM] — single source of truth for warranty
+// reason labels (was duplicated 3 places, drift risk).
+import { WARRANTY_REASON_LABEL_VI_SHORT } from "@/lib/warranty-labels";
 
 export interface WarrantyClaimRow extends WarrantyClaim {
   proxy?: Pick<
@@ -77,14 +79,7 @@ const STATUS_VARIANT: Record<
   rejected: "destructive",
 };
 
-const REASON_LABEL: Record<WarrantyReasonCode, string> = {
-  no_connect: "Không kết nối",
-  slow: "Chậm",
-  ip_blocked: "IP bị block",
-  wrong_country: "Sai quốc gia",
-  auth_fail: "Sai user/pass",
-  other: "Khác",
-};
+const REASON_LABEL = WARRANTY_REASON_LABEL_VI_SHORT;
 
 interface WarrantyTableProps {
   claims: WarrantyClaimRow[];

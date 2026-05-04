@@ -18,16 +18,25 @@ export const WARRANTY_REASON_CODES = [
 ] as const;
 
 /**
- * POST /api/warranty body — user submits a new claim.
+ * POST /api/warranty body — bot submits a new claim on a user's behalf.
  *
  * `reason_text` is required when `reason_code === "other"` (CHECK
  * constraint warranty_other_requires_text in mig 057). We mirror it
  * here so the API returns 400 with a clean error instead of letting
  * Postgres reject the insert.
+ *
+ * Wave 26-D bug hunt v2 [MEDIUM] — `user_id` was previously pulled
+ * out of the raw request body in the route handler with manual UUID
+ * validation. Moving it into the schema makes the wire contract
+ * explicit + reuses zod's UUID checker (matching what we do for
+ * proxy_id). The route still verifies the user exists in tele_users
+ * (defence-in-depth — schema validates SHAPE, route validates
+ * REFERENCE).
  */
 export const CreateWarrantyClaimSchema = z
   .object({
     proxy_id: z.string().uuid("proxy_id phải là UUID"),
+    user_id: z.string().uuid("user_id phải là UUID"),
     reason_code: z.enum(WARRANTY_REASON_CODES),
     reason_text: z.string().max(2000).optional().nullable(),
   })

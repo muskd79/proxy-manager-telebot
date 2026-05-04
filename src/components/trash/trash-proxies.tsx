@@ -155,8 +155,18 @@ export function TrashProxies({ canWrite }: TrashProxiesProps) {
   }
 
   // ─── Bulk actions ──────────────────────────────────────────────────
+  //
+  // Wave 26-D bug hunt v2 [MEDIUM] — split success/failure toasts and
+  // collect failed IDs.
+  //
+  // Pre-fix: a partial success showed only "Đã khôi phục 3/5 proxy" with
+  // no signal which 2 failed. Admin had to re-eyeball the list, reselect,
+  // and retry blindly. Now: failed IDs are kept in selection so the user
+  // can immediately retry just those rows; the toast says "X thành công,
+  // Y thất bại" with both numbers explicit.
   async function handleBulkRestore() {
     setPendingAction(true);
+    const failedIds: string[] = [];
     let successCount = 0;
     for (const id of selectedIds) {
       try {
@@ -166,14 +176,25 @@ export function TrashProxies({ canWrite }: TrashProxiesProps) {
           body: JSON.stringify({ is_deleted: false, deleted_at: null }),
         });
         if (res.ok) successCount++;
+        else failedIds.push(id);
       } catch (err) {
         console.error(`Failed to restore proxy ${id}:`, err);
+        failedIds.push(id);
       }
     }
-    toast.success(
-      `Đã khôi phục ${successCount}/${selectedIds.length} proxy`,
-    );
-    setSelectedIds([]);
+    if (successCount > 0 && failedIds.length === 0) {
+      toast.success(`Đã khôi phục ${successCount}/${selectedIds.length} proxy`);
+    } else if (successCount > 0) {
+      toast.warning(
+        `Khôi phục ${successCount} thành công, ${failedIds.length} thất bại — đã giữ lại các proxy lỗi để bạn thử lại.`,
+      );
+    } else {
+      toast.error(
+        `Không khôi phục được proxy nào (${failedIds.length} lỗi). Kiểm tra mạng / quyền và thử lại.`,
+      );
+    }
+    // Keep failed IDs in selection so admin can retry without rebuilding.
+    setSelectedIds(failedIds);
     setBulkRestoreOpen(false);
     setPendingAction(false);
     await fetchProxies();
@@ -181,6 +202,7 @@ export function TrashProxies({ canWrite }: TrashProxiesProps) {
 
   async function handleBulkPermanentDelete() {
     setPendingAction(true);
+    const failedIds: string[] = [];
     let successCount = 0;
     for (const id of selectedIds) {
       try {
@@ -188,18 +210,25 @@ export function TrashProxies({ canWrite }: TrashProxiesProps) {
           method: "DELETE",
         });
         if (res.ok) successCount++;
+        else failedIds.push(id);
       } catch (err) {
         console.error(`Failed to delete proxy ${id}:`, err);
+        failedIds.push(id);
       }
     }
-    if (successCount > 0) {
-      toast.success(
-        `Đã xoá vĩnh viễn ${successCount}/${selectedIds.length} proxy`,
+    if (successCount > 0 && failedIds.length === 0) {
+      toast.success(`Đã xoá vĩnh viễn ${successCount}/${selectedIds.length} proxy`);
+    } else if (successCount > 0) {
+      toast.warning(
+        `Xoá ${successCount} thành công, ${failedIds.length} thất bại (thường do FK bảo hành — kiểm tra warranty_claims).`,
       );
     } else {
-      toast.error("Không xoá được proxy nào");
+      toast.error(
+        `Không xoá được proxy nào (${failedIds.length} lỗi). Kiểm tra warranty_claims / requests đang tham chiếu.`,
+      );
     }
-    setSelectedIds([]);
+    // Keep failed IDs in selection for retry.
+    setSelectedIds(failedIds);
     setBulkDeleteOpen(false);
     setPendingAction(false);
     await fetchProxies();

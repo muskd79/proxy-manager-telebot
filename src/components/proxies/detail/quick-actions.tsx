@@ -317,10 +317,53 @@ export function QuickActions({
     });
   }
 
-  function handleToggleHidden() {
-    void onToggleHidden(!proxy.hidden).then(() => {
-      toast.success(proxy.hidden ? "Đã hiện proxy" : "Đã ẩn proxy khỏi danh sách");
+  /**
+   * Wave 26-D bug hunt v2 [HIGH] — pre-fix the "Cấp lại" button on
+   * expired proxies reused handleMaintenanceToAvailable, so admin saw
+   * the wrong dialog copy ("sẽ chuyển từ Bảo trì sang Sẵn sàng") even
+   * though the proxy was Hết hạn. Now: dedicated handler with copy
+   * that names the actual transition (Hết hạn → Sẵn sàng) and prompts
+   * for the renewal context (vendor extended? new sub purchased? etc).
+   *
+   * Reason is required here because expired proxies coming back to
+   * available always have a real-world cause that future admins may
+   * need to audit (e.g., "Vendor extended thêm 30 ngày" → admin should
+   * also update expires_at via Sửa).
+   */
+  function handleExpiredToAvailable() {
+    openReason({
+      title: "Cấp lại proxy đã hết hạn?",
+      description: `${proxy.host}:${proxy.port} đang ở trạng thái Hết hạn. "Cấp lại" sẽ chuyển proxy về Sẵn sàng — nhớ cập nhật ngày hết hạn (expires_at) qua nút Sửa nếu vendor đã gia hạn.`,
+      confirmLabel: "Cấp lại (Hết hạn → Sẵn sàng)",
+      destructive: false,
+      reasonRequired: true,
+      placeholder: "Vd: Vendor gia hạn thêm 30 ngày, tự mua lại sub mới, …",
+      onConfirm: async (reason) => {
+        await onSetStatus("available", reason);
+        toast.success("Đã cấp lại proxy — nhớ cập nhật ngày hết hạn");
+      },
     });
+  }
+
+  function handleToggleHidden() {
+    // Wave 26-D bug hunt v2 [P0-2] — error path was silently dropped.
+    // Pre-fix: if onToggleHidden rejected (network/permission/etc),
+    // admin saw NO toast and the UI stayed in pre-toggle state with
+    // no signal. Now: explicit .catch + error toast.
+    void onToggleHidden(!proxy.hidden)
+      .then(() => {
+        toast.success(
+          proxy.hidden ? "Đã hiện proxy" : "Đã ẩn proxy khỏi danh sách",
+        );
+      })
+      .catch((err: unknown) => {
+        console.error("Toggle hidden failed:", err);
+        toast.error(
+          proxy.hidden
+            ? "Không hiện được proxy"
+            : "Không ẩn được proxy",
+        );
+      });
   }
 
   // ─── Render ────────────────────────────────────────────────────────
@@ -409,7 +452,7 @@ export function QuickActions({
     case "expired":
       primaryActions.unshift({
         label: "Cấp lại",
-        onClick: handleMaintenanceToAvailable,
+        onClick: handleExpiredToAvailable,
         icon: RotateCcw,
         variant: "default",
         disabled: !canWrite,

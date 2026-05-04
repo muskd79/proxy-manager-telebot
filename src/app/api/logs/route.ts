@@ -4,6 +4,7 @@ import type { LogFilters, PaginatedResponse } from "@/types/api";
 import type { ActivityLog } from "@/types/database";
 import { requireAnyRole } from "@/lib/auth";
 import { LOGS_SORT, safeSort } from "@/lib/sort-allowlist";
+import { isUuid } from "@/lib/uuid";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -40,7 +41,11 @@ export async function GET(request: NextRequest) {
     if (filters.actorType) {
       query = query.eq("actor_type", filters.actorType);
     }
-    if (filters.actorId) {
+    // Wave 26-D bug hunt v2 [security C2] — UUID-shape guard. Pre-fix
+    // raw user input bled into .eq() — Postgres safely cast-rejected
+    // it but the 200 vs 500 oracle let an attacker enumerate which
+    // UUIDs correspond to active actors.
+    if (filters.actorId && isUuid(filters.actorId)) {
       query = query.eq("actor_id", filters.actorId);
     }
     if (filters.action) {
@@ -56,8 +61,9 @@ export async function GET(request: NextRequest) {
       query = query.eq("resource_type", filters.resourceType);
     }
     // Wave 26-D-pre1 — filter by single resource id (uses idx_logs_resource).
-    // UUID-shape regex guards against malformed input bleeding into eq().
-    if (filters.resourceId && /^[0-9a-f-]{36}$/i.test(filters.resourceId)) {
+    // Wave 26-D bug hunt v2 — strict UUID via isUuid() (was loose
+    // [0-9a-f-]{36} which accepted 36 dashes).
+    if (filters.resourceId && isUuid(filters.resourceId)) {
       query = query.eq("resource_id", filters.resourceId);
     }
     if (filters.dateFrom) {

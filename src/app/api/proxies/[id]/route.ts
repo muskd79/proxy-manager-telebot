@@ -166,8 +166,25 @@ export async function PUT(
     // purchase_price_usd → cost_usd. The other names are 1-to-1.
     // Wave 26-C — normalise on PATCH too. If admin types `IPv4` in the
     // edit form, we still write canonical `datacenter_ipv4` to DB.
-    if (network_type !== undefined)
-      updateData.network_type = normalizeNetworkType(network_type);
+    //
+    // Wave 26-D bug hunt v2 [HIGH] — reject unknown network_type values
+    // instead of silently storing NULL. Empty string still means "clear
+    // the classification" (legitimate); a truthy unknown value is a typo
+    // or stale UI option that should surface as a validation error.
+    if (network_type !== undefined) {
+      const truthy = typeof network_type === "string" && network_type.trim().length > 0;
+      const canonical = normalizeNetworkType(network_type);
+      if (truthy && !canonical) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Unrecognised network_type: ${network_type}. Use one of: isp, datacenter_ipv4, datacenter_ipv6, residential, mobile, static_residential.`,
+          },
+          { status: 400 },
+        );
+      }
+      updateData.network_type = canonical;
+    }
     if (category_id !== undefined) updateData.category_id = category_id || null;
     if (purchase_date !== undefined) updateData.purchase_date = purchase_date || null;
     if (purchase_price_usd !== undefined) updateData.cost_usd = purchase_price_usd ?? null;
@@ -254,7 +271,25 @@ export async function DELETE(
         .delete()
         .eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        // Wave 26-D bug hunt v2 [Debugger #1] — surface FK violation
+        // (warranty_claims.proxy_id ON DELETE RESTRICT) as a friendly
+        // 409 instead of a generic 500. Pre-fix admin saw "Xoá vĩnh
+        // viễn thất bại" with no clue why.
+        const code = (error as { code?: string }).code;
+        if (code === "23503") {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "fk_violation_warranty_claim",
+              message:
+                "Proxy này đang được tham chiếu bởi yêu cầu bảo hành (warranty_claims). Hãy xoá yêu cầu bảo hành liên quan trước khi xoá vĩnh viễn proxy.",
+            },
+            { status: 409 },
+          );
+        }
+        throw error;
+      }
 
       logActivity({
         actorType: "admin",
