@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { pickReplacementProxy } from "../allocator";
 import type { Proxy } from "@/types/database";
+// Wave 28 — every proxy has a non-null category_id (mig 068). Tests
+// that exercised the legacy "uncategorised" code path use the sentinel
+// here. The allocator still has defence-in-depth for null inputs (see
+// `category_id = originalProxy.category_id ?? null` in allocator.ts).
+import { DEFAULT_CATEGORY_ID } from "@/lib/categories/constants";
 
 /**
  * Wave 26-D bug hunt v4 [TEST] — pin the 3-tier allocator behavior.
@@ -27,7 +32,7 @@ function makeProxy(overrides: Partial<Proxy> = {}): Proxy {
     host: "1.2.3.4",
     port: 8080,
     type: "http",
-    category_id: null,
+    category_id: DEFAULT_CATEGORY_ID,
     username: null,
     password: null,
     country: null,
@@ -165,14 +170,22 @@ describe("pickReplacementProxy — 3-tier fallback", () => {
     expect(result.proxy?.id).toBe(REPLACEMENT_TIER3_ID);
   });
 
-  it("NULL category: skips Tier 1 and Tier 2, jumps to Tier 3", async () => {
+  it("NULL category (defence-in-depth): skips Tier 1 and Tier 2, jumps to Tier 3", async () => {
     // The bug v3 fix: when category_id is null, "same category" is
     // semantically meaningless — running tier 1/2 with `is("category_id", null)`
     // would match all uncategorised proxies (potentially wrong-category).
     // Allocator must skip directly to tier 3 (any same-protocol).
+    //
+    // Wave 28 NOTE: the production schema (mig 068) makes
+    // proxies.category_id NOT NULL with a sentinel default, so this
+    // edge case can no longer occur via the normal app path. The
+    // test still pins the allocator's defensive null-handling for
+    // any code path that constructs a Proxy in-memory (bot, RPC
+    // shape mappers, future SDK changes).
     const original = makeProxy({
       id: ORIGINAL_ID,
-      category_id: null,
+      // Cast to bypass NOT NULL — exercising allocator's defence-in-depth.
+      category_id: null as unknown as string,
       network_type: null,
       type: "http",
     });

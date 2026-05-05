@@ -6,6 +6,8 @@ import {
 } from "../eligibility";
 import type { Proxy, WarrantyClaim } from "@/types/database";
 import { ProxyStatus } from "@/types/database";
+// Wave 28 — sentinel category for proxies in test fixtures (mig 068).
+import { DEFAULT_CATEGORY_ID } from "@/lib/categories/constants";
 
 /**
  * Wave 26-D — pin every reject path of the warranty eligibility gate.
@@ -25,7 +27,7 @@ function buildProxy(overrides: Partial<Proxy> = {}): Proxy {
     host: "1.2.3.4",
     port: 8080,
     type: "http",
-    category_id: null,
+    category_id: DEFAULT_CATEGORY_ID,
     username: "user",
     password: "pass",
     country: "VN",
