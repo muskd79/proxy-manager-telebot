@@ -14,8 +14,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+// Wave 28 hotfix — explicit count + typed-confirm before mass-hiding
+// every proxy in a category. Prevents the "mất hết proxy" accident
+// reported in production.
+import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
 import type { ProxyCategory } from "@/types/database";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, AlertTriangle } from "lucide-react";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
@@ -131,7 +135,24 @@ export function CategoryFormDialog({
 
   const canSave = !submitting && name.trim().length > 0;
 
+  // Wave 28 hotfix — block accidental "ẩn danh mục" toggle from
+  // mass-hiding every proxy in production. Tracks the user's
+  // pending-toggle intent so the typed-confirm dialog can gate the
+  // save() call.
+  const proxyCount = category?.proxy_count ?? 0;
+  const turningHiddenOn =
+    isEdit && isHidden === true && category?.is_hidden === false;
+  const [hideConfirmOpen, setHideConfirmOpen] = useState(false);
+
   async function save() {
+    // If the admin is turning is_hidden ON for a category that currently
+    // has proxies, intercept and require typed confirmation. The
+    // dangerous-confirm dialog forces the admin to type a phrase, so
+    // muscle-memory clicks can't trigger a mass-hide.
+    if (turningHiddenOn && proxyCount > 0 && !hideConfirmOpen) {
+      setHideConfirmOpen(true);
+      return;
+    }
     setSubmitting(true);
     try {
       // Wave 27 bug hunt v6 [debugger #4, MEDIUM] — write both legacy
@@ -356,17 +377,37 @@ export function CategoryFormDialog({
           </div>
 
           {isEdit && (
-            <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+            <label
+              className={`flex items-start gap-2 rounded-md border p-3 text-sm ${
+                turningHiddenOn && proxyCount > 0
+                  ? "border-destructive/50 bg-destructive/5"
+                  : ""
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={isHidden}
                 onChange={(e) => setIsHidden(e.target.checked)}
-                className="size-4"
+                className="mt-0.5 size-4"
               />
-              <span>
-                <strong>Ẩn danh mục</strong> — toàn bộ {category?.proxy_count ?? 0} proxy
-                thuộc danh mục này sẽ ẩn khỏi list mặc định, không phân phối
-                qua bot. Bật lại sẽ unhide hết.
+              <span className="space-y-1">
+                <span className="block">
+                  <strong>Ẩn danh mục</strong> — toàn bộ{" "}
+                  <span className="font-semibold text-destructive">
+                    {proxyCount} proxy
+                  </span>{" "}
+                  thuộc danh mục này sẽ ẩn khỏi list mặc định, không phân phối
+                  qua bot. Bật lại sẽ unhide hết.
+                </span>
+                {turningHiddenOn && proxyCount > 0 && (
+                  <span className="flex items-start gap-1.5 text-xs text-destructive">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Bấm <strong>Lưu</strong> sẽ yêu cầu xác nhận thêm — gõ
+                      đúng cụm từ để tránh ẩn nhầm.
+                    </span>
+                  </span>
+                )}
               </span>
             </label>
           )}
@@ -381,6 +422,46 @@ export function CategoryFormDialog({
             {isEdit ? "Lưu" : "Tạo"}
           </Button>
         </DialogFooter>
+
+        {/* Wave 28 hotfix — typed-confirm gate for mass-hiding. */}
+        <DangerousConfirmDialog
+          open={hideConfirmOpen}
+          onOpenChange={setHideConfirmOpen}
+          title={`Ẩn danh mục "${category?.name ?? ""}" (${proxyCount} proxy)?`}
+          description={
+            <div className="space-y-2 text-sm">
+              <p>
+                Sau khi xác nhận:{" "}
+                <strong>{proxyCount} proxy</strong> trong danh mục này sẽ:
+              </p>
+              <ul className="list-inside list-disc space-y-1 text-muted-foreground">
+                <li>Biến mất khỏi <code>/proxies</code> mặc định</li>
+                <li>KHÔNG phân phối qua bot Telegram</li>
+                <li>KHÔNG xuất hiện trong auto-allocate</li>
+              </ul>
+              <p className="text-muted-foreground">
+                Có thể unhide bằng cách tắt toggle này. Dữ liệu KHÔNG mất.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Gõ <code className="rounded bg-muted px-1 font-mono">AN DANH MUC</code> để xác nhận.
+              </p>
+            </div>
+          }
+          confirmString="AN DANH MUC"
+          actionLabel={`Ẩn ${proxyCount} proxy`}
+          loading={submitting}
+          onConfirm={async () => {
+            // Re-enter save() — the guard at the top will see
+            // hideConfirmOpen=true and skip the gate. Close the
+            // typed-confirm dialog regardless of save() outcome so
+            // the admin isn't stuck if the API errors.
+            try {
+              await save();
+            } finally {
+              setHideConfirmOpen(false);
+            }
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

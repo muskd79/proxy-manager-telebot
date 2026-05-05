@@ -178,6 +178,11 @@ export default function ProxiesPage() {
         params.set("import_batch_id", filters.importBatchId);
       // Wave 22C: tags param removed — categories filter via ?category_id=X.
       // Wave 22Y — isp filter param removed (column dropped from UI)
+      // Wave 28 hotfix — opt-in to also see proxies hidden via the
+      // category-cascade. Default off matches the API default; admin
+      // toggles "Hiện proxy ẩn" in the page header to discover proxies
+      // that disappeared because their category was hidden by mistake.
+      if (filters.includeHidden) params.set("include_hidden", "true");
       params.set("page", String(filters.page || 1));
       params.set("pageSize", String(filters.pageSize || 20));
       params.set("sortBy", filters.sortBy || "created_at");
@@ -733,6 +738,38 @@ export default function ProxiesPage() {
         countries={countries}
         categories={categories}
       />
+
+      {/*
+        Wave 28 hotfix — discoverable "show hidden" toggle.
+
+        Pre-fix the API filtered hidden=true proxies by default and
+        admins who accidentally hid a category had no in-app way to
+        find them again — they thought all proxies "disappeared" (the
+        production bug report). Now: a small toggle in the filters
+        row exposes the include_hidden=true query path so admin can
+        recover. The default-off state matches existing behavior.
+      */}
+      <div className="flex items-center justify-between rounded-md border border-dashed border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <span>
+          Mặc định ẩn các proxy thuộc danh mục đang ẩn. Bật để xem chúng.
+        </span>
+        <label className="flex cursor-pointer items-center gap-1.5 text-foreground">
+          <input
+            type="checkbox"
+            checked={filters.includeHidden ?? false}
+            onChange={(e) =>
+              setFilters((prev) => ({
+                ...prev,
+                includeHidden: e.target.checked,
+                page: 1,
+              }))
+            }
+            className="size-3.5"
+          />
+          <span>Hiện proxy bị ẩn</span>
+        </label>
+      </div>
+
 
       {/* Bulk actions — shared BulkActionBar shell.
           Keyboard shortcuts (Ctrl+A select-all, Esc deselect, Del delete)
