@@ -145,21 +145,66 @@ describe("POST /api/proxies/probe-batch - ref", () => {
 });
 
 describe("POST /api/proxies/probe-batch - SSRF", () => {
-  it("returns ssrf_blocked=true and alive=false for private IP", async () => {
+  // Wave 28-F [HIGH, audit #4] — private IPs now rejected at Zod
+  // parse time (publicHostLiteral refine) so the request never
+  // reaches detectProxy() and can't leak a timing-oracle speed_ms.
+  // The previous "200 with ssrf_blocked=true" wire shape was
+  // unreachable for obvious literals; retained the runtime
+  // ssrf_blocked path inside detectProxy() for hosts that pass the
+  // literal check but resolve to a private IP at DNS time.
+
+  it("rejects private IP at parse time with 400 — no detectProxy call", async () => {
     mockDetectProxy.mockResolvedValueOnce(SSRF_BLOCKED);
-    const res = await POST(makeRequest({ proxies: [{ host: "192.168.1.1", port: 8080, ref: "priv" }] }));
+    const res = await POST(
+      makeRequest({ proxies: [{ host: "192.168.1.1", port: 8080, ref: "priv" }] }),
+    );
+    expect(res.status).toBe(400);
     const body = await res.json();
-    expect(res.status).toBe(200);
-    expect(body.data.results[0].ssrf_blocked).toBe(true);
-    expect(body.data.results[0].alive).toBe(false);
-    expect(body.data.results[0].ref).toBe("priv");
+    expect(body.success).toBe(false);
+    // detectProxy must NOT have been called — that's the point of
+    // the fix (no timing-oracle leak via speed_ms).
+    expect(mockDetectProxy).not.toHaveBeenCalled();
   });
 
-  it("SSRF-blocked row counted as dead in summary", async () => {
-    mockDetectProxy.mockResolvedValueOnce(SSRF_BLOCKED);
-    const res = await POST(makeRequest({ proxies: [{ host: "10.0.0.1", port: 3128 }] }));
+  it("rejects RFC 1918 10.x.x.x at parse time", async () => {
+    const res = await POST(
+      makeRequest({ proxies: [{ host: "10.0.0.1", port: 3128 }] }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockDetectProxy).not.toHaveBeenCalled();
+  });
+
+  it("rejects loopback 127.0.0.1 at parse time", async () => {
+    const res = await POST(
+      makeRequest({ proxies: [{ host: "127.0.0.1", port: 80 }] }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockDetectProxy).not.toHaveBeenCalled();
+  });
+
+  it("rejects link-local 169.254.169.254 (cloud metadata) at parse time", async () => {
+    const res = await POST(
+      makeRequest({ proxies: [{ host: "169.254.169.254", port: 80 }] }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockDetectProxy).not.toHaveBeenCalled();
+  });
+
+  it("zeroes speed_ms when detectProxy returns ssrf_blocked (defence-in-depth)", async () => {
+    mockDetectProxy.mockResolvedValueOnce({
+      ...SSRF_BLOCKED,
+      speed_ms: 999, // pretend the runtime path leaked a non-zero value
+    });
+    // Use a public-looking host that resolves to a private IP at DNS
+    // time — passes Zod refine, runtime SSRF still kicks in.
+    const res = await POST(
+      makeRequest({ proxies: [{ host: "203.0.113.99", port: 8080 }] }),
+    );
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.summary.dead).toBe(1);
-    expect(body.data.summary.alive).toBe(0);
+    expect(body.data.results[0].ssrf_blocked).toBe(true);
+    // The route's defence-in-depth zero-out kicks in even if
+    // detectProxy returned a non-zero speed_ms.
+    expect(body.data.results[0].speed_ms).toBe(0);
   });
 });
