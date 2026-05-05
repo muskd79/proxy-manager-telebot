@@ -71,7 +71,7 @@ INSERT INTO proxy_categories (
   min_stock_alert,
   created_by
 ) VALUES (
-  '00000000-0000-0000-0000-0000000028ca',
+  '00000000-0000-4000-8000-0000000028ca',
   'Mặc định',
   'Danh mục dự phòng cho proxy chưa phân loại. Không thể xoá hoặc đổi tên — proxy không có danh mục riêng sẽ tự động về đây.',
   'gray',
@@ -96,13 +96,13 @@ ON CONFLICT (id) DO UPDATE
 -- Includes soft-deleted rows so undelete doesn't violate the upcoming
 -- NOT NULL constraint.
 UPDATE proxies
-   SET category_id = '00000000-0000-0000-0000-0000000028ca'
+   SET category_id = '00000000-0000-4000-8000-0000000028ca'
  WHERE category_id IS NULL;
 
 
 -- ─── 4. FK switch + column DEFAULT ───────────────────────────
 ALTER TABLE proxies
-  ALTER COLUMN category_id SET DEFAULT '00000000-0000-0000-0000-0000000028ca';
+  ALTER COLUMN category_id SET DEFAULT '00000000-0000-4000-8000-0000000028ca';
 
 -- Drop the old FK if it exists (mig 028 / 042 named it
 -- `proxies_category_id_fkey`) and re-add with ON DELETE SET DEFAULT.
@@ -135,7 +135,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF OLD.is_system = true OR OLD.id = '00000000-0000-0000-0000-0000000028ca' THEN
+  IF OLD.is_system = true OR OLD.id = '00000000-0000-4000-8000-0000000028ca' THEN
     RAISE EXCEPTION
       'Cannot delete system category "%". Wave 28 — sentinel is required for the proxies.category_id FK ON DELETE SET DEFAULT path.',
       OLD.name
@@ -161,7 +161,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF OLD.id = '00000000-0000-0000-0000-0000000028ca' THEN
+  IF OLD.id = '00000000-0000-4000-8000-0000000028ca' THEN
     -- Allow admin to edit defaults (price, country, etc.) on the
     -- sentinel — those are fine. Block name change, hide toggle,
     -- and is_system flip.

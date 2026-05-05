@@ -23,7 +23,7 @@
 
 /** UUID of the system "Mặc định" category. Mirrors mig 068 SQL literal. */
 export const DEFAULT_CATEGORY_ID =
-  "00000000-0000-0000-0000-0000000028ca" as const;
+  "00000000-0000-4000-8000-0000000028ca" as const;
 
 /** Vietnamese display name; matches the row inserted by mig 068. */
 export const DEFAULT_CATEGORY_NAME = "Mặc định" as const;

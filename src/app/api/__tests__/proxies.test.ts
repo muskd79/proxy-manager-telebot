@@ -61,6 +61,22 @@ vi.mock("@/lib/auth", () => ({
 
 // Import route handlers after mocks
 import { GET, POST } from "@/app/api/proxies/route";
+// Wave 28-B — every POST body must include a category_id (UUID).
+import { DEFAULT_CATEGORY_ID } from "@/lib/categories/constants";
+
+/**
+ * Wave 28-B — minimal valid POST body. Every test in this file that
+ * exercises POST /api/proxies must include `category_id` per the
+ * Wave 28 business rule. We default to the sentinel; tests that
+ * verify the missing-category error path build their body without
+ * it inline.
+ */
+const MIN_POST_BODY = {
+  host: "203.0.113.2",
+  port: 3128,
+  type: "http",
+  category_id: DEFAULT_CATEGORY_ID,
+} as const;
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -234,7 +250,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 3128, type: "http" },
+      body: { ...MIN_POST_BODY },
     });
     const res = await POST(req);
     const body = await res.json();
@@ -251,7 +267,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 3128, type: "http" },
+      body: { ...MIN_POST_BODY },
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
@@ -265,7 +281,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 3128, type: "http" },
+      body: { ...MIN_POST_BODY },
     });
     const res = await POST(req);
     expect(res.status).toBe(403);
@@ -276,7 +292,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { port: 3128, type: "http" },
+      body: { port: 3128, type: "http", category_id: DEFAULT_CATEGORY_ID },
     });
     const res = await POST(req);
     const body = await res.json();
@@ -286,12 +302,42 @@ describe("POST /api/proxies", () => {
     expect(body.error).toBe("Validation failed");
   });
 
+  // Wave 28-B — explicit MISSING_CATEGORY pre-validation test.
+  it("returns 400 MISSING_CATEGORY when category_id is omitted", async () => {
+    mockRequireAdminOrAbove.mockResolvedValue({ admin: mockAdmin, error: null });
+
+    const req = createMockRequest({
+      method: "POST",
+      body: { host: "203.0.113.2", port: 3128, type: "http" }, // no category_id
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("MISSING_CATEGORY");
+    expect(body.message).toMatch(/danh mục/i);
+  });
+
+  it("returns 400 MISSING_CATEGORY when category_id is null", async () => {
+    mockRequireAdminOrAbove.mockResolvedValue({ admin: mockAdmin, error: null });
+
+    const req = createMockRequest({
+      method: "POST",
+      body: { host: "203.0.113.2", port: 3128, type: "http", category_id: null },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("MISSING_CATEGORY");
+  });
+
   it("returns 400 for invalid port", async () => {
     mockRequireAdminOrAbove.mockResolvedValue({ admin: mockAdmin, error: null });
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 70000, type: "http" },
+      body: { ...MIN_POST_BODY, port: 70000 },
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -302,7 +348,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 8080, type: "ftp" },
+      body: { ...MIN_POST_BODY, port: 8080, type: "ftp" },
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -314,7 +360,7 @@ describe("POST /api/proxies", () => {
     const req = createMockRequest({
       method: "POST",
       body: {
-        host: "203.0.113.2",
+        ...MIN_POST_BODY,
         port: 8080,
         type: "socks5",
         username: "proxyuser",
@@ -338,7 +384,7 @@ describe("POST /api/proxies", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { host: "203.0.113.2", port: 3128, type: "http" },
+      body: { ...MIN_POST_BODY },
     });
     const res = await POST(req);
     expect(res.status).toBe(500);

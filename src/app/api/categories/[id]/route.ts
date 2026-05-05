@@ -5,6 +5,8 @@ import { logActivity } from "@/lib/logger";
 import { assertSameOrigin } from "@/lib/csrf";
 import { UpdateCategorySchema } from "@/lib/validations";
 import { normalizeNetworkType } from "@/lib/proxy-labels";
+// Wave 28-B — sentinel guard for the "Mặc định" category.
+import { assertNotMutatingSentinel } from "@/lib/categories/enforcement";
 
 /**
  * GET /api/categories/[id]
@@ -68,6 +70,16 @@ export async function PATCH(
         { status: 400 },
       );
     }
+
+    // Wave 28-B — block rename / hide on the sentinel "Mặc định" row.
+    // The DB also has a BEFORE UPDATE trigger as a safety net, but this
+    // path returns a friendly Vietnamese 403 instead of a Postgres
+    // exception bubbling through to the generic "Failed to update".
+    const sentinelErr = assertNotMutatingSentinel(id, {
+      renaming: parsed.data.name !== undefined,
+      hiding: parsed.data.is_hidden === true,
+    });
+    if (sentinelErr) return sentinelErr;
 
     // Wave 26-C — normalise default_network_type so the category
     // default propagated to new proxies via proxy-form.tsx /
@@ -146,10 +158,20 @@ export async function DELETE(
 
   const { id } = await params;
 
+  // Wave 28-B — block DELETE on the sentinel "Mặc định" row before the
+  // DB layer surfaces a less-friendly Postgres exception. The trigger
+  // `fn_protect_default_category_delete` (mig 068) is the safety net.
+  const sentinelErr = assertNotMutatingSentinel(id, { deleting: true });
+  if (sentinelErr) return sentinelErr;
+
   // Wave 22E-5 BUG FIX (A5): Supabase delete on a non-existent ID returns
   // no error and 0 rows, so the pre-fix handler returned 200 even though
   // nothing was deleted. The UI showed "deleted" toast for ghost actions.
   // Use count: "exact" and reject 404 explicitly.
+  //
+  // Wave 28 — proxies in this category re-home to the "Mặc định"
+  // sentinel via the FK ON DELETE SET DEFAULT (mig 068). No more
+  // orphan rows.
   const { count, error } = await supabase
     .from("proxy_categories")
     .delete({ count: "exact" })

@@ -25,7 +25,14 @@ export const CreateProxySchema = z.object({
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
-  category_id: z.string().uuid().nullable().optional(),
+  // Wave 28 — category_id is REQUIRED on create. Pre-Wave-28 the
+  // schema accepted nullable | optional; mig 068 made the column
+  // NOT NULL and adds a sentinel "Mặc định" that the form auto-
+  // selects when admin doesn't pick. The route handler is the
+  // last line of defence (Vietnamese error via
+  // `lib/categories/enforcement.ts`); the DB column DEFAULT is the
+  // safety net.
+  category_id: z.string().uuid({ message: "MISSING_CATEGORY" }),
   // Wave 22K — per-proxy purchase metadata (denorm from purchase_lots).
   purchase_date: z.string().nullable().optional(),
   purchase_price_usd: z.coerce.number().finite().min(0).max(1_000_000).nullable().optional(),
@@ -50,6 +57,12 @@ export const UpdateProxySchema = z.object({
   country: z.string().max(100).nullable().optional(),
   city: z.string().max(100).nullable().optional(),
   isp: z.string().max(255).nullable().optional(),
+  // Wave 28 — explicit null is rejected in the route handler with a
+  // friendly Vietnamese 400. We keep `.nullable()` here so the schema
+  // PARSES the body (so route can read .data.category_id and route
+  // its own error), then enforcement.ts turns null into 400.
+  // `.optional()` stays so PATCH bodies that omit the field continue
+  // to no-op the column.
   category_id: z.string().uuid().nullable().optional(),
   // Wave 22K — purchase metadata mutable.
   purchase_date: z.string().nullable().optional(),
@@ -256,7 +269,12 @@ export const ReorderCategoriesSchema = z.object({
 
 export const AssignProxiesToCategorySchema = z.object({
   proxy_ids: z.array(z.string().uuid()).min(1).max(5000),
-  category_id: z.string().uuid().nullable(),
+  // Wave 28 — bulk re-assign no longer accepts `null`. To "remove" a
+  // category, admin must explicitly pick the "Mặc định" sentinel.
+  // The `.uuid()` validator rejects null at parse time; the route
+  // handler also calls `assertCategoryNotUnassigned` for a friendlier
+  // Vietnamese error than Zod's stock message.
+  category_id: z.string().uuid({ message: "MISSING_CATEGORY" }),
 });
 
 // ─── Settings schemas ────────────────────────────────────────────

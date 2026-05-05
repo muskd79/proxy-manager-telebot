@@ -24,12 +24,39 @@ import {
 // ─── CreateProxySchema ──────────────────────────────────────────
 
 describe("CreateProxySchema", () => {
+  // Wave 28-B — `category_id` is now REQUIRED. All "valid"-ish base
+  // fixtures gain the sentinel UUID. Tests that exercise the
+  // missing-category path build their body without it inline.
   const validProxy = {
     // TEST-NET-3 — public, reserved for docs, passes SSRF refinement.
     host: "203.0.113.1",
     port: 8080,
     type: "http" as const,
+    category_id: "00000000-0000-4000-8000-0000000028ca",
   };
+
+  it("Wave 28: rejects payload without category_id", () => {
+    const { category_id: _drop, ...noCategory } = validProxy;
+    void _drop;
+    const result = CreateProxySchema.safeParse(noCategory);
+    expect(result.success).toBe(false);
+  });
+
+  it("Wave 28: rejects payload with category_id=null", () => {
+    const result = CreateProxySchema.safeParse({
+      ...validProxy,
+      category_id: null,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("Wave 28: rejects payload with non-UUID category_id", () => {
+    const result = CreateProxySchema.safeParse({
+      ...validProxy,
+      category_id: "not-a-uuid",
+    });
+    expect(result.success).toBe(false);
+  });
 
   it("accepts valid minimal proxy data", () => {
     const result = CreateProxySchema.safeParse(validProxy);

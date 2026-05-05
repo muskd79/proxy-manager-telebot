@@ -120,11 +120,21 @@ describe("AssignProxiesToCategorySchema (Wave 22A)", () => {
     ).toBe(false);
   });
 
-  it("accepts category_id=null (move to uncategorised)", () => {
+  // Wave 28-B — `null` is no longer accepted. To "move to uncategorised"
+  // admin must explicitly pick the "Mặc định" sentinel UUID.
+  it("rejects category_id=null (Wave 28: every proxy must have a category)", () => {
+    const r = AssignProxiesToCategorySchema.safeParse({
+      proxy_ids: ["00000000-0000-4000-8000-000000000001"],
+      category_id: null,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts the sentinel category UUID for re-homing to Mặc định", () => {
     expect(
       AssignProxiesToCategorySchema.safeParse({
         proxy_ids: ["00000000-0000-4000-8000-000000000001"],
-        category_id: null,
+        category_id: "00000000-0000-4000-8000-0000000028ca",
       }).success,
     ).toBe(true);
   });
