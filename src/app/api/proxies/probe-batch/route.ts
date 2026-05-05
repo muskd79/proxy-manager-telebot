@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrAbove } from "@/lib/auth";
 import { detectProxy, type ProxyDetectResult } from "@/lib/proxy-detect";
 import { assertSameOrigin } from "@/lib/csrf";
+// Wave 28-F [HIGH, audit #4] — pre-Zod SSRF guard. Pre-fix the schema
+// only validated host shape; the runtime check inside detectProxy()
+// would set ssrf_blocked=true but a `speed_ms` value still leaked,
+// usable as a timing oracle to fingerprint internal services. Now
+// rejected at parse-time so the request never reaches detectProxy()
+// for obvious private literals.
+import { validatePublicHostLiteral } from "@/lib/security/public-ip";
 import { z } from "zod";
 
 /**
@@ -46,7 +53,17 @@ const ProbeBatchSchema = z.object({
   proxies: z
     .array(
       z.object({
-        host: z.string().min(1).max(253),
+        // Wave 28-F [HIGH] — refine rejects private/loopback/link-local
+        // literals at parse time so the row never reaches detectProxy()
+        // and can't leak a timing-oracle speed_ms.
+        host: z
+          .string()
+          .min(1)
+          .max(253)
+          .refine(
+            (s) => validatePublicHostLiteral(s) === null,
+            { message: "Host resolves to a private or reserved address (SSRF guard)" },
+          ),
         port: z.coerce.number().int().min(1).max(65535),
         // Allow caller to pass back a per-row tag (e.g., line number
         // from the import wizard) so they can correlate the result
@@ -104,7 +121,11 @@ export async function POST(request: NextRequest) {
           port: p.port,
           alive: detect.alive,
           type: detect.type,
-          speed_ms: detect.speed_ms,
+          // Wave 28-F [HIGH] — zero out speed_ms when ssrf_blocked.
+          // Pre-fix the response leaked the actual probe timing even
+          // for blocked hosts, usable as a timing oracle to
+          // fingerprint internal services. Now: 0 on block.
+          speed_ms: detect.ssrf_blocked ? 0 : detect.speed_ms,
           ssrf_blocked: detect.ssrf_blocked,
         } satisfies BatchProbeResult;
       }),

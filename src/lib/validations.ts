@@ -175,7 +175,11 @@ export const CreateUserSchema = z.object({
   first_name: z.string().max(255).nullable().optional(),
   last_name: z.string().max(255).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
-  status: z.enum(["active", "banned", "limited"]).optional(),
+  // Wave 28-F [HIGH] — match TeleUserStatus enum + legacy "limited".
+  // See UpdateUserSchema comment.
+  status: z
+    .enum(["active", "blocked", "banned", "limited", "pending"])
+    .optional(),
   approval_mode: z.enum(["manual", "auto"]).optional(),
   max_proxies: z.coerce.number().int().min(0).max(1000).optional(),
   rate_limit_hourly: z.coerce.number().int().min(0).max(10000).optional(),
@@ -184,7 +188,16 @@ export const CreateUserSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
-  status: z.enum(["active", "banned", "limited"]).optional(),
+  // Wave 28-F [HIGH] — added "blocked" + "pending". Pre-fix the
+  // Block button on /users/[id] sent status:"blocked" but Zod
+  // rejected it (only ["active","banned","limited"] were valid),
+  // returning 400 "Validation failed" — the button silently failed
+  // for every admin who clicked it. The TeleUserStatus type already
+  // had "blocked" + "pending" + "banned" values; now they all
+  // match.
+  status: z
+    .enum(["active", "blocked", "banned", "limited", "pending"])
+    .optional(),
   approval_mode: z.enum(["manual", "auto"]).optional(),
   max_proxies: z.coerce.number().int().min(0).max(1000).optional(),
   rate_limit_hourly: z.coerce.number().int().min(0).max(10000).optional(),
@@ -302,7 +315,10 @@ export const AssignProxiesToCategorySchema = z.object({
  * paths treat 0 as unlimited or off; we don't impose a stricter
  * minimum to avoid breaking those).
  */
-const KNOWN_INT_SETTING_BOUNDS: Record<string, { max: number }> = {
+const KNOWN_INT_SETTING_BOUNDS: Record<
+  string,
+  { min?: number; max: number }
+> = {
   global_max_proxies: { max: 100_000 },
   global_max_total_requests: { max: 100_000 },
   default_rate_limit_hourly: { max: 100_000 },
@@ -312,6 +328,16 @@ const KNOWN_INT_SETTING_BOUNDS: Record<string, { max: number }> = {
   warranty_window_hours: { max: 24 * 30 }, // max 30-day warranty window
   warranty_max_claims_per_24h: { max: 1_000 },
   warranty_min_account_age_days: { max: 365 },
+  // Wave 28-F [HIGH, audit #3] — warranty threshold keys were rendered
+  // as editable inputs on /settings but bypassed the bounds check.
+  // Setting warranty_max_per_30d=0 effectively disables anti-abuse;
+  // setting warranty_reliability_decrement=100 instantly zeroes a
+  // proxy's reliability score on first claim. Both pinned to sane
+  // ranges below.
+  warranty_max_per_30d: { min: 1, max: 100 },
+  warranty_max_pending: { min: 1, max: 20 },
+  warranty_cooldown_minutes: { max: 1440 }, // 0..24h
+  warranty_reliability_decrement: { max: 100 },
 };
 
 export const UpdateSettingsSchema = z.object({
@@ -330,7 +356,11 @@ export const UpdateSettingsSchema = z.object({
           const n = typeof raw === "number" ? raw : Number(raw);
           if (!Number.isFinite(n)) return false;
           if (!Number.isInteger(n)) return false;
-          if (n < 0) return false;
+          // Wave 28-F — honour the optional `min` floor for keys
+          // where 0 is destructive (warranty_max_per_30d=0 disables
+          // anti-abuse; warranty_max_pending=0 hangs the bot).
+          const min = bounds.min ?? 0;
+          if (n < min) return false;
           if (n > bounds.max) return false;
         }
         return true;

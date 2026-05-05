@@ -280,12 +280,22 @@ export default function RequestsPage() {
     // (the pre-filtered subset whose status === "pending"). Pre-fix
     // iterated selectedIds directly which could include approved /
     // rejected rows from a previous filter view.
+    //
+    // Wave 28-F [HIGH, audit #2] — track per-row failure causes so
+    // partial-failure reports the WHY, not just a count. Pre-fix:
+    // the loop only counted res.ok and the cron-expired race
+    // (state machine rejects expired→rejected) silently inflated
+    // the failure count with no signal to admin. Now: collect
+    // failedExpired (race) + failedOther (network / 5xx) and surface
+    // both in distinct toasts so admin can decide whether to retry.
     const targetIds = pendingSelected;
     if (targetIds.length === 0) {
       toast.error("Không có yêu cầu pending nào trong selection");
       return;
     }
     let successCount = 0;
+    const failedExpired: string[] = [];
+    const failedOther: string[] = [];
     for (const id of targetIds) {
       try {
         const res = await fetch(`/api/requests/${id}`, {
@@ -293,19 +303,51 @@ export default function RequestsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "rejected" }),
         });
-        if (res.ok) successCount++;
+        if (res.ok) {
+          successCount++;
+          continue;
+        }
+        // Read body to distinguish state-machine 409 (expired race)
+        // from generic 5xx. Best-effort — if body isn't JSON we
+        // fall through to "other".
+        try {
+          const body = await res.json();
+          const errStr = String(body?.error ?? body?.message ?? "");
+          if (res.status === 409 || /expired|hết hạn/i.test(errStr)) {
+            failedExpired.push(id);
+          } else {
+            failedOther.push(id);
+          }
+        } catch {
+          failedOther.push(id);
+        }
       } catch (err) {
         console.error(`Failed to reject request ${id}:`, err);
+        failedOther.push(id);
       }
     }
-    if (successCount > 0) {
+    if (successCount > 0 && failedExpired.length === 0 && failedOther.length === 0) {
       toast.success(
         t("requests.batchRejectResult")
           .replace("{success}", String(successCount))
           .replace("{total}", String(targetIds.length)),
       );
+    } else if (successCount > 0) {
+      toast.warning(
+        `Đã từ chối ${successCount}/${targetIds.length}. ` +
+          (failedExpired.length > 0
+            ? `${failedExpired.length} đã hết hạn (cron đã xử lý). `
+            : "") +
+          (failedOther.length > 0 ? `${failedOther.length} lỗi mạng / server.` : ""),
+      );
     } else {
-      toast.error("Không từ chối được yêu cầu nào");
+      toast.error(
+        `Không từ chối được yêu cầu nào. ` +
+          (failedExpired.length > 0
+            ? `${failedExpired.length} đã hết hạn. `
+            : "") +
+          (failedOther.length > 0 ? `${failedOther.length} lỗi khác.` : ""),
+      );
     }
     setSelectedIds([]);
     void fetchRequests();

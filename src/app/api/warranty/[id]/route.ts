@@ -607,11 +607,25 @@ async function handleReject(args: {
   // 2. Revert proxy.status reported_broken → assigned. User keeps the
   // proxy as-is — admin determined the report was a misclick / fixable
   // user-side issue.
-  const { error: revertErr } = await supabaseAdmin
+  //
+  // Wave 28-F [HIGH, audit #3] — detect 0-row revert via .select() so
+  // the user-notification can include "your proxy was changed in the
+  // meantime — verify before continuing to use it" instead of the
+  // unconditional "Bạn vẫn có thể tiếp tục dùng proxy này" lie.
+  // Pre-fix: if the proxy was banned / available-d by another admin
+  // mid-claim, the .eq("status","reported_broken") matched 0 rows,
+  // revertErr was null, and the user was told to keep using a
+  // banned proxy. Now: revertedRows tracks how many we actually
+  // updated; the notify path receives a flag for the bot reply.
+  const { data: revertedRows, error: revertErr } = await supabaseAdmin
     .from("proxies")
     .update({ status: "assigned" })
     .eq("id", proxyId)
-    .eq("status", "reported_broken");
+    .eq("status", "reported_broken")
+    .select("id, status");
+
+  const revertSucceeded =
+    !revertErr && Array.isArray(revertedRows) && revertedRows.length > 0;
 
   if (revertErr) {
     captureError(revertErr, {
@@ -620,6 +634,21 @@ async function handleReject(args: {
     });
     // Don't fail — claim row is updated, admin can manually fix proxy
     // status if revert failed.
+  }
+
+  if (!revertSucceeded && !revertErr) {
+    // 0-row case: another admin changed proxy status mid-flight.
+    // Log with high signal so ops + the user-notification path
+    // both know to handle the divergence.
+    captureError(
+      new Error(
+        "warranty.reject: proxy revert 0-row — another admin changed status mid-claim",
+      ),
+      {
+        source: "api.warranty.reject.revert_zero_row",
+        extra: { claim_id: claimId, proxy_id: proxyId },
+      },
+    );
   }
 
   // 3. Audit event.
@@ -632,11 +661,23 @@ async function handleReject(args: {
     details: {
       claim_id: claimId,
       rejection_reason,
+      // Wave 28-F — record whether the revert took effect so the
+      // event log shows the divergence for any later "why is the
+      // user complaining?" investigation.
+      proxy_revert_succeeded: revertSucceeded,
     },
   });
 
   // 4. Notify user (best-effort, F1=c).
-  void notifyUserRejected(updatedClaim.user_id, proxyId, rejection_reason).catch(
+  // Pass `proxyStillUsable` so the bot reply can be honest: if the
+  // revert didn't take, the message tells the user to verify with
+  // admin before relying on the proxy again.
+  void notifyUserRejected(
+    updatedClaim.user_id,
+    proxyId,
+    rejection_reason,
+    revertSucceeded,
+  ).catch(
     (err) => {
       captureError(err, {
         source: "api.warranty.reject.notify_user",
@@ -704,6 +745,11 @@ async function notifyUserRejected(
   userId: string,
   proxyId: string,
   rejectionReason: string,
+  // Wave 28-F [HIGH, audit #3] — caller passes whether the proxy
+  // actually reverted to `assigned`. If false, the bot reply tells
+  // the user to verify with admin before relying on the proxy
+  // (it might have been banned mid-claim by another admin).
+  proxyStillUsable: boolean,
 ): Promise<void> {
   const [userRes, proxyRes] = await Promise.all([
     supabaseAdmin
@@ -729,6 +775,16 @@ async function notifyUserRejected(
     : "proxy";
   const safeReason = escapeMarkdown(rejectionReason);
 
+  // Wave 28-F — branch the closing line based on whether the
+  // proxy actually reverted to assigned. Honest message in both
+  // states.
+  const closingLineVi = proxyStillUsable
+    ? "Bạn vẫn có thể tiếp tục dùng proxy này."
+    : "Lưu ý: proxy này hiện không còn ở trạng thái dùng được. Vui lòng liên hệ admin để xác nhận trước khi tiếp tục sử dụng.";
+  const closingLineEn = proxyStillUsable
+    ? "You can continue using this proxy."
+    : "Note: this proxy is no longer usable. Please confirm with admin before continuing to use it.";
+
   const text =
     lang === "vi"
       ? [
@@ -739,7 +795,7 @@ async function notifyUserRejected(
           `*Lý do từ chối:*`,
           safeReason,
           "",
-          "Bạn vẫn có thể tiếp tục dùng proxy này.",
+          closingLineVi,
         ].join("\n")
       : [
           "*Warranty rejected*",
@@ -749,7 +805,7 @@ async function notifyUserRejected(
           `*Reason:*`,
           safeReason,
           "",
-          "You can continue using this proxy.",
+          closingLineEn,
         ].join("\n");
 
   await sendTelegramMessage(userRes.data.telegram_id, text);
