@@ -25,6 +25,10 @@ import { WARRANTY_REJECT_LABEL_VI } from "@/lib/warranty/eligibility";
 // Wave 26-D bug hunt v4 [HIGH] — submit pipeline is now shared with bot.
 import { submitWarrantyClaimCore } from "@/lib/warranty/submit";
 import { isUuid } from "@/lib/uuid";
+// Wave 28 — every proxy row has a non-null category_id (mig 068).
+// Used as a defensive fallback in shape-mappers below in case
+// supabase response somehow lacks it; should never fire after backfill.
+import { DEFAULT_CATEGORY_ID } from "@/lib/categories/constants";
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -80,7 +84,7 @@ function pickProxy(
     port: typeof r.port === "number" ? r.port : 0,
     type: r.type as Proxy["type"],
     status: r.status as Proxy["status"],
-    category_id: typeof r.category_id === "string" ? r.category_id : null,
+    category_id: typeof r.category_id === "string" ? r.category_id : DEFAULT_CATEGORY_ID,
     network_type: typeof r.network_type === "string" ? (r.network_type as Proxy["network_type"]) : null,
     country: typeof r.country === "string" ? r.country : null,
   };

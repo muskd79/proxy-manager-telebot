@@ -188,7 +188,25 @@ export async function PUT(
       }
       updateData.network_type = canonical;
     }
-    if (category_id !== undefined) updateData.category_id = category_id || null;
+    // Wave 28 — category_id is now NOT NULL on the proxies table.
+    // Reject explicit nulls; missing field stays no-op (no update).
+    // Pre-Wave-28 callers that sent null relied on "(not categorised)"
+    // semantics — that's now expressed by re-assigning to the
+    // "Mặc định" sentinel category instead.
+    if (category_id !== undefined) {
+      if (category_id === null || category_id === "") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "MISSING_CATEGORY",
+            message:
+              'Không thể bỏ danh mục — chọn "Mặc định" nếu cần proxy không phân loại.',
+          },
+          { status: 400 },
+        );
+      }
+      updateData.category_id = category_id;
+    }
     if (purchase_date !== undefined) updateData.purchase_date = purchase_date || null;
     if (purchase_price_usd !== undefined) updateData.cost_usd = purchase_price_usd ?? null;
     if (sale_price_usd !== undefined) updateData.sale_price_usd = sale_price_usd ?? null;

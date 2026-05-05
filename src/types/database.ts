@@ -143,6 +143,13 @@ export interface ProxyCategory {
   icon: string;
   sort_order: number;
   is_hidden: boolean;
+  /**
+   * Wave 28 — `true` for system-managed rows (currently just the
+   * "Mặc định" sentinel). System rows cannot be renamed, hidden, or
+   * deleted via the admin UI; the API + DB triggers enforce this.
+   * Pre-Wave-28 rows default to `false` (mig 068).
+   */
+  is_system: boolean;
   proxy_count: number;
   default_price_usd: number | null;
   /**
@@ -190,8 +197,14 @@ export interface Proxy {
   host: string;
   port: number;
   type: "http" | "https" | "socks5";
-  /** Wave 22A — FK to proxy_categories. Null when uncategorised. */
-  category_id?: string | null;
+  /**
+   * Wave 22A — FK to proxy_categories.
+   * Wave 28 — REQUIRED. Every proxy belongs to exactly one category.
+   * Pre-Wave-28 NULL rows were back-filled into the "Mặc định"
+   * sentinel by mig 068. ON DELETE SET DEFAULT re-homes proxies if
+   * their category is removed.
+   */
+  category_id: string;
   username: string | null;
   password: string | null;
   country: string | null;
