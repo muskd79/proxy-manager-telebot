@@ -202,6 +202,19 @@ function ProfileTab({ profile, onUpdate }: { profile: ProfileData; onUpdate: () 
   );
   const [saving, setSaving] = useState(false);
 
+  // Wave 28-G [audit MED] — sync local state when parent re-fetches
+  // profile (e.g. after a successful save the parent calls
+  // fetchProfile and re-renders this component with fresh props).
+  // Pre-fix the useState initializers ran once at mount; subsequent
+  // prop changes were ignored, so admin saw their unconfirmed edits
+  // persist instead of the server-confirmed values.
+  useEffect(() => {
+    setFullName(profile.full_name ?? "");
+    setTelegramId(
+      profile.telegram_id != null ? String(profile.telegram_id) : "",
+    );
+  }, [profile.full_name, profile.telegram_id]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -218,7 +231,9 @@ function ProfileTab({ profile, onUpdate }: { profile: ProfileData; onUpdate: () 
         toast.success("Đã cập nhật hồ sơ");
         onUpdate();
       } else {
-        toast.error(body.error || "Cập nhật thất bại");
+        // Wave 28-G [audit MED] — Vietnamese fallback. Pre-fix
+        // body.error was English ("Failed") leaking to VI-only admins.
+        toast.error(body.error || body.message || "Cập nhật thất bại");
       }
     } finally {
       setSaving(false);
@@ -300,7 +315,7 @@ function PasswordCard({ onChanged }: { onChanged: () => void }) {
         setConfirmPwd("");
         onChanged();
       } else {
-        toast.error(body.error || "Failed");
+        toast.error(body.error || body.message || "Thao tác thất bại");
       }
     } finally {
       setLoading(false);
@@ -385,7 +400,7 @@ function EmailCard({ currentEmail, onChanged }: { currentEmail: string; onChange
         setNewEmail("");
         onChanged();
       } else {
-        toast.error(body.error || "Failed");
+        toast.error(body.error || body.message || "Thao tác thất bại");
       }
     } finally {
       setLoading(false);
@@ -459,7 +474,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
       const res = await fetch("/api/profile/2fa/enroll", { method: "POST" });
       const body = await res.json();
       if (res.ok) setEnrollData(body.data);
-      else toast.error(body.error || "Failed to start");
+      else toast.error(body.error || body.message || "Không thể bắt đầu");
     } finally {
       setLoading(false);
     }
@@ -504,7 +519,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
         setDisablePwd("");
         onChanged();
       } else {
-        toast.error(body.error || "Failed");
+        toast.error(body.error || body.message || "Thao tác thất bại");
       }
     } finally {
       setLoading(false);
@@ -527,7 +542,7 @@ function TwoFactorCard({ enabled, onChanged }: { enabled: boolean; onChanged: ()
         setShowRegenerate(false);
         setRegeneratePwd("");
       } else {
-        toast.error(body.error || "Failed");
+        toast.error(body.error || body.message || "Thao tác thất bại");
       }
     } finally {
       setLoading(false);
@@ -748,7 +763,7 @@ function SessionsTab() {
         fetchHistory();
       } else {
         const body = await res.json();
-        toast.error(body.error || "Failed");
+        toast.error(body.error || body.message || "Thao tác thất bại");
       }
     } finally {
       setRevoking(false);

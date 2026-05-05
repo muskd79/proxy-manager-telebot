@@ -26,6 +26,10 @@ import {
 // upgraded ConfirmDialog (loading-pinned, destructive variant,
 // VI-default labels, escape/backdrop swallow during work).
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+// Wave 28-G [HIGH, audit #3] — typed-confirm gate for bulk delete
+// of large user batches. Mirrors the Wave 28 category mass-hide
+// pattern + the trash perm-delete pattern.
+import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { UserTable } from "@/components/users/user-table";
@@ -397,34 +401,62 @@ export default function UsersPage() {
           - Loading state surfaces "Đang xử lý 47/100..." progress
             (Wave 27 a11y P1-4) on slow networks
       */}
-      <ConfirmDialog
-        open={bulkAction !== null}
-        onOpenChange={(open) => !open && !bulkBusy && setBulkAction(null)}
-        title={
-          bulkAction === "block"
-            ? t("users.blockUsers")
-            : bulkAction === "unblock"
-              ? t("users.unblockUsers")
-              : t("users.deleteUsers")
-        }
-        description={
-          <>
-            {t("users.bulkConfirm")
-              .replace("{action}", bulkAction ?? "")
-              .replace("{count}", String(selectedIds.length))}
-            {bulkAction === "delete" && ` ${t("users.softDeleteNote")}`}
-          </>
-        }
-        variant={bulkAction === "delete" ? "destructive" : "default"}
-        loading={bulkBusy}
-        confirmText={
-          bulkBusy
-            ? `Đang xử lý ${bulkProgress}/${selectedIds.length}…`
-            : t("common.confirm")
-        }
-        cancelText={t("common.cancel")}
-        onConfirm={handleBulkAction}
-      />
+      {/* Wave 28-G [HIGH] — bulk delete >= 10 users routes through
+          the typed-confirm DangerousConfirmDialog instead of the
+          plain ConfirmDialog. Block / unblock / small-batch delete
+          stay on the normal confirm. */}
+      {bulkAction === "delete" && selectedIds.length >= 10 ? (
+        <DangerousConfirmDialog
+          open={bulkAction !== null}
+          onOpenChange={(open) => !open && !bulkBusy && setBulkAction(null)}
+          title={`Xoá mềm ${selectedIds.length} user?`}
+          description={
+            <div className="space-y-2 text-sm">
+              <p>
+                Bạn đang xoá <strong>{selectedIds.length}</strong> user
+                cùng lúc. Đây là xoá mềm — user vào thùng rác và có thể
+                khôi phục, nhưng tới khi đó họ KHÔNG dùng được bot.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Gõ <code className="rounded bg-muted px-1 font-mono">XOA USER</code> để xác nhận.
+              </p>
+            </div>
+          }
+          confirmString="XOA USER"
+          actionLabel={`Xoá ${selectedIds.length} user`}
+          loading={bulkBusy}
+          onConfirm={handleBulkAction}
+        />
+      ) : (
+        <ConfirmDialog
+          open={bulkAction !== null}
+          onOpenChange={(open) => !open && !bulkBusy && setBulkAction(null)}
+          title={
+            bulkAction === "block"
+              ? t("users.blockUsers")
+              : bulkAction === "unblock"
+                ? t("users.unblockUsers")
+                : t("users.deleteUsers")
+          }
+          description={
+            <>
+              {t("users.bulkConfirm")
+                .replace("{action}", bulkAction ?? "")
+                .replace("{count}", String(selectedIds.length))}
+              {bulkAction === "delete" && ` ${t("users.softDeleteNote")}`}
+            </>
+          }
+          variant={bulkAction === "delete" ? "destructive" : "default"}
+          loading={bulkBusy}
+          confirmText={
+            bulkBusy
+              ? `Đang xử lý ${bulkProgress}/${selectedIds.length}…`
+              : t("common.confirm")
+          }
+          cancelText={t("common.cancel")}
+          onConfirm={handleBulkAction}
+        />
+      )}
     </div>
   );
 }
