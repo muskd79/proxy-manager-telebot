@@ -10,6 +10,8 @@ import { PROXIES_SORT, safeSort } from "@/lib/sort-allowlist";
 import { assertSameOrigin } from "@/lib/csrf";
 import { normalizeNetworkType } from "@/lib/proxy-labels";
 import { isUuid } from "@/lib/uuid";
+// Wave 28-B — Vietnamese MISSING_CATEGORY pre-validation.
+import { assertCategoryRequired } from "@/lib/categories/enforcement";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -289,6 +291,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    // Wave 28-B — friendly Vietnamese MISSING_CATEGORY before Zod
+    // throws the generic "Validation failed". Catches null / undefined
+    // / empty string / non-UUID early with the right error code.
+    const categoryErr = assertCategoryRequired(
+      (body as { category_id?: unknown })?.category_id,
+    );
+    if (categoryErr) return categoryErr;
+
     const parsed = CreateProxySchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

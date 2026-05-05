@@ -8,6 +8,7 @@ import { IMPORT_BATCH_SIZE } from "@/lib/constants";
 import { ImportProxiesSchema } from "@/lib/validations";
 import { captureError } from "@/lib/error-tracking";
 import { assertSameOrigin } from "@/lib/csrf";
+import { DEFAULT_CATEGORY_ID } from "@/lib/categories/constants";
 import { normalizeNetworkType } from "@/lib/proxy-labels";
 
 interface ImportProxyRow {
@@ -132,7 +133,13 @@ export async function POST(request: NextRequest) {
         country: proxy.country || country || null,
         isp: proxy.isp || isp || null,
         notes: notes || null,
-        category_id: category_id ?? null,
+        // Wave 28 — proxies.category_id is NOT NULL with column DEFAULT
+        // pointing at the "Mặc định" sentinel (mig 068). If the import
+        // wizard didn't pick a batch category and the row's CSV had no
+        // category, fall back to sentinel so the import keeps working.
+        // The DB DEFAULT would catch this anyway; we make the fallback
+        // explicit for symmetry with the create-form path.
+        category_id: category_id ?? DEFAULT_CATEGORY_ID,
         // Wave 22K — bulk-applied per-proxy purchase metadata.
         // Reuses Wave 21A columns: purchase_date / vendor_label /
         // cost_usd. sale_price_usd is new in Wave 22K.
