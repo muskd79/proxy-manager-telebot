@@ -34,10 +34,26 @@ import {
  *   - When `category` is null  -> create flow, POST /api/categories
  *   - When `category` is set   -> edit flow, PATCH /api/categories/[id]
  *
- * Form fields match the Wave 22A schema: name, description, color,
- * icon, sort_order, default_price_usd, min_stock_alert. is_hidden
- * is exposed only in edit mode (not on create — admin shouldn't
- * create a hidden category).
+ * Wave 28-C field set:
+ *   name, description, color, default_purchase_price_usd,
+ *   default_sale_price_usd, default_country, default_proxy_type,
+ *   default_network_type, default_vendor_source, min_stock_alert.
+ *   is_hidden exposed only in edit mode (typed-confirm gate from
+ *   Wave 28 hotfix protects against accidental mass-hide).
+ *
+ * Removed in Wave 28-C (user feedback: "khả năng tao thấy không
+ * cần phần này"):
+ *   - sort_order input — DB column kept, default 0; future agent can
+ *     resurrect via /categories card grid drag handle
+ *   - icon picker — DB column kept, default "folder"; the 8 generic
+ *     icons (globe, shield, zap, ...) didn't map to real proxy
+ *     concepts and the user found them noise
+ *
+ * Replaced in Wave 28-C:
+ *   - single "Giá mặc định" -> two fields "Giá mua ($)" + "Giá bán
+ *     ($)" so admin can track purchase cost vs sale price separately
+ *     (margin calculation downstream). Soft warning if sale < purchase
+ *     but allows save (loss-leader / promotion case).
  */
 
 const COLOR_PRESETS = [
@@ -49,19 +65,6 @@ const COLOR_PRESETS = [
   "pink",
   "indigo",
   "gray",
-] as const;
-
-// Wave 22G: replaced "tag" with "folder" as default. The "tag" icon
-// misleads — tags concept was deprecated (mig 028 → 036).
-const ICON_PRESETS = [
-  "folder",
-  "globe",
-  "shield",
-  "zap",
-  "star",
-  "flame",
-  "rocket",
-  "package",
 ] as const;
 
 interface CategoryFormDialogProps {
@@ -82,13 +85,23 @@ export function CategoryFormDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState<string>("purple");
+  // Wave 28-C — `icon` and `sortOrder` are DB-only now (no UI input).
+  // Tracked here as constants so save() can still send them and
+  // re-creating the form via category prop preserves the value.
   const [icon, setIcon] = useState<string>("folder");
   const [sortOrder, setSortOrder] = useState(0);
-  const [defaultPrice, setDefaultPrice] = useState("");
+  // Wave 28-C — split "default_price" into purchase + sale prices.
+  // Both are independently nullable (admin can set either, neither,
+  // or both). `defaultPrice` legacy state kept for back-compat with
+  // mig 059 snapshot trigger which still reads default_sale_price_usd.
+  const [defaultPurchasePrice, setDefaultPurchasePrice] = useState("");
+  const [defaultSalePrice, setDefaultSalePrice] = useState("");
   // Wave 22G — rich-category snapshot defaults.
   const [defaultCountry, setDefaultCountry] = useState("");
   const [defaultProxyType, setDefaultProxyType] = useState<string>("");
   const [defaultIsp, setDefaultIsp] = useState("");
+  // Wave 28-C — vendor source (was missing from form pre-Wave-28-C).
+  const [defaultVendorSource, setDefaultVendorSource] = useState("");
   // Wave 22J — proxy classification snapshot default.
   const [defaultNetworkType, setDefaultNetworkType] = useState<string>("");
   const [minStock, setMinStock] = useState(0);
@@ -103,10 +116,24 @@ export function CategoryFormDialog({
       setColor(category.color);
       setIcon(category.icon);
       setSortOrder(category.sort_order);
-      setDefaultPrice(category.default_price_usd?.toString() ?? "");
+      // Wave 28-C — read both prices. Pre-Wave-28-C the form mirrored
+      // a single value into both columns; now they're separate.
+      setDefaultPurchasePrice(
+        category.default_purchase_price_usd?.toString() ?? "",
+      );
+      setDefaultSalePrice(
+        category.default_sale_price_usd?.toString() ??
+          // Legacy fallback: if only the old default_price_usd is set,
+          // surface it as the sale price (matches mig 059 snapshot
+          // trigger semantics — proxies inherited that as
+          // sale_price_usd via the "single price" path).
+          category.default_price_usd?.toString() ??
+          "",
+      );
       setDefaultCountry(category.default_country ?? "");
       setDefaultProxyType(category.default_proxy_type ?? "");
       setDefaultIsp(category.default_isp ?? "");
+      setDefaultVendorSource(category.default_vendor_source ?? "");
       // Wave 26-C — canonicalise legacy default_network_type values
       // when populating the edit dialog so the Select widget shows
       // the correct option (legacy "IPv4" → "datacenter_ipv4").
@@ -123,10 +150,12 @@ export function CategoryFormDialog({
       setColor("purple");
       setIcon("folder");
       setSortOrder(0);
-      setDefaultPrice("");
+      setDefaultPurchasePrice("");
+      setDefaultSalePrice("");
       setDefaultCountry("");
       setDefaultProxyType("");
       setDefaultIsp("");
+      setDefaultVendorSource("");
       setDefaultNetworkType("");
       setMinStock(0);
       setIsHidden(false);
@@ -155,29 +184,34 @@ export function CategoryFormDialog({
     }
     setSubmitting(true);
     try {
-      // Wave 27 bug hunt v6 [debugger #4, MEDIUM] — write both legacy
-      // `default_price_usd` AND the new `default_sale_price_usd`
-      // simultaneously. The Wave 27 snapshot trigger
-      // (`fn_proxy_snapshot_category_defaults`, mig 059) reads from
-      // `default_sale_price_usd` only. Pre-fix the form sent only the
-      // legacy field — admins who set the "Giá mặc định" expected new
-      // proxies to inherit it but the trigger silently saw NULL.
-      // We keep the legacy field in sync for any older code that may
-      // still read it (defaults endpoint, future migrations).
-      const numericPrice = defaultPrice ? Number(defaultPrice) : null;
+      // Wave 28-C — separate purchase + sale prices. Both nullable
+      // (admin can leave either blank). For back-compat with mig 059
+      // snapshot trigger, also mirror the sale price into the legacy
+      // `default_price_usd` column so existing proxies that read the
+      // legacy column don't see NULL after admins move to the
+      // two-input form.
+      const numericPurchase = defaultPurchasePrice
+        ? Number(defaultPurchasePrice)
+        : null;
+      const numericSale = defaultSalePrice ? Number(defaultSalePrice) : null;
       const body: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim() || null,
         color,
         icon,
         sort_order: sortOrder,
-        default_price_usd: numericPrice,
-        default_sale_price_usd: numericPrice,
+        // Wave 28-C — three price fields written together for
+        // bidirectional compat. `default_price_usd` mirrors
+        // `default_sale_price_usd` (legacy reads).
+        default_price_usd: numericSale,
+        default_purchase_price_usd: numericPurchase,
+        default_sale_price_usd: numericSale,
         // Wave 22G snapshot defaults — null when blank so the
         // backend treats them as absent rather than empty strings.
         default_country: defaultCountry.trim() || null,
         default_proxy_type: defaultProxyType || null,
         default_isp: defaultIsp.trim() || null,
+        default_vendor_source: defaultVendorSource.trim() || null,
         // Wave 22J → 26-C — proxy classification default. Normalise
         // before submit so even if the form value gets out of sync
         // with the canonical enum (e.g. via injected legacy data),
@@ -246,74 +280,95 @@ export function CategoryFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Color</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {COLOR_PRESETS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
-                    className={`size-11 rounded-md border-2 ${
-                      color === c ? "border-foreground" : "border-transparent"
-                    }`}
-                    style={{ backgroundColor: cssColorFor(c) }}
-                    aria-label={`Chọn màu ${c}`}
-                    aria-pressed={color === c}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Icon</Label>
-              <select
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-              >
-                {ICON_PRESETS.map((i) => (
-                  <option key={i} value={i}>{i}</option>
-                ))}
-              </select>
+          {/*
+            Wave 28-C — Color picker only. The icon picker (folder,
+            globe, shield, …) was removed: user found the 8 icons
+            arbitrary. Default icon stays "folder" via state.
+          */}
+          <div className="space-y-1">
+            <Label>Màu</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {COLOR_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={`size-11 rounded-md border-2 ${
+                    color === c ? "border-foreground" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: cssColorFor(c) }}
+                  aria-label={`Chọn màu ${c}`}
+                  aria-pressed={color === c}
+                />
+              ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          {/*
+            Wave 28-C — purchase + sale price split. Two independent
+            inputs, both nullable. Soft warning if sale < purchase
+            but allow save (clear-stock / loss-leader). Currency
+            hint says USD explicitly so admin doesn't accidentally
+            type VND amounts.
+          */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label htmlFor="sort">Thứ tự</Label>
+              <Label htmlFor="purchase-price">Giá mua ($)</Label>
               <Input
-                id="sort"
-                type="number"
-                min={0}
-                value={sortOrder}
-                onChange={(e) => setSortOrder(Math.max(0, Number(e.target.value) || 0))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="minstock">Cảnh báo tồn kho</Label>
-              <Input
-                id="minstock"
-                type="number"
-                min={0}
-                value={minStock}
-                onChange={(e) => setMinStock(Math.max(0, Number(e.target.value) || 0))}
-                placeholder="VD: 50"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="price">Giá mặc định ($)</Label>
-              <Input
-                id="price"
+                id="purchase-price"
                 type="number"
                 step="0.01"
                 min="0"
-                value={defaultPrice}
-                onChange={(e) => setDefaultPrice(e.target.value)}
-                placeholder="0.00"
+                value={defaultPurchasePrice}
+                onChange={(e) => setDefaultPurchasePrice(e.target.value)}
+                placeholder="VD: 1.20"
               />
+              <p className="text-[10px] text-muted-foreground">
+                USD — giá admin trả nhà cung cấp
+              </p>
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="sale-price">Giá bán ($)</Label>
+              <Input
+                id="sale-price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={defaultSalePrice}
+                onChange={(e) => setDefaultSalePrice(e.target.value)}
+                placeholder="VD: 2.00"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                USD — giá user trả qua bot
+              </p>
+            </div>
+          </div>
+
+          {/* Wave 28-C — soft warning if sale < purchase. Doesn't
+              block save (clear-stock / promotion case). */}
+          {defaultPurchasePrice &&
+            defaultSalePrice &&
+            Number(defaultSalePrice) < Number(defaultPurchasePrice) && (
+              <p className="rounded-md border border-amber-300/40 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                ⚠ Giá bán (${defaultSalePrice}) thấp hơn giá mua ($
+                {defaultPurchasePrice}). Vẫn lưu nếu bạn muốn bán lỗ /
+                clear-stock — chỉ là cảnh báo.
+              </p>
+            )}
+
+          <div className="space-y-1">
+            <Label htmlFor="minstock">Cảnh báo tồn kho</Label>
+            <Input
+              id="minstock"
+              type="number"
+              min={0}
+              value={minStock}
+              onChange={(e) => setMinStock(Math.max(0, Number(e.target.value) || 0))}
+              placeholder="VD: 50"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Hiện cảnh báo trên dashboard khi số proxy còn dưới mức này.
+            </p>
           </div>
 
           {/* Wave 22G — snapshot defaults section */}
@@ -369,6 +424,22 @@ export function CategoryFormDialog({
                   placeholder="VD: VN, US, JP"
                   maxLength={64}
                 />
+              </div>
+              <div className="space-y-1">
+                {/* Wave 28-C — vendor source surfaced in form. Was on
+                    schema since Wave 22K but only the API persisted it
+                    (form silently dropped). */}
+                <Label htmlFor="def-vendor">Nguồn</Label>
+                <Input
+                  id="def-vendor"
+                  value={defaultVendorSource}
+                  onChange={(e) => setDefaultVendorSource(e.target.value)}
+                  placeholder="VD: Proxy-Seller, Self-built"
+                  maxLength={200}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Tên nhà cung cấp (free-text)
+                </p>
               </div>
               {/* Wave 22Y — default ISP field removed from category UI;
                   the column stays on categories table for backward-compat
