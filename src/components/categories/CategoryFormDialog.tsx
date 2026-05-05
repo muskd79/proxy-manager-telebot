@@ -18,8 +18,13 @@ import { Textarea } from "@/components/ui/textarea";
 // every proxy in a category. Prevents the "mất hết proxy" accident
 // reported in production.
 import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
+// Wave 28-E [P0] — sentinel "Mặc định" must not be renamable / hidden
+// from the form. The DB triggers throw a 500 if you try; the API
+// returns a friendly 403; the form should disable inputs upfront so
+// admin doesn't even reach the API.
+import { isDefaultCategory } from "@/lib/categories/constants";
 import type { ProxyCategory } from "@/types/database";
-import { Loader2, Save, AlertTriangle } from "lucide-react";
+import { Loader2, Save, AlertTriangle, Lock } from "lucide-react";
 import {
   NETWORK_TYPE_VALUES,
   NETWORK_TYPE_LABEL,
@@ -244,6 +249,11 @@ export function CategoryFormDialog({
     }
   }
 
+  // Wave 28-E [P0] — block sentinel from being renamed via the form.
+  // The DB triggers + API return 403 anyway; this disables inputs
+  // upfront so admin never sends the bad request.
+  const isSystemCategory = isDefaultCategory(category);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -256,15 +266,40 @@ export function CategoryFormDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {isSystemCategory && (
+          <div className="flex items-start gap-2 rounded-md border border-slate-700/50 bg-slate-900/40 p-3 text-xs text-slate-400">
+            <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-slate-300">
+                Danh mục hệ thống "Mặc định"
+              </p>
+              <p>
+                Không thể đổi tên hoặc ẩn — đây là danh mục dự phòng cho
+                proxy chưa phân loại. Bạn vẫn có thể chỉnh giá mua / giá
+                bán / quốc gia mặc định để proxy tự động kế thừa khi
+                được re-home về đây.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
           <div className="space-y-1">
-            <Label htmlFor="name">Tên danh mục *</Label>
+            <Label htmlFor="name">
+              Tên danh mục *
+              {isSystemCategory && (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  (khoá)
+                </span>
+              )}
+            </Label>
             <Input
               id="name"
               value={name}
               maxLength={120}
               onChange={(e) => setName(e.target.value)}
               placeholder="US Residential — Premium"
+              disabled={isSystemCategory}
             />
           </div>
 
@@ -447,7 +482,7 @@ export function CategoryFormDialog({
             </div>
           </div>
 
-          {isEdit && (
+          {isEdit && !isSystemCategory && (
             <label
               className={`flex items-start gap-2 rounded-md border p-3 text-sm ${
                 turningHiddenOn && proxyCount > 0

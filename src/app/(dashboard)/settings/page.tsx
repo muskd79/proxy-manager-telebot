@@ -68,6 +68,20 @@ export default function SettingsPage() {
   const [applyToExisting, setApplyToExisting] = useState(false);
   // Wave 22X — confirm-before-save when applying to existing users.
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  // Wave 28-E [CRITICAL] — confirm gate when admin lowers a global
+  // cap or sets one to 0. Pre-fix: requestSave() only confirmed when
+  // applyToExisting was checked. The cap-retrofit path inside
+  // /api/settings runs UNCONDITIONALLY for global_max_proxies +
+  // global_max_total_requests, so a single misclick could lock every
+  // tele_user out. Now: dangerousChange() checks if any capped
+  // numeric setting decreased OR went to zero; if so we always
+  // confirm regardless of applyToExisting.
+  const [showDangerousConfirm, setShowDangerousConfirm] = useState(false);
+  // Snapshot of what the form loaded from the server. Used by
+  // dangerousChange() below to detect lowering deltas. Refreshed each
+  // time fetchSettings() resolves successfully.
+  const [originalSettings, setOriginalSettings] =
+    useState<typeof settings | null>(null);
   const [testingBot, setTestingBot] = useState(false);
   const [botConnected, setBotConnected] = useState<boolean | null>(null);
 
@@ -141,6 +155,21 @@ export default function SettingsPage() {
               (loaded.warranty_reliability_decrement as number) ??
               prev.warranty_reliability_decrement,
           }));
+          // Wave 28-E — snapshot the merged settings for the
+          // dangerous-change detector. setState callback in the merger
+          // above doesn't expose the resolved value to us synchronously
+          // so we re-build the same shape here from `loaded` (zero
+          // additional API call).
+          setOriginalSettings((prev) => {
+            const next = { ...(prev ?? settings) };
+            for (const k of Object.keys(next)) {
+              const v = loaded[k];
+              if (v !== undefined && v !== null) {
+                (next as Record<string, unknown>)[k] = v;
+              }
+            }
+            return next;
+          });
         }
       }
     } catch (err) {
@@ -148,16 +177,76 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Wave 28-E — detect "dangerous" save deltas that should be
+   * confirmed regardless of `applyToExisting`. Returns the list of
+   * field labels that changed dangerously, or empty if save is safe.
+   *
+   * A change is dangerous when:
+   *   - admin LOWERS a numeric cap (e.g. global_max_proxies 100 → 50)
+   *   - admin sets ANY cap to 0 (silent permanent lockout)
+   *
+   * Pre-fix the cap-retrofit path inside /api/settings runs
+   * unconditionally for `global_max_proxies` and
+   * `global_max_total_requests`, so this isn't just optional UX —
+   * it's the only thing standing between a misclick and a fleet-wide
+   * lockout.
+   */
+  const dangerousChange = (): string[] => {
+    if (!originalSettings) return [];
+    const dangerous: string[] = [];
+    const capKeys = [
+      ["global_max_proxies", "Tổng proxy mỗi user"],
+      ["global_max_total_requests", "Tổng yêu cầu mỗi user"],
+      ["default_rate_limit_hourly", "Rate limit / giờ"],
+      ["default_rate_limit_daily", "Rate limit / ngày"],
+      ["default_rate_limit_total", "Rate limit / tổng"],
+      ["warranty_max_per_30d", "Bảo hành / 30 ngày"],
+      ["warranty_max_pending", "Bảo hành đang chờ tối đa"],
+    ] as const;
+    for (const [key, label] of capKeys) {
+      const oldVal = originalSettings[key as keyof typeof originalSettings];
+      const newVal = settings[key as keyof typeof settings];
+      if (typeof oldVal !== "number" || typeof newVal !== "number") continue;
+      // Set-to-zero is always dangerous (silent permanent lockout).
+      if (oldVal !== 0 && newVal === 0) {
+        dangerous.push(`${label}: ${oldVal} → 0 (vô hiệu hoá)`);
+        continue;
+      }
+      // Lowering is dangerous (existing users may now exceed the new cap).
+      if (newVal < oldVal) {
+        dangerous.push(`${label}: ${oldVal} → ${newVal}`);
+      }
+    }
+    return dangerous;
+  };
 
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
 
-  // Wave 22X — confirm-then-save when applyToExisting is checked.
-  // Pre-fix: one click silently mutated rate limits for EVERY existing
-  // bot user (could be thousands). Now show DangerousConfirmDialog.
+  // Wave 22X / 28-E — staged confirmation:
+  //
+  //   1. dangerousChange() detects lowered or zeroed caps. ANY of
+  //      those = always show the dangerous-confirm dialog.
+  //   2. applyToExisting checked = show the apply-to-existing
+  //      confirm (legacy Wave 22X path).
+  //   3. Otherwise save directly.
+  //
+  // The two confirm paths are mutually exclusive: dangerousChange
+  // wins if both apply, since lowering the cap is the bigger blast
+  // radius (it affects users whether or not applyToExisting is
+  // checked — the cap-retrofit in /api/settings runs unconditionally
+  // for global_max_*).
   const requestSave = () => {
+    const dangerous = dangerousChange();
+    if (dangerous.length > 0) {
+      setShowDangerousConfirm(true);
+      return;
+    }
     if (applyToExisting) {
       setShowApplyConfirm(true);
     } else {
@@ -759,6 +848,46 @@ export default function SettingsPage() {
         }
         confirmText="Áp dụng cho mọi user"
         cancelText="Huỷ"
+        loading={saving}
+        onConfirm={handleSave}
+      />
+
+      {/* Wave 28-E [CRITICAL] — confirm before lowering / zeroing any
+          global cap. The cap-retrofit path in /api/settings runs
+          UNCONDITIONALLY for global_max_proxies +
+          global_max_total_requests, so a single misclick on the
+          field could lock every tele_user out without any prompt.
+          Now: dangerousChange() lists every problematic delta and
+          surfaces it to the admin BEFORE save. */}
+      <ConfirmDialog
+        open={showDangerousConfirm}
+        onOpenChange={setShowDangerousConfirm}
+        variant="destructive"
+        title="Cảnh báo: bạn đang giảm hoặc tắt giới hạn"
+        description={
+          <div className="space-y-2 text-sm">
+            <p>
+              Các giới hạn dưới đây sẽ siết / vô hiệu hoá ngay lập tức cho
+              MỌI tele_user (kể cả user chưa từng dùng cấu hình mặc định
+              — vì đường dẫn cap-retrofit trong API chạy không phụ thuộc
+              vào tick "Áp dụng cho user đã có"):
+            </p>
+            <ul className="list-inside list-disc space-y-0.5 text-xs text-muted-foreground">
+              {dangerousChange().map((line) => (
+                <li key={line} className="font-mono">
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs">
+              Đặt một giới hạn về <strong>0</strong> nghĩa là user không
+              dùng được tính năng đó nữa (ví dụ: 0 yêu cầu / 30 ngày =
+              tắt bảo hành). Có chắc bạn muốn tiếp tục?
+            </p>
+          </div>
+        }
+        confirmText="Vẫn lưu"
+        cancelText="Huỷ — kiểm tra lại"
         loading={saving}
         onConfirm={handleSave}
       />

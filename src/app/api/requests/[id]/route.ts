@@ -274,12 +274,39 @@ export async function PUT(
       const MAX_AUTO_ASSIGN_ATTEMPTS = 3;
 
       // Helper: pick next candidate proxy matching the request.
+      //
+      // Wave 28-E [CRITICAL] — added two filters that were missing:
+      //   1. .eq("hidden", false) — pre-fix admin who toggled
+      //      "Ẩn danh mục" still saw the cascade-hidden proxies get
+      //      auto-assigned via this path. The /api/proxies list
+      //      filters hidden=false by default; the assign path didn't.
+      //   2. exclude proxies in system categories (sentinel
+      //      "Mặc định") — that category is a fallback for orphans
+      //      and proxies imported without a category. End users who
+      //      pay via the bot expect a proxy from a curated category
+      //      with intentional pricing; sentinel proxies have NULL
+      //      defaults so they're "uncategorised junk" from the
+      //      user's perspective. Filtered via NOT IN subquery so the
+      //      excluded set is computed once per call (cheap at typical
+      //      sentinel size of 0-1 row).
       const pickNextProxy = async (): Promise<string | null> => {
+        // Resolve system-category IDs (today: just the sentinel; could
+        // grow if future Wave adds more is_system rows).
+        const { data: sysCats } = await supabase
+          .from("proxy_categories")
+          .select("id")
+          .eq("is_system", true);
+        const sysIds = (sysCats ?? []).map((c) => c.id);
+
         let q = supabase
           .from("proxies")
           .select("id")
           .eq("status", "available")
-          .eq("is_deleted", false);
+          .eq("is_deleted", false)
+          .eq("hidden", false);
+        if (sysIds.length > 0) {
+          q = q.not("category_id", "in", `(${sysIds.join(",")})`);
+        }
         if (currentRequest.proxy_type) q = q.eq("type", currentRequest.proxy_type);
         if (currentRequest.country) q = q.eq("country", currentRequest.country);
         const { data } = await q.limit(1).maybeSingle();
