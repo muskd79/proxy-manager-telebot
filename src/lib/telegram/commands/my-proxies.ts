@@ -27,9 +27,14 @@ export async function handleMyProxies(ctx: Context) {
   // Wave 23B-bot-fix — gate blocked/banned/pending uniformly.
   if (await denyIfNotApproved(ctx, user, lang)) return;
 
+  // Wave 28-H — embed category name in /myproxies output so users
+  // can tell "US Residential" vs "VN Datacenter" at a glance. Pre-
+  // fix the line only had host:port + protocol + expiry; the
+  // category was the dimension users actually paid for under the
+  // Wave 28 pricing model but it was invisible.
   const { data: proxies } = await supabaseAdmin
     .from("proxies")
-    .select("*")
+    .select("*, category:proxy_categories(name, is_system)")
     .eq("assigned_to", user.id)
     .eq("status", ProxyStatus.Assigned)
     .eq("is_deleted", false);
@@ -74,7 +79,21 @@ export async function handleMyProxies(ctx: Context) {
       }
     }
 
-    return `${i + 1}. ${credential} (${p.type.toUpperCase()}) - ${expiryLabel}: ${expires}${expiryWarning}`;
+    // Wave 28-H — show category name (skip when it's the system
+    // sentinel "Mặc định" since that's an internal fallback bucket
+    // not user-facing). Append on a continuation line so the
+    // primary credential line stays scannable + copyable.
+    const cat = (
+      p as unknown as {
+        category?: { name?: string; is_system?: boolean } | null;
+      }
+    ).category;
+    const categoryLine =
+      cat && cat.name && !cat.is_system
+        ? `\n   ${lang === "vi" ? "Danh mục" : "Category"}: ${cat.name}`
+        : "";
+
+    return `${i + 1}. ${credential} (${p.type.toUpperCase()}) - ${expiryLabel}: ${expires}${expiryWarning}${categoryLine}`;
   });
 
   const header =
