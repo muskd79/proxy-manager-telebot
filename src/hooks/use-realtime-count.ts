@@ -94,6 +94,8 @@ export function useRealtimeCount(
     const supabase = createClient();
     let prevCount = 0;
     let cancelled = false;
+    // Wave 28-H — shared debounce timer (see realtime-callback below).
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
     async function fetchCount() {
       let q = supabase
@@ -159,7 +161,17 @@ export function useRealtimeCount(
         { event: "*", schema: "public", table: opts.table },
         () => {
           // Debounce so a burst of N writes triggers 1 fetch, not N.
-          setTimeout(() => {
+          //
+          // Wave 28-H [audit MED #4] — keep one debounce timer
+          // shared across events so a 10-write burst collapses to
+          // ONE fetchCount, not 10 staggered ones. Pre-fix every
+          // event scheduled its own setTimeout with no clearTimeout,
+          // leading to N concurrent fetchCount calls + N-1 spurious
+          // browser Notifications when the cron expired multiple
+          // rows at once.
+          if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = undefined;
             if (!cancelled) void fetchCount();
           }, opts.debounceMs ?? 300);
         },
@@ -168,6 +180,7 @@ export function useRealtimeCount(
 
     return () => {
       cancelled = true;
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, []);
