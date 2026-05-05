@@ -17,11 +17,12 @@
  *   - Checkbox in header → toggles selection (stopPropagation).
  */
 
-import { Folder } from "lucide-react";
+import { Folder, Lock } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CARD_COLORS } from "@/lib/categories/colors";
 import { formatCount } from "@/lib/categories/formatters";
+import { isDefaultCategory } from "@/lib/categories/constants";
 import type { CategoryDashboardRow } from "@/lib/categories/types";
 import { CategoryCardHeader } from "./category-card-header";
 import { StockProgressBar } from "./stock-progress-bar";
@@ -45,10 +46,17 @@ export function CategoryCard({
   hideMoney = false,
   readOnly = false,
 }: CategoryCardProps) {
+  // Wave 28-E [P0] — visual differentiation for the system "Mặc định"
+  // sentinel. Pre-fix the helper isDefaultCategory() existed but no
+  // UI referenced it — admins could rename / hide / delete attempts
+  // would fail with a generic 403 toast instead of being prevented
+  // visually. Now: lock icon + "Hệ thống" pill in the title row +
+  // muted card border so the row reads as "managed by the system".
+  const isSystem = isDefaultCategory({ id: row.id });
   return (
     <Link
       href={`/categories/${row.id}`}
-      aria-label={`Mở danh mục ${row.name} (${formatCount(row.proxy_count)} proxy${row.is_hidden ? ", đã ẩn" : ""})`}
+      aria-label={`Mở danh mục ${row.name} (${formatCount(row.proxy_count)} proxy${row.is_hidden ? ", đã ẩn" : ""}${isSystem ? ", hệ thống" : ""})`}
       className={cn(
         "group relative flex flex-col gap-3 rounded-xl border p-4 motion-safe:transition-colors motion-safe:duration-150",
         CARD_COLORS.cardBorder,
@@ -57,29 +65,47 @@ export function CategoryCard({
         CARD_COLORS.cardBgHover,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950",
         isSelected && cn(CARD_COLORS.cardBorderSelected, CARD_COLORS.cardBgSelected),
+        // Wave 28-E — softer, more muted look for system row
+        isSystem && "border-slate-700/40 bg-slate-900/40",
       )}
       data-selected={isSelected}
+      data-system={isSystem || undefined}
     >
       <CategoryCardHeader
         row={row}
         isSelected={isSelected}
         onToggleSelect={() => onToggleSelect(row.id)}
-        readOnly={readOnly}
+        readOnly={readOnly || isSystem}
       />
 
       {/* Title block */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <Folder
-            className="h-4 w-4 shrink-0 text-slate-400"
-            aria-hidden="true"
-          />
+          {isSystem ? (
+            <Lock
+              className="h-4 w-4 shrink-0 text-slate-500"
+              aria-label="Danh mục hệ thống"
+            />
+          ) : (
+            <Folder
+              className="h-4 w-4 shrink-0 text-slate-400"
+              aria-hidden="true"
+            />
+          )}
           <h3
             className="truncate text-base font-semibold text-slate-100"
             title={row.name}
           >
             {row.name}
           </h3>
+          {isSystem && (
+            <span
+              className="shrink-0 rounded-md border border-slate-700/60 bg-slate-800/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400"
+              title="Danh mục hệ thống — không thể đổi tên hoặc xoá"
+            >
+              Hệ thống
+            </span>
+          )}
           <span className="ml-auto shrink-0 rounded-md bg-slate-800/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-400">
             {formatCount(row.proxy_count)} proxy
           </span>
