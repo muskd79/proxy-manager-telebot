@@ -8,6 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+// Wave 28-G [HIGH] — typed-confirm before saving rate_limit=0 which
+// would silently block the user from any new proxy. Mirrors the
+// Wave 28 mass-hide gate on /categories.
+import { DangerousConfirmDialog } from "@/components/shared/dangerous-confirm-dialog";
 import { toast } from "sonner";
 import type { TeleUser } from "@/types/database";
 import { ApprovalMode } from "@/types/database";
@@ -31,6 +35,11 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
   const [approvalMode, setApprovalMode] = useState<string>(user.approval_mode);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  // Wave 28-G — typed-confirm gate when admin sets a limit to 0.
+  // Pre-fix: zero passed Zod min(0) and got persisted; the bot
+  // then evaluated `proxies_used >= 0` → blocked the user with no
+  // affordance to distinguish "intentional" from "misconfigured".
+  const [zeroConfirmOpen, setZeroConfirmOpen] = useState(false);
 
   // Validate limit hierarchy on every change
   useEffect(() => {
@@ -55,6 +64,20 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
     setApprovalMode(user.approval_mode);
   }, [user]);
 
+  const hasZero =
+    hourlyLimit === 0 ||
+    dailyLimit === 0 ||
+    totalLimit === 0 ||
+    maxProxies === 0;
+
+  const requestSave = () => {
+    if (hasZero && !zeroConfirmOpen) {
+      setZeroConfirmOpen(true);
+      return;
+    }
+    void handleSave();
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -66,15 +89,16 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
         approval_mode: approvalMode,
       });
       if (success) {
-        toast.success("Rate limits updated successfully");
+        toast.success("Đã cập nhật rate limits");
       } else {
-        toast.error("Failed to update rate limits");
+        toast.error("Cập nhật rate limits thất bại");
       }
     } catch (err) {
       console.error("Failed to save rate limits:", err);
-      toast.error("An error occurred while saving");
+      toast.error("Có lỗi xảy ra khi lưu");
     } finally {
       setIsSaving(false);
+      setZeroConfirmOpen(false);
     }
   };
 
@@ -248,16 +272,53 @@ export function UserRateLimit({ user, onSave }: UserRateLimitProps) {
             </div>
           )}
 
-          <Button onClick={handleSave} disabled={isSaving || hourlyLimit > dailyLimit || dailyLimit > totalLimit} className="w-full sm:w-auto">
+          <Button
+            onClick={requestSave}
+            disabled={isSaving || hourlyLimit > dailyLimit || dailyLimit > totalLimit}
+            className="w-full sm:w-auto"
+          >
             {isSaving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            Save Changes
+            Lưu thay đổi
           </Button>
         </CardContent>
       </Card>
+
+      {/* Wave 28-G [HIGH] — typed-confirm gate when any limit = 0. */}
+      <DangerousConfirmDialog
+        open={zeroConfirmOpen}
+        onOpenChange={setZeroConfirmOpen}
+        title="Đặt giới hạn về 0?"
+        description={
+          <div className="space-y-2 text-sm">
+            <p>
+              Một hoặc nhiều rate limit đang được đặt về <strong>0</strong>.
+              Hậu quả: user này sẽ bị bot từ chối MỌI yêu cầu mới (không
+              giao proxy được).
+            </p>
+            <ul className="list-inside list-disc space-y-0.5 text-xs text-muted-foreground">
+              {hourlyLimit === 0 && <li>Rate limit / giờ = 0</li>}
+              {dailyLimit === 0 && <li>Rate limit / ngày = 0</li>}
+              {totalLimit === 0 && <li>Rate limit / tổng = 0</li>}
+              {maxProxies === 0 && <li>Số proxy tối đa = 0</li>}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Có chắc bạn muốn chặn user này khỏi tính năng đó? Gõ
+              <code className="mx-1 rounded bg-muted px-1 font-mono">CHAN USER</code>
+              để xác nhận.
+            </p>
+          </div>
+        }
+        confirmString="CHAN USER"
+        actionLabel="Lưu (chặn user)"
+        loading={isSaving}
+        onConfirm={async () => {
+          await handleSave();
+        }}
+      />
     </div>
   );
 }
